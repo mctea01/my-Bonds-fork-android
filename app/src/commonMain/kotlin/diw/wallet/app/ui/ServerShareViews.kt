@@ -68,7 +68,7 @@ internal fun ServerShareSection(model: WalletModel) {
     var importing by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val readQr = LocalQrReader.current
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(onClick = { sharing = true }, enabled = settings.zkVerifierUrl.isNotEmpty()) { Text(ServerStrings.SHARE) }
         OutlinedButton(onClick = { importing = true }) { Text(ServerStrings.IMPORT) }
     }

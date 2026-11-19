@@ -85,7 +85,7 @@ internal fun OpenPgpReaderPin(model: WalletModel, withPin: Boolean = true, onCha
     when {
         list == null -> CircularProgressIndicator(Modifier.size(20.dp))
         else -> {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            WrapRow() {
                 list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; onChange(r, pin) }, label = { Text(r.name) }) }
                 TextButton(onClick = { scope.launch { find() } }) { Text(stringResource(Res.string.action_find_again)) }
             }
@@ -195,14 +195,14 @@ fun OpenPgpKeysScreen(model: WalletModel, screen: Screen.OpenPgpKeys) {
     var reader by remember { mutableStateOf<NfcReaderOption?>(null) }
     var confirmFound by remember { mutableStateOf(false) }
     LaunchedEffect(screen.query) { screen.query?.let { model.openPgp.lookup(it) } }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.pgp_trust_intro), style = MaterialTheme.typography.bodyMedium)
         OpenPgpTrust.entries.forEach { t -> Text(stringResource(Res.string.pgp_tier_line, t.title, t.detail), style = MaterialTheme.typography.bodySmall) }
         Text(stringResource(Res.string.pgp_introducer_text), style = MaterialTheme.typography.bodySmall)
         BusyLine(busy, error)
 
         SectionTitle(stringResource(Res.string.pgp_add_key))
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.openPgp.pickAndImport() }, enabled = busy == null) { Text(stringResource(Res.string.pgp_import_file)) }
         }
         Text(stringResource(Res.string.pgp_import_text), style = MaterialTheme.typography.bodySmall)
@@ -280,7 +280,7 @@ private fun KeyEntryCard(model: WalletModel, e: OpenPgpKeyEntry, enabled: Boolea
             if (e.info.revoked) Text(stringResource(Res.string.pgp_primary_revoked), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             Text(stringResource(Res.string.pgp_source) + e.source + stringResource(Res.string.pgp_added_at) + localTime(e.addedAt) + if (e.cardOnly) stringResource(Res.string.pgp_card_only) else "", style = MaterialTheme.typography.bodySmall)
             Text(stringResource(Res.string.pgp_trust) + e.trust.title + stringResource(Res.string.paren_open) + e.trust.detail + stringResource(Res.string.paren_close), style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            WrapRow(spacing = 6.dp) {
                 if (e.trust == OpenPgpTrust.OWN_CARD) FilterChip(selected = true, onClick = {}, label = { Text(OpenPgpTrust.OWN_CARD.title) })
                 listOf(OpenPgpTrust.VERIFIED, OpenPgpTrust.UNVERIFIED, OpenPgpTrust.DISTRUSTED).forEach { t ->
                     FilterChip(selected = e.trust == t, enabled = enabled, onClick = {
@@ -293,7 +293,7 @@ private fun KeyEntryCard(model: WalletModel, e: OpenPgpKeyEntry, enabled: Boolea
                 Checkbox(checked = e.introducer && canIntroduce, enabled = canIntroduce && enabled, onCheckedChange = { model.openPgp.setIntroducer(e.fingerprint, it) })
                 Text(if (canIntroduce) stringResource(Res.string.pgp_set_introducer) else stringResource(Res.string.pgp_set_introducer_check), style = MaterialTheme.typography.bodySmall)
             }
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
+            WrapRow() {
                 TextButton(onClick = { model.openPgp.export(e.fingerprint, share = false) }) { Text(stringResource(Res.string.action_export)) }
                 if (model.platform.canShareFiles) TextButton(onClick = { model.openPgp.export(e.fingerprint, share = true) }) { Text(stringResource(Res.string.action_share)) }
                 TextButton(onClick = { confirmRemove = true }, enabled = enabled) { Text(stringResource(Res.string.action_remove), color = MaterialTheme.colorScheme.error) }

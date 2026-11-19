@@ -72,7 +72,7 @@ private fun Toggle(title: String, detail: String, checked: Boolean, enabled: Boo
 
 @Composable
 private fun SettingsColumn(content: @Composable ColumnScope.() -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp), content = content)
+    ScreenColumn(spacing = 14.dp, content = content)
 }
 
 @Composable
@@ -209,7 +209,7 @@ private fun DocumentsPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
     SectionTitle(stringResource(Res.string.settings_timestamps))
     Text(stringResource(Res.string.settings_tsa_text), style = MaterialTheme.typography.bodySmall)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         TsaServices.all.forEach { t ->
             FilterChip(selected = s.tsaId == t.id, onClick = { model.updateSettings { it.copy(tsaId = t.id) } }, label = { Text(t.name) })
         }
@@ -226,7 +226,7 @@ private fun DocumentsPage(model: WalletModel) {
     HorizontalDivider()
     SectionTitle(stringResource(Res.string.settings_signature_level))
     val level = padesLevel(s)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         SignatureLevel.entries.forEach { l ->
             FilterChip(selected = l == level, onClick = { model.updateSettings { it.copy(padesLevel = l.name) } }, label = { Text(l.short) })
         }
@@ -343,7 +343,7 @@ private fun InteropPage(model: WalletModel) {
         modifier = Modifier.fillMaxWidth(),
     )
     val changed = twdiwClientId != s.twdiwClientId || twdiwUserAgent != s.twdiwUserAgent || twdiwFrontend != s.twdiwFrontendUrl
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         OutlinedButton(onClick = {
             model.updateSettings {
                 it.copy(
@@ -425,7 +425,7 @@ private fun DeveloperPage(model: WalletModel) {
         enabled = s.testEnvironment,
         modifier = Modifier.fillMaxWidth(),
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         OutlinedButton(onClick = { model.updateSettings { it.copy(testServerUrl = url) } }, enabled = s.testEnvironment && url != s.testServerUrl) {
             Text(stringResource(Res.string.settings_save_url))
         }

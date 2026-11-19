@@ -73,9 +73,9 @@ fun ReaderScreen(model: WalletModel) {
             OutlinedButton(onClick = { model.reader.again() }) { Text(stringResource(Res.string.action_cancel)) }
         }
         is ReaderUi.Result -> ResultView(model, s)
-        is ReaderUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is ReaderUi.Failed -> ScreenColumn(spacing = 12.dp) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.reader_failed), listOf(s.message))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { model.reader.again() }) { Text(stringResource(Res.string.action_try_again)) }
                 OutlinedButton(onClick = { model.reader.close(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_leave)) }
             }
@@ -91,7 +91,7 @@ private fun SetupView(model: WalletModel) {
     var chosen by remember { mutableStateOf<String?>(null) }
     val readers = list?.readers.orEmpty()
     val selected: NfcReaderOption? = readers.firstOrNull { it.name == chosen } ?: readers.firstOrNull()
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(Tokens.ContainerRadius),
@@ -149,13 +149,13 @@ private fun SetupView(model: WalletModel) {
 
 @Composable
 private fun ResultView(model: WalletModel, s: ReaderUi.Result) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         if (s.integrityError != null) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.reader_invalid), listOf(s.integrityError, stringResource(Res.string.reader_invalid_text)))
         }
         s.documents.forEach { d -> DocumentResult(model, d, s.risk) }
         Text(stringResource(Res.string.reader_summary, s.request.title, StatusTexts.risk(s.risk), s.transport), style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.reader.again() }) { Text(stringResource(Res.string.reader_again)) }
             OutlinedButton(onClick = { model.reader.close(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_done)) }
         }

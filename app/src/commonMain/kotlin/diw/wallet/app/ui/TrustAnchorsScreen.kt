@@ -94,7 +94,7 @@ fun TrustAnchorsScreen(model: WalletModel) {
     val settings by model.settingsFlow.collectAsState()
     var removing by remember { mutableStateOf<AnchorGroup?>(null) }
     LaunchedEffect(Unit) { model.loadAnchors() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.anchors_intro),
             style = MaterialTheme.typography.bodyMedium)
         CollapsibleSection(stringResource(Res.string.anchors_levels), initiallyExpanded = true, key = "tier-legend") { TierLegend() }
@@ -173,7 +173,7 @@ fun CustomTrustScreen(model: WalletModel) {
     val intermediates by model.intermediates.collectAsState()
     var removing by remember { mutableStateOf<AnchorGroup?>(null) }
     LaunchedEffect(Unit) { model.loadAnchors() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.custom_trust_intro) +
             stringResource(Res.string.custom_trust_rejudge),
             style = MaterialTheme.typography.bodyMedium)
@@ -397,7 +397,7 @@ private fun ImportedCscaSection(model: WalletModel, anchors: List<StoredAnchor>,
     CollapsibleSection(stringResource(Res.string.csca_imported_title), groups.size, initiallyExpanded = groups.size <= 3, key = "csca-imported") {
         Text(stringResource(Res.string.csca_imported_text, groups.size, byCountry.size), style = MaterialTheme.typography.bodySmall)
         if (groups.isEmpty()) return@CollapsibleSection
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        WrapRow() {
             OutlinedButton(onClick = { selecting = !selecting; selected = emptySet() }) {
                 Text(stringResource(if (selecting) Res.string.action_cancel else Res.string.csca_select))
             }
@@ -506,7 +506,7 @@ private fun TrustListsSection(model: WalletModel) {
                 st.partErrors.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        WrapRow() {
             TextButton(enabled = on && !st.running, onClick = { model.trustLists.refresh(kind) }) { Text(stringResource(Res.string.zk_update_now)) }
             if (st.fetchedAt != null) TextButton(enabled = !st.running, onClick = { model.trustLists.clear(kind) }) { Text(stringResource(Res.string.trust_list_delete)) }
             if (st.running) CircularProgressIndicator(Modifier.size(18.dp), strokeWidth = 2.dp)
@@ -531,7 +531,7 @@ private fun BuiltInRootList(model: WalletModel, roots: List<diw.wallet.core.trus
 
 @Composable
 internal fun RoleChips(options: List<TrustRole>, selected: Set<TrustRole>, onChange: (Set<TrustRole>) -> Unit) {
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         options.forEach { r ->
             FilterChip(selected = r in selected, onClick = { onChange(if (r in selected) selected - r else selected + r) }, label = { Text(roleName(r)) })
         }

@@ -5,6 +5,7 @@ import diw.wallet.app.res.Res
 import diw.wallet.app.text
 import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
@@ -23,9 +24,16 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.ExperimentalComposeUiApi
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.PointerEventType
+import androidx.compose.ui.input.pointer.isBackPressed
+import androidx.compose.ui.input.pointer.onPointerEvent
 import androidx.compose.ui.graphics.painter.BitmapPainter
 import androidx.compose.ui.layout.boundsInWindow
 import androidx.compose.ui.layout.onGloballyPositioned
@@ -38,11 +46,13 @@ import androidx.compose.ui.window.Window
 import androidx.compose.ui.window.WindowExceptionHandler
 import androidx.compose.ui.window.WindowExceptionHandlerFactory
 import androidx.compose.ui.window.application
-import androidx.compose.ui.window.rememberWindowState
 import diw.wallet.app.WalletModel
 import diw.wallet.app.decodeImageBytes
 import diw.wallet.app.ui.WalletApp
+import diw.wallet.app.ui.onEnterKey
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.FlowPreview
+import kotlinx.coroutines.flow.debounce
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
@@ -140,7 +150,7 @@ private fun nativeJavaHome() {
     exe.absoluteFile.parentFile?.let { System.setProperty("java.home", it.path) }
 }
 
-@OptIn(ExperimentalComposeUiApi::class)
+@OptIn(ExperimentalComposeUiApi::class, FlowPreview::class)
 fun main(args: Array<String>) {
     nativeJavaHome()
     if (args.firstOrNull() == "--self-check") exitProcess(SelfCheck.run(args.getOrNull(1)?.let(::File)))
@@ -155,8 +165,23 @@ fun main(args: Array<String>) {
     application {
         var model by remember { mutableStateOf<WalletModel?>(null) }
         val icon = remember { appIcon() }
+        val windowState = remember { WindowMemory.restore() }
         CompositionLocalProvider(LocalWindowExceptionHandlerFactory provides windowErrors(language)) {
-            Window(onCloseRequest = ::exitApplication, title = "DIW MY WALLET", icon = icon, state = rememberWindowState(width = 480.dp, height = 860.dp)) {
+            Window(
+                onCloseRequest = { WindowMemory.save(windowState); exitApplication() },
+                title = "DIW MY WALLET",
+                icon = icon,
+                state = windowState,
+                onKeyEvent = { DesktopShortcuts.handle(it, model) },
+            ) {
+                LaunchedEffect(Unit) {
+                    val min = WindowMemory.minimum
+                    window.minimumSize = java.awt.Dimension(min.width.value.toInt(), min.height.value.toInt())
+                }
+                LaunchedEffect(windowState) {
+                    snapshotFlow { Triple(windowState.size, windowState.position, windowState.placement) }
+                        .debounce(1000).collect { WindowMemory.save(windowState) }
+                }
                 if (InputExercise.enabled) {
                     val density = LocalDensity.current.density
                     LaunchedEffect(density) { InputExercise.density = density; InputExercise.window = window }
@@ -185,7 +210,10 @@ fun main(args: Array<String>) {
                             onDispose { window.removeWindowFocusListener(listener) }
                         }
                         if (InputExercise.enabled) LaunchedEffect(m) { InputExercise.mainScreen = true }
-                        WalletApp(m)
+                        // The mouse's back button goes back, as Alt+Left and Esc do (DesktopShortcuts).
+                        Box(Modifier.fillMaxSize().onPointerEvent(PointerEventType.Press, PointerEventPass.Initial) { e ->
+                            if (e.buttons.isBackPressed) m.back()
+                        }) { WalletApp(m) }
                     }
                 }
             }
@@ -206,13 +234,32 @@ private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUn
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val valid = pin.length >= 6 && (!firstRun || pin == confirm)
-    LaunchedEffect(Unit) { composed = true }
+    val pinFocus = remember { FocusRequester() }
+    val confirmFocus = remember { FocusRequester() }
+    val submit = {
+        if (valid && !busy) {
+            busy = true
+            scope.launch {
+                error = try {
+                    if (onUnlock(pin)) null else language.text(Res.string.unlock_wrong_pin)
+                } catch (e: Exception) {
+                    language.text(Res.string.unlock_failed, e.message.toString())
+                }
+                busy = false
+            }
+        }
+    }
+    LaunchedEffect(Unit) {
+        composed = true
+        // The PIN field has the focus from the start, so the PIN can be typed straight away.
+        runCatching { pinFocus.requestFocus() }
+    }
     MaterialTheme {
         Surface(Modifier.fillMaxSize()) {
             Column(Modifier.fillMaxSize().padding(24.dp), verticalArrangement = Arrangement.spacedBy(12.dp, Alignment.CenterVertically), horizontalAlignment = Alignment.CenterHorizontally) {
                 Text("DIW MY WALLET", style = MaterialTheme.typography.headlineSmall)
                 Text(if (firstRun) stringResource(Res.string.unlock_set_pin) else stringResource(Res.string.unlock_enter_pin))
-                val field = @Composable { value: String, label: String, target: String, onChange: (String) -> Unit ->
+                val field = @Composable { value: String, label: String, target: String, focus: FocusRequester, onEnter: () -> Unit, onChange: (String) -> Unit ->
                     OutlinedTextField(
                         value = value,
                         onValueChange = { v -> onChange(v.filter { it.isDigit() }.take(12)) },
@@ -220,23 +267,20 @@ private fun UnlockScreen(language: DesktopLanguageStore, firstRun: Boolean, onUn
                         singleLine = true,
                         visualTransformation = PasswordVisualTransformation(),
                         keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
-                        modifier = Modifier.width(280.dp).exerciseTarget(target),
+                        modifier = Modifier.width(280.dp).focusRequester(focus).onEnterKey(onEnter).exerciseTarget(target),
                     )
                 }
-                field(pin, "App PIN", "pin") { pin = it; if (InputExercise.enabled) InputExercise.pin = it }
-                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat), "confirm") { confirm = it; if (InputExercise.enabled) InputExercise.confirm = it }
+                // Enter in the first field moves to the second on first run, and unlocks otherwise.
+                field(pin, "App PIN", "pin", pinFocus, { if (firstRun) runCatching { confirmFocus.requestFocus() } else submit() }) {
+                    pin = it
+                    if (InputExercise.enabled) InputExercise.pin = it
+                }
+                if (firstRun) field(confirm, stringResource(Res.string.unlock_repeat), "confirm", confirmFocus, { submit() }) {
+                    confirm = it
+                    if (InputExercise.enabled) InputExercise.confirm = it
+                }
                 error?.let { Text(it, color = MaterialTheme.colorScheme.error) }
-                Button(enabled = valid && !busy, modifier = Modifier.exerciseTarget("unlock"), onClick = {
-                    busy = true
-                    scope.launch {
-                        error = try {
-                            if (onUnlock(pin)) null else language.text(Res.string.unlock_wrong_pin)
-                        } catch (e: Exception) {
-                            language.text(Res.string.unlock_failed, e.message.toString())
-                        }
-                        busy = false
-                    }
-                }) { Text(if (busy) stringResource(Res.string.state_working) else if (firstRun) stringResource(Res.string.unlock_create) else stringResource(Res.string.unlock_unlock)) }
+                Button(enabled = valid && !busy, modifier = Modifier.exerciseTarget("unlock"), onClick = { submit() }) { Text(if (busy) stringResource(Res.string.state_working) else if (firstRun) stringResource(Res.string.unlock_create) else stringResource(Res.string.unlock_unlock)) }
             }
         }
     }

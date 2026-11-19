@@ -87,11 +87,11 @@ fun OfflineScreen(
     val state by model.taiwan.offline.collectAsState()
     when (val s = state) {
         is OfflineUi.Working -> Busy(s.message.ifEmpty { stringResource(Res.string.state_processing) })
-        is OfflineUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is OfflineUi.Failed -> ScreenColumn(spacing = 12.dp) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_failed), listOf(s.message))
             Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
         }
-        is OfflineUi.Unlisted -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is OfflineUi.Unlisted -> ScreenColumn(spacing = 12.dp) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.offline_t4_title), listOf(s.message, stringResource(Res.string.offline_t4_text)))
             if (riskOverride(s.service.vpUid, stringResource(Res.string.action_continue_at_risk), stringResource(Res.string.offline_unlisted_title),
                     listOf(stringResource(Res.string.offline_unlisted_text, s.service.name), stringResource(Res.string.offline_unlisted_risk)))) {
@@ -131,7 +131,7 @@ fun OfflineScreen(
 @Composable
 private fun BarcodeView(model: WalletModel, s: OfflineUi.Barcode) {
     val left = secondsLeft(s.expiresAt)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp),
+    ScreenColumn(spacing = 12.dp,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(s.serviceName, style = MaterialTheme.typography.titleLarge)
         Text(stringResource(Res.string.offline_show_clerk), style = MaterialTheme.typography.bodyMedium)
@@ -152,7 +152,7 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
     var cardIndex by remember(s) { mutableStateOf(0) }
     val card = s.cards[cardIndex]
     var chosen by remember(s, cardIndex) { mutableStateOf(card.claims.map { it.first }.toSet()) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Card(Modifier.fillMaxWidth()) {
             Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                 Text(stringResource(Res.string.offline_request), style = MaterialTheme.typography.titleMedium)
@@ -190,7 +190,7 @@ private fun BondsChooseView(model: WalletModel, s: OfflineUi.BondsChoose) {
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.taiwan.presentBonds(s.request, card, chosen) }) { Text(stringResource(Res.string.action_present)) }
             OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
         }
@@ -225,7 +225,7 @@ private fun BondsFramesView(model: WalletModel, s: OfflineUi.BondsFrames) {
             index = (index + 1) % s.frames.size
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+    ScreenColumn(spacing = 10.dp,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(if (s.showQr) stringResource(Res.string.offline_let_scan) else stringResource(Res.string.offline_sending), style = MaterialTheme.typography.titleMedium)
         Text(stringResource(Res.string.age_purpose, s.request.purpose), style = MaterialTheme.typography.bodyMedium)
@@ -298,7 +298,7 @@ private fun VerifierChallengeView(
             scanning = false
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+    ScreenColumn(spacing = 10.dp,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(stringResource(Res.string.offline_scan_with), style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
@@ -334,7 +334,7 @@ private fun progressText(s: OfflineUi.VerifierChallenge): String = stringResourc
 
 @Composable
 private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         val r = s.result
         if (r == null) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.age_failed), listOf(s.error ?: stringResource(Res.string.offline_invalid)))
@@ -381,7 +381,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
             r.moica?.let { if (it.withheldClaims > 0) Text(stringResource(Res.string.offline_withheld, it.withheldClaims), style = MaterialTheme.typography.bodySmall) }
             EvidenceRows(r.evidence)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.taiwan.startVerifier(s.request.purpose, s.risk, s.request.source) }) { Text(stringResource(Res.string.reader_again)) }
             OutlinedButton(onClick = { model.taiwan.closeOffline(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_done)) }
         }

@@ -222,8 +222,8 @@ fun FilesTab(model: WalletModel) {
     val files by model.files.files.collectAsState()
     val busy by model.files.busy.collectAsState()
     val error by model.files.error.collectAsState()
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    ScreenColumn(spacing = 12.dp) {
+        WrapRow() {
             Button(onClick = { model.files.pickAndImport() }, enabled = busy == null) {
                 Icon(WalletIcons.Add, contentDescription = null, modifier = Modifier.size(18.dp))
                 Spacer(Modifier.width(6.dp))
@@ -257,7 +257,7 @@ fun DocumentSourcesScreen(model: WalletModel) {
     fun open(src: diw.wallet.app.DocumentSource) {
         if (model.platform.embeddedBrowser) model.screen.value = Screen.Portal(src.id) else model.platform.openBrowser(src.url)
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Text(
             if (model.platform.embeddedBrowser) stringResource(Res.string.files_web_inapp)
             else stringResource(Res.string.files_web_browser),
@@ -348,7 +348,7 @@ private fun FileRow(f: StoredFile, members: Int = 0, onClick: () -> Unit) {
                 Text(f.report?.title ?: f.name, style = MaterialTheme.typography.titleSmall)
                 Text(listOfNotNull(f.period, f.report?.format?.let { formatTitle(it) }, sizeText(f.size), localTime(f.addedAt)).joinToString("・"),
                     style = MaterialTheme.typography.bodySmall)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                WrapRow(spacing = 6.dp) {
                     VerdictPill(verdict, text)
                     if (f.timestamps.isNotEmpty()) VerdictPill(if (f.timestamps.any { it.trusted }) Verdict.PASS else Verdict.CAUTION, stringResource(Res.string.files_tag_timestamp))
                     if (f.derivedDocumentId != null) InfoPill(stringResource(Res.string.files_tag_derived))
@@ -402,7 +402,7 @@ private fun OfficialContainerSection(model: WalletModel, f: StoredFile, files: L
             inherited.forEach { m -> FileRow(m) { open(m) } }
         }
     }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         OutlinedButton(onClick = { model.files.importIntoBundle(f) }) { Text(stringResource(Res.string.files_import_related)) }
         OutlinedButton(onClick = { model.screen.value = Screen.OfficialBundle(f.id, null) }) { Text(stringResource(Res.string.files_add_saved)) }
     }
@@ -428,7 +428,7 @@ private fun ContainerHealth(l: FilesModel.ContainerLayout, all: List<StoredFile>
     val unsigned = l.points.size - signatures.size
     val signed = all.filter { it.report?.signatures?.isNotEmpty() == true }
     val withRevocation = signed.count { it.signatureValidation != null }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    WrapRow(spacing = 6.dp) {
         VerdictPill(if (l.missing == 0) Verdict.PASS else Verdict.CAUTION, if (l.missing == 0) stringResource(Res.string.files_container_complete) else stringResource(Res.string.files_container_missing, l.missing))
         if (l.changed > 0) VerdictPill(Verdict.CAUTION, stringResource(Res.string.files_container_changed, l.changed))
         VerdictPill(
@@ -444,7 +444,7 @@ private fun ContainerHealth(l: FilesModel.ContainerLayout, all: List<StoredFile>
 private fun ContainerPointView(p: FilesModel.ContainerPoint, main: StoredFile, open: (StoredFile) -> Unit) {
     Column(Modifier.fillMaxWidth().padding(top = 4.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
         Text(p.title, style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        WrapRow(spacing = 6.dp) {
             p.signature?.let { s -> val (v, t) = verdictOf(s.verdict); VerdictPill(v, t) } ?: VerdictPill(Verdict.CAUTION, stringResource(Res.string.files_no_cert_signature))
             p.time?.let { Text(localTime(it), style = MaterialTheme.typography.bodySmall) }
         }
@@ -478,7 +478,7 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
         list.forEach { chosen[it.file.id] = it.match.suggested }
         candidates = list
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(main.report?.title ?: main.name, style = MaterialTheme.typography.titleMedium)
         Text(stringResource(Res.string.files_pick_related_text),
             style = MaterialTheme.typography.bodySmall)
@@ -504,7 +504,7 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
             }
         }
         val ids = chosen.filterValues { it }.keys.toList()
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.files.confirmBundle(main, ids, screen.only, screen.next) }, enabled = ids.isNotEmpty() && busy == null) {
                 Text(stringResource(Res.string.files_put_in, ids.size))
             }
@@ -538,7 +538,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
     var pickContent by remember { mutableStateOf(false) }
     var encrypting by remember { mutableStateOf(false) }
     val derived = f.derivedDocumentId?.let { id -> docs.firstOrNull { it.identifier == id } }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         // What it is and whether it holds, then what can be done with it.
         Text(report?.title ?: f.name, style = MaterialTheme.typography.titleLarge)
         Text(listOfNotNull(if (report?.title != null && report.title != f.name) f.name else null, f.period,
@@ -546,7 +546,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             style = MaterialTheme.typography.bodySmall)
         BusyLine(busy, error)
         if (report != null) ReportVerdict(report)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.screen.value = Screen.FileSign(f.id) }) { Text(stringResource(Res.string.files_sign)) }
             OutlinedButton(onClick = { model.files.addTimestamp(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_add_timestamp)) }
             OutlinedButton(onClick = { model.screen.value = Screen.FileDerive(f.id) }) { Text(if (derived != null) stringResource(Res.string.files_rederive) else stringResource(Res.string.files_derive)) }
@@ -616,7 +616,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             VerdictPill(if (t.trusted) Verdict.PASS else Verdict.CAUTION, stringResource(Res.string.files_timestamp_line, t.tsa ?: stringResource(Res.string.tsa_fallback), localTime(t.time)) + if (t.trusted) "" else stringResource(Res.string.files_tsa_untrusted))
             val v = t.validation
             if (v != null) Text(v.summary() + stringResource(Res.string.files_got_at, localTime(v.collectedAt)), style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.horizontalScroll(rememberScrollState())) {
+            WrapRow() {
                 if (v == null) TextButton(onClick = { model.files.refreshTimestampValidation(f, i) }, enabled = busy == null) { Text(stringResource(Res.string.files_get_tsa_revocation)) }
                 TextButton(onClick = { removeStamp = i }, enabled = busy == null) { Text(stringResource(Res.string.files_remove_timestamp), color = MaterialTheme.colorScheme.error) }
             }
@@ -665,7 +665,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
                             stringResource(Res.string.files_zkpdf_pending_text_2),
                         style = MaterialTheme.typography.bodySmall,
                     )
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    WrapRow() {
                         Button(onClick = { model.files.importZkPdfProof(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_import_proof)) }
                         TextButton(onClick = { model.files.cancelZkPdfRequest(f) }, enabled = busy == null) { Text(stringResource(Res.string.files_cancel_request)) }
                     }
@@ -921,7 +921,7 @@ internal fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Un
             Text(list.problem ?: stringResource(Res.string.files_no_reader), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); update() } }) { Text(stringResource(Res.string.action_find_again)) }
         }
-        else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        else -> WrapRow() {
             list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; update() }, label = { Text(r.name) }) }
         }
     }
@@ -966,7 +966,7 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             Text(list.problem ?: stringResource(Res.string.files_no_reader), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); certs = null; slot = null; update() } }) { Text(stringResource(Res.string.action_find_again)) }
         }
-        else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        else -> WrapRow() {
             list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; certs = null; slot = null; update() }, label = { Text(r.name) }) }
         }
     }
@@ -1031,12 +1031,12 @@ private fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             SignerKind.HARDWARE, SignerKind.SYSTEM, SignerKind.MOBILE, SignerKind.CSC -> other
         }
     )
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; other = null; update() }, label = { Text(stringResource(k.title)) }) }
     }
     when (kind) {
         SignerKind.HARDWARE -> {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 HardwareKind.entries.forEach { h -> FilterChip(selected = h == hardware, onClick = { hardware = h; other = null; update() }, label = { Text(stringResource(h.title)) }) }
             }
             when (hardware) {
@@ -1113,7 +1113,7 @@ private fun TokenKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     if (found.isNotEmpty()) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             found.forEach { path -> FilterChip(selected = path == library, onClick = { library = path; list = null; onChange(null) },
                 label = { Text(path.substringAfterLast('/').substringAfterLast('\\')) }) }
         }
@@ -1353,7 +1353,7 @@ private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     Text(stringResource(Res.string.csc_redirect_text, CscServices.WALLET_REDIRECT),
         style = MaterialTheme.typography.bodySmall)
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text(stringResource(Res.string.action_add)) }
         OutlinedButton(onClick = onDone) { Text(stringResource(Res.string.action_cancel)) }
     }
@@ -1374,7 +1374,7 @@ private fun CscProfileForm(model: WalletModel, onDone: () -> Unit) {
     Text(stringResource(Res.string.csc_profile_text, CscServices.WALLET_REDIRECT),
         style = MaterialTheme.typography.bodySmall)
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         Button(onClick = {
             runCatching { model.csc.addProfile(text) }
                 .onSuccess { model.message.value = addedPattern.replace("{n}", it.toString()); onDone() }
@@ -1401,7 +1401,7 @@ internal fun CscPromptPanel(model: WalletModel) {
                 keyboardOptions = KeyboardOptions(keyboardType = if (prompt.numeric) KeyboardType.NumberPassword else KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { prompt.answer.complete(value) }, enabled = value.isNotEmpty()) { Text(stringResource(Res.string.action_send)) }
                 OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text(stringResource(Res.string.action_cancel)) }
             }
@@ -1412,7 +1412,7 @@ internal fun CscPromptPanel(model: WalletModel) {
                 style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text(stringResource(Res.string.csc_last_url)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { prompt.answer.complete(pasted) }, enabled = pasted.startsWith(prompt.redirectUri)) { Text(stringResource(Res.string.action_continue)) }
                 OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text(stringResource(Res.string.action_cancel)) }
             }
@@ -1433,7 +1433,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
     var reason by remember { mutableStateOf("") }
     var location by remember { mutableStateOf("") }
     var timestamp by remember { mutableStateOf(true) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(f.report?.title ?: f.name, style = MaterialTheme.typography.titleLarge)
         if (f.report?.title != null && f.report.title != f.name) Text(f.name, style = MaterialTheme.typography.bodySmall)
         SectionTitle(stringResource(Res.string.sign_step_format))
@@ -1508,7 +1508,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                     ))
                 }
                 SectionTitle(stringResource(Res.string.sign_step_approval))
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+                WrapRow(spacing = 6.dp) {
                     ApprovalPoint.ACTIONS.forEach { a -> FilterChip(selected = a == action, onClick = { action = a }, label = { Text(a) }) }
                 }
                 OutlinedTextField(value = action, onValueChange = { action = it.trim().take(ApprovalPoint.ACTION_MAX) }, label = { Text(stringResource(Res.string.sign_change_kind)) },
@@ -1596,7 +1596,7 @@ private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: Vis
         return
     }
     Text(stringResource(Res.string.sign_page_count, total), style = MaterialTheme.typography.bodyMedium)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow(spacing = 6.dp) {
         FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(VisibleSignature(0, value.position, value.image)) }, label = { Text(stringResource(Res.string.sign_first_page)) })
         FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(VisibleSignature(-1, value.position, value.image)) }, label = { Text(stringResource(Res.string.sign_last_page)) })
         OutlinedTextField(
@@ -1609,12 +1609,12 @@ private fun VisibleSignaturePicker(model: WalletModel, f: StoredFile, value: Vis
         )
     }
     Text(stringResource(Res.string.sign_position), style = MaterialTheme.typography.bodyMedium)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    WrapRow(spacing = 6.dp) {
         PdfSignatureAppearance.Position.entries.forEach { pos ->
             FilterChip(selected = pos == value.position, onClick = { onChange(VisibleSignature(value.page, pos, value.image)) }, label = { Text(pos.title) })
         }
     }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(onClick = {
             scope.launch {
                 val picked = runCatching { model.platform.pickImage() }.getOrNull() ?: return@launch
@@ -1726,14 +1726,14 @@ private fun OfdSealPicker(model: WalletModel, f: StoredFile, value: OfdSealChoic
     Text(stringResource(Res.string.sign_ofd_seal_sm2), style = MaterialTheme.typography.bodySmall)
     var note by remember(f.id) { mutableStateOf<String?>(null) }
     var fileMode by remember(f.id) { mutableStateOf(value.file != null) }
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    WrapRow(spacing = 6.dp) {
         FilterChip(selected = !fileMode, onClick = { fileMode = false; note = null; onChange(value.copy(file = null, fileName = null)) }, label = { Text(stringResource(Res.string.sign_seal_make)) })
         FilterChip(selected = fileMode, onClick = { fileMode = true }, label = { Text(stringResource(Res.string.sign_seal_file)) })
     }
     if (!fileMode) {
         OutlinedTextField(value = value.name, onValueChange = { onChange(value.copy(name = it.take(24))) }, label = { Text(stringResource(Res.string.sign_seal_name)) },
             singleLine = true, modifier = Modifier.fillMaxWidth())
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        WrapRow(spacing = 6.dp) {
             FilterChip(selected = !value.personal, onClick = { onChange(value.copy(personal = false, widthMm = 40.0)) }, label = { Text(stringResource(Res.string.sign_seal_org)) })
             FilterChip(selected = value.personal, onClick = { onChange(value.copy(personal = true, widthMm = 20.0)) }, label = { Text(stringResource(Res.string.sign_seal_person)) })
         }
@@ -1746,7 +1746,7 @@ private fun OfdSealPicker(model: WalletModel, f: StoredFile, value: OfdSealChoic
             },
             label = { Text(stringResource(Res.string.sign_seal_size)) }, singleLine = true, modifier = Modifier.width(140.dp),
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+        WrapRow() {
             OutlinedButton(onClick = {
                 scope.launch {
                     val picked = runCatching { model.platform.pickImage() }.getOrNull() ?: return@launch
@@ -1798,7 +1798,7 @@ private fun OfdSealPicker(model: WalletModel, f: StoredFile, value: OfdSealChoic
     val total = (f.report?.pages ?: 1).coerceAtLeast(1)
     var pageText by remember(f.id) { mutableStateOf(total.toString()) }
     Text(stringResource(Res.string.sign_page_count, total), style = MaterialTheme.typography.bodyMedium)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow(spacing = 6.dp) {
         FilterChip(selected = value.page == 0, onClick = { pageText = "1"; onChange(value.copy(page = 0)) }, label = { Text(stringResource(Res.string.sign_first_page)) })
         FilterChip(selected = value.page == -1 || value.page == total - 1, onClick = { pageText = total.toString(); onChange(value.copy(page = -1)) }, label = { Text(stringResource(Res.string.sign_last_page)) })
         OutlinedTextField(
@@ -1811,7 +1811,7 @@ private fun OfdSealPicker(model: WalletModel, f: StoredFile, value: OfdSealChoic
         )
     }
     Text(stringResource(Res.string.sign_position), style = MaterialTheme.typography.bodyMedium)
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+    WrapRow(spacing = 6.dp) {
         PdfSignatureAppearance.Position.entries.forEach { pos ->
             FilterChip(selected = pos == value.position, onClick = { onChange(value.copy(position = pos)) }, label = { Text(pos.title) })
         }
@@ -1897,7 +1897,7 @@ private fun FilePreviewSection(model: WalletModel, f: StoredFile) {
                 val placements = f.report?.signaturePlacements.orEmpty()
                 val signatures = f.report?.signatures.orEmpty()
                 PreviewImage(p.pages[i], stringResource(Res.string.sign_page_n, i + 1), placements.filter { it.page == i }, signatures)
-                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WrapRow() {
                     TextButton(onClick = { page = i - 1 }, enabled = i > 0) { Text(stringResource(Res.string.files_prev_page)) }
                     Text(stringResource(Res.string.preview_page_of, i + 1, p.total), style = MaterialTheme.typography.bodySmall)
                     TextButton(onClick = { page = i + 1 }, enabled = i < p.pages.lastIndex) { Text(stringResource(Res.string.files_next_page)) }
@@ -1962,7 +1962,7 @@ private fun HouseholdView(h: HouseholdTranscript) {
                 color = MaterialTheme.colorScheme.outline)
         }
         if (h.people.size > 1) {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 h.people.forEachIndexed { i, person ->
                     FilterChip(
                         selected = i == selected,
@@ -2443,7 +2443,8 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
     }
     if (v.transcript.isNotEmpty()) {
         SectionTitle(stringResource(Res.string.oa_transcript))
-        Column(Modifier.fillMaxWidth().horizontalScroll(rememberScrollState())) {
+        val tableScroll = rememberScrollState()
+        Column(Modifier.fillMaxWidth().horizontalScroll(tableScroll)) {
             Row {
                 v.transcriptColumns.forEach { c -> Text(c, style = MaterialTheme.typography.labelMedium, modifier = Modifier.width(120.dp).padding(4.dp)) }
             }
@@ -2451,6 +2452,7 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
                 Row { row.forEach { cell -> Text(cell, style = MaterialTheme.typography.bodySmall, modifier = Modifier.width(120.dp).padding(4.dp)) } }
             }
         }
+        HorizontalScrollIndicator(tableScroll, Modifier.fillMaxWidth())
     }
     if (v.images.isNotEmpty()) {
         SectionTitle(stringResource(Res.string.format_image))
@@ -2465,7 +2467,7 @@ private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo,
         SectionTitle(stringResource(Res.string.oa_attachments))
         v.attachments.forEach { a ->
             Text(stringResource(Res.string.files_group_count, a.name, sizeText(a.bytes.size.toLong())), style = MaterialTheme.typography.bodyMedium)
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 OutlinedButton(onClick = { model.files.storeOpenCertAttachment(f, a) }, enabled = busy == null) { Text(stringResource(Res.string.oa_store)) }
                 OutlinedButton(onClick = { model.files.exportOpenCertAttachment(a) }, enabled = busy == null) { Text(stringResource(Res.string.action_export)) }
                 if (model.platform.canShareFiles) {
@@ -2524,10 +2526,10 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
     var zkForm by remember(f) { mutableStateOf(ZkPdfDeriveForm()) }
     var zkGate by remember(f) { mutableStateOf(false) }
     val composition = zkPdfComposition(model)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.derive_intro, f.report?.title ?: f.name),
             style = MaterialTheme.typography.bodyMedium)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp), verticalAlignment = Alignment.CenterVertically) {
+        WrapRow(spacing = 6.dp) {
             f.report?.let { r -> val (v, t) = verdictOf(r.verdict); VerdictPill(v, t) }
             if (f.timestamps.any { it.trusted }) VerdictPill(Verdict.PASS, stringResource(Res.string.derive_has_timestamp))
             f.source?.let { Text(it, style = MaterialTheme.typography.bodySmall) }

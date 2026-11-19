@@ -30,6 +30,9 @@ import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.NavigationBar
+import androidx.compose.foundation.layout.height
+import androidx.compose.material3.NavigationRailItem
+import androidx.compose.material3.NavigationRail
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
@@ -65,13 +68,7 @@ import kotlin.time.Instant
 @Composable
 fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
     NavigationBar {
-        listOf(
-            Triple(HomeTab.DOCUMENTS, stringResource(Res.string.tab_documents), WalletIcons.Wallet),
-            Triple(HomeTab.FILES, stringResource(Res.string.tab_files), WalletIcons.Document),
-            Triple(HomeTab.USE, stringResource(Res.string.tab_use), WalletIcons.Scan),
-            Triple(HomeTab.VERIFY, stringResource(Res.string.tab_verify), WalletIcons.Shield),
-            Triple(HomeTab.HISTORY, stringResource(Res.string.tab_history), WalletIcons.History),
-        ).forEach { (tab, label, icon) ->
+        homeTabs().forEach { (tab, label, icon) ->
             NavigationBarItem(
                 selected = tab == selected,
                 onClick = { onSelect(tab) },
@@ -81,6 +78,31 @@ fun HomeNavigationBar(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
         }
     }
 }
+
+/** The same tabs down the left side, for windows wider than they are tall (desktop, tablets in landscape). */
+@Composable
+fun HomeNavigationRail(selected: HomeTab, onSelect: (HomeTab) -> Unit) {
+    NavigationRail {
+        Spacer(Modifier.height(8.dp))
+        homeTabs().forEach { (tab, label, icon) ->
+            NavigationRailItem(
+                selected = tab == selected,
+                onClick = { onSelect(tab) },
+                icon = { Icon(icon, contentDescription = null) },
+                label = { Text(label) },
+            )
+        }
+    }
+}
+
+@Composable
+private fun homeTabs() = listOf(
+    Triple(HomeTab.DOCUMENTS, stringResource(Res.string.tab_documents), WalletIcons.Wallet),
+    Triple(HomeTab.FILES, stringResource(Res.string.tab_files), WalletIcons.Document),
+    Triple(HomeTab.USE, stringResource(Res.string.tab_use), WalletIcons.Scan),
+    Triple(HomeTab.VERIFY, stringResource(Res.string.tab_verify), WalletIcons.Shield),
+    Triple(HomeTab.HISTORY, stringResource(Res.string.tab_history), WalletIcons.History),
+)
 
 /** Add a document: from the list of documents that can be requested, or by reading the issuer's QR Code. */
 @Composable
@@ -131,7 +153,7 @@ fun DocumentsTab(model: WalletModel, onAdd: () -> Unit) {
             )
         }
         if (categories.size > 1) item(key = "filters") {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text(stringResource(Res.string.filter_all)) })
                 categories.forEach { c -> FilterChip(selected = filter == c, onClick = { filter = if (filter == c) null else c }, label = { Text(stringResource(c.title)) }) }
             }
@@ -168,7 +190,7 @@ fun UseTab(model: WalletModel, scan: ScanActions) {
     val error by model.taiwan.servicesError.collectAsState()
     var input by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { if (services == null && error == null) model.taiwan.loadServices() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(Tokens.ContainerRadius),
@@ -234,7 +256,7 @@ fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
     var purpose by remember { mutableStateOf(defaultPurpose) }
     var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
     var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(Tokens.ContainerRadius),
@@ -246,7 +268,7 @@ fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
                 Text(stringResource(Res.string.verify_others_text),
                     style = MaterialTheme.typography.bodyMedium)
                 Text(stringResource(Res.string.verify_accepted), style = MaterialTheme.typography.titleSmall)
-                Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WrapRow() {
                     listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.SELF_ISSUED, BondsCredentialSource.ANY).forEach { s ->
                         FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
                     }
@@ -320,7 +342,7 @@ fun HistoryTab(model: WalletModel) {
     val days = shown.groupBy { Instant.fromEpochSeconds(it.epochSeconds).toLocalDateTime(zone).date }
     LazyColumn(Modifier.fillMaxSize(), contentPadding = PaddingValues(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
         item(key = "filters") {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 FilterChip(selected = filter == null, onClick = { filter = null }, label = { Text(stringResource(Res.string.filter_all)) })
                 HistoryFilter.entries.forEach { f -> FilterChip(selected = filter == f, onClick = { filter = if (filter == f) null else f }, label = { Text(stringResource(f.title)) }) }
             }

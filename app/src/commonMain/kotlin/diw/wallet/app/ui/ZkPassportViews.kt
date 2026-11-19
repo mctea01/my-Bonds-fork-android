@@ -81,7 +81,7 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
     val outList = ZkPassportFlow.countries(nationalityOut)
     val issuingList = ZkPassportFlow.countries(issuingIn)
     val countryProblem = stringResource(Res.string.zkp_countries_invalid)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.zkp_setup_text), style = MaterialTheme.typography.bodyMedium)
         s.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         OutlinedTextField(
@@ -193,7 +193,7 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
         }
         val ready = domain.isNotBlank() && domainProblem == null && name.isNotBlank() && purpose.isNotBlank() && !ageProblem &&
             inList != null && outList != null && issuingList != null && s.note == null && !faceProblem
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(
                 onClick = {
                     if (face && faceKey && faceApps != settings.zkPassportFaceApps) model.updateSettings { it.copy(zkPassportFaceApps = faceApps.trim()) }
@@ -227,7 +227,7 @@ internal fun ZkPassportSetupView(model: WalletModel, s: OfflineUi.ZkPassportSetu
 @Composable
 internal fun ZkPassportWaitingView(model: WalletModel, s: OfflineUi.ZkPassportWaiting) {
     val showQr = s.url != null && (s.state is ZkPassportState.Waiting || s.state is ZkPassportState.Scanned)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+    ScreenColumn(spacing = 10.dp,
         horizontalAlignment = Alignment.CenterHorizontally) {
         if (showQr) {
             Text(stringResource(Res.string.zkp_scan_with_app), style = MaterialTheme.typography.titleMedium)
@@ -266,7 +266,7 @@ internal fun ZkPassportWaitingView(model: WalletModel, s: OfflineUi.ZkPassportWa
 internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVerified) {
     val r = s.result
     val domain = ZkPassport.normalizeDomain(s.request.domain)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         when {
             r == null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_not_finished), listOfNotNull(s.error))
             !r.verified && r.errors.any { it.startsWith("backend_legacy:") } -> {
@@ -317,7 +317,7 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
             },
             "zkpassport-result",
         )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.taiwan.zkPassport.start(s.request) }) { Text(stringResource(Res.string.zkp_again)) }
             OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
         }
@@ -357,7 +357,7 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         )
     }
     val unverified = stringResource(Res.string.zkp_answer_unverified)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
         // Another page of the same site (zkPassport's demo answers through verify.zkpassport.id) is a caution only.
         val sameSite = !s.originMatches && incoming.sameSite(s.origin)
@@ -434,7 +434,7 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
             "zkpassport-answer",
         )
         val file = s.passports.firstOrNull { it.id == chosen }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(
                 // Another origin, or passport data leaving for a prover, each needs the strong confirmation first.
                 onClick = {
@@ -492,7 +492,7 @@ internal fun ZkPassportAnswerProvingView(model: WalletModel, s: OfflineUi.ZkPass
 
 @Composable
 internal fun ZkPassportAnswerDoneView(model: WalletModel, s: OfflineUi.ZkPassportAnswerDone) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         when {
             s.sent -> VerdictCard(Verdict.PASS, stringResource(Res.string.zkp_answer_sent), listOf(stringResource(Res.string.zkp_answer_sent_note, s.incoming.domain)))
             s.error != null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_answer_failed), listOf(s.error))
@@ -579,7 +579,7 @@ private fun ZkPassportRemoteSection(model: WalletModel) {
         paired?.let { stringResource(Res.string.zkp_remote_paired, it.url) } ?: stringResource(Res.string.zkp_remote_paired_none),
         style = MaterialTheme.typography.bodyMedium,
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(onClick = {
             scope.launch {
                 readQr()?.let { text ->
