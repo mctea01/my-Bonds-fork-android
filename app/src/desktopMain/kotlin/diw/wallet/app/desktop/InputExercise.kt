@@ -1,6 +1,8 @@
 package diw.wallet.app.desktop
 
 import androidx.compose.ui.geometry.Rect
+import java.awt.AWTEvent
+import java.awt.KeyboardFocusManager
 import java.awt.Robot
 import java.awt.Toolkit
 import java.awt.datatransfer.DataFlavor
@@ -47,13 +49,47 @@ internal object InputExercise {
                 "ok"
             } catch (e: Throwable) {
                 e.printStackTrace()
-                e.message ?: e::class.java.name
+                (e.message ?: e::class.java.name) + "; " + diagnostics()
             }
             println("input exercise: $result")
         }, "input-exercise").apply { isDaemon = true; start() }
     }
 
+    /** AWT events seen while the exercise runs, by class and id, to tell where input stops when a step fails. */
+    private val seen = ConcurrentHashMap<String, Int>()
+
+    private fun listen() {
+        val mask = AWTEvent.KEY_EVENT_MASK or AWTEvent.MOUSE_EVENT_MASK or AWTEvent.INPUT_METHOD_EVENT_MASK or
+            AWTEvent.FOCUS_EVENT_MASK or AWTEvent.WINDOW_FOCUS_EVENT_MASK
+        Toolkit.getDefaultToolkit().addAWTEventListener({ e -> seen.merge("${e.javaClass.simpleName}:${e.id}", 1, Int::plus) }, mask)
+    }
+
+    /**
+     * What AWT received, which component had the focus, and whether a key event posted straight to the event queue
+     * (bypassing the platform's native key handling) reaches the field.
+     */
+    private fun diagnostics(): String = runCatching {
+        var focus = "?"
+        SwingUtilities.invokeAndWait {
+            val kfm = KeyboardFocusManager.getCurrentKeyboardFocusManager()
+            focus = "owner=${kfm.focusOwner?.javaClass?.name} window=${kfm.activeWindow?.javaClass?.name} " +
+                "im=${kfm.focusOwner?.inputContext?.javaClass?.name}"
+        }
+        val before = pin
+        val posted = KeyboardFocusManager.getCurrentKeyboardFocusManager().focusOwner?.let { owner ->
+            val queue = Toolkit.getDefaultToolkit().systemEventQueue
+            val now = System.currentTimeMillis()
+            queue.postEvent(KeyEvent(owner, KeyEvent.KEY_PRESSED, now, 0, KeyEvent.VK_7, '7'))
+            queue.postEvent(KeyEvent(owner, KeyEvent.KEY_TYPED, now, 0, KeyEvent.VK_UNDEFINED, '7'))
+            queue.postEvent(KeyEvent(owner, KeyEvent.KEY_RELEASED, now, 0, KeyEvent.VK_7, '7'))
+            Thread.sleep(1500)
+            if (pin != before) "reached the field" else "did not reach the field"
+        } ?: "no focus owner"
+        "events=${seen.toSortedMap()} $focus posted keys $posted"
+    }.getOrElse { "diagnostics failed: $it" }
+
     private fun run() {
+        listen()
         waitFor("the unlock screen", 60) { window != null && targets.containsKey("pin") && targets.containsKey("unlock") }
         val firstRun = targets.containsKey("confirm")
         val frame = window!!

@@ -125,6 +125,9 @@ args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra,$awt" --
     -H:+AddAllCharsets -H:+IncludeAllLocales
     # Every resource but classes: images, fonts and strings of screens the agent never opened are still there.
     "-H:IncludeResources=.*" "-H:ExcludeResources=.*\\.class\$"
+    # A reflection, JNI or resource lookup that the metadata lacks is printed to stderr (with its stack) and then
+    # fails as it would without this option, so what is missing shows in the smoke run below and in a user's console.
+    --exact-reachability-metadata -R:MissingRegistrationReportingMode=Warn
     -o "$out/diw-desktop")
 [ -n "${NATIVE_IMAGE_XMX:-}" ] && args+=("-J-Xmx$NATIVE_IMAGE_XMX")
 # A window application on Windows, without a console beside it.
@@ -164,7 +167,15 @@ cat "$work/self-check-native.txt" || true
 [ "$code" = 0 ] || { echo "The native self-check failed (exit $code)" >&2; exit 1; }
 code=0
 DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-30}" DIW_EXERCISE_INPUT=$exercise \
-    with_display "$out/$exe" || code=$?
+    with_display "$out/$exe" 2> "$work/smoke-stderr.txt" || code=$?
+# Missing registrations the run hit, once each, then the rest of stderr; the whole file goes into the artifact.
+cp "$work/smoke-stderr.txt" "$out/smoke-stderr.txt"
+missing=$(grep -E "Missing[A-Za-z]*RegistrationError|MissingRegistration" "$work/smoke-stderr.txt" | sort | uniq -c | sort -rn || true)
+if [ -n "$missing" ]; then
+    echo "::warning::the native executable hit missing registrations (see smoke-stderr.txt in the artifact)"
+    echo "$missing" | head -200
+fi
+head -c 200000 "$work/smoke-stderr.txt"
 case $code in
     0) ;;
     3) echo "The native executable did not take keyboard, clipboard or right-click input (exit 3)" >&2; exit 1 ;;
