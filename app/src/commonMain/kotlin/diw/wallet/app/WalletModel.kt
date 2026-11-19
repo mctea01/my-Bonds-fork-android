@@ -282,7 +282,20 @@ sealed class Screen {
     data object Presentation : Screen()
     /** [from] is where the Back button returns to. */
     data class DocumentDetail(val documentId: String, val from: Screen = Home) : Screen()
-    data class Certificate(val chain: List<X509Cert>, val index: Int, val from: Screen) : Screen()
+    /**
+     * A certificate chain shown up to its root. [role] is what the chain was used for (the trust it is evaluated
+     * against, and the use offered when the user trusts its root); [focusRoot] opens the root for review.
+     */
+    data class Certificate(
+        val chain: List<X509Cert>,
+        val index: Int,
+        val from: Screen,
+        val role: TrustRole? = null,
+        val docType: String? = null,
+        val focusRoot: Boolean = false,
+        /** The time the chain was judged at (a trusted signing time, a time stamp's genTime); null for now. */
+        val at: kotlin.time.Instant? = null,
+    ) : Screen()
     /** Documents that can be requested: the cards the TWDIW platform lists, or any issuer address. */
     data object AddDocument : Screen()
     /** Issuers and verifiers on the TWDIW trust list, opened from the settings. */
@@ -2111,24 +2124,40 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /** [chain] completed up to its root, with the evaluation for [role] at [at] (now when null; see [TrustRegistry.path]). */
+    suspend fun trustPath(chain: List<X509Cert>, role: TrustRole?, docType: String? = null, at: kotlin.time.Instant? = null): diw.wallet.core.trust.TrustPath =
+        withContext(Dispatchers.Default) { trust.path(chain, role, at ?: kotlin.time.Clock.System.now(), docType) }
+
     /**
-     * Trusts [der], a self-issued root shown in a document's chain, as the user's own anchor for document signatures
-     * and time stamps, after the user confirmed it. The document is checked again with the new anchor.
+     * Trusts [der], a self-issued root shown in a chain, as the user's own anchor (T2, never official) for [roles],
+     * after the user reviewed it and confirmed. Credentials and documents whose chain led to no anchor are checked
+     * again with the new anchor.
      */
-    fun trustRootCertificate(der: ByteArray, onDone: () -> Unit = {}) = scope.launch {
+    fun trustRootCertificate(
+        der: ByteArray,
+        roles: Set<TrustRole> = setOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT),
+        name: String? = null,
+        onDone: () -> Unit = {},
+    ) = scope.launch {
         try {
             val cert = X509Cert(kotlinx.io.bytestring.ByteString(der))
             if (!TrustRegistry.isRoot(cert)) throw ProtocolException("invalid_request", tr(Res.string.msg_not_root))
             if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", tr(Res.string.msg_root_expired))
-            val name = BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
+            if (roles.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_root_needs_use))
+            val label = name?.trim()?.ifEmpty { null } ?: BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
             var added = 0
-            for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)) {
-                if (trust.addAnchor(role, TrustEnvironment.USER, cert, name, official = false, source = "document")) added++
+            for (role in roles) {
+                if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = "chain-review")) added++
             }
-            message.value = if (added == 0) tr(Res.string.msg_already_anchor, name) else tr(Res.string.msg_root_trusted, name)
+            message.value = if (added == 0) tr(Res.string.msg_already_anchor, label) else tr(Res.string.msg_root_trusted, label)
             loadAnchors()
-            status.reevaluateIssuers(tr(Res.string.files_trust_root_named, name), affected = { it.anchorName == null }, accept = { it.environment != null })
+            if (added > 0) {
+                status.reevaluateIssuers(tr(Res.string.files_trust_root_named, label), affected = { it.anchorName == null }, accept = { it.environment != null })
+                files.reinspectUnanchored()
+            }
             onDone()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             message.value = tr(Res.string.msg_cannot_trust) + describe(e)
         }

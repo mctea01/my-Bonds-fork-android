@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -201,7 +202,7 @@ private fun DocumentResult(model: WalletModel, d: ReadDocument, risk: RiskLevel)
     TrustCard(stringResource(Res.string.role_issuer), d.issuer, d.issuerTrust)
     if (d.chain.isNotEmpty()) {
         LabelValue(stringResource(Res.string.reader_issuer_cert), d.chain.first().displaySubject(), small = true) {
-            model.screen.value = Screen.Certificate(d.chain, 0, Screen.Reader)
+            model.screen.value = Screen.Certificate(d.chain, 0, Screen.Reader, TrustRole.ISSUER, d.docType)
         }
     }
     val now = Clock.System.now()

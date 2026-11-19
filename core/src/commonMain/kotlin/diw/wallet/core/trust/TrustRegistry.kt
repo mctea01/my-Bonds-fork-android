@@ -618,6 +618,107 @@ class TrustRegistry(
             reasons = if (completed) listOf("Intermediate certificates were fetched from the AIA caIssuers link") else emptyList(),
         )
     }
+
+    /**
+     * [chain] (leaf first; the other certificates in any order, the root optional) completed up to its root for
+     * display, with the evaluation for [role] when one is given (the same result as [decide]). Each issuer is looked
+     * for, in this order, among the anchor the chain matched, the certificates sent with it, the built-in and user
+     * intermediates, every root the wallet knows (stored anchors of any role and environment, the built-in CSCAs and
+     * public roots, the importable roots, the platform store) and the AIA caIssuers links. An issuer must carry the
+     * name the certificate below it names, match its key identifier when both state one, and verify its signature.
+     * Finding a root here does not trust it: the tier is still the anchor's.
+     */
+    suspend fun path(
+        chain: List<X509Cert>,
+        role: TrustRole? = null,
+        atTime: Instant = Clock.System.now(),
+        docType: String? = null,
+    ): TrustPath {
+        if (chain.isEmpty()) return TrustPath(emptyList(), emptyList(), null, emptyList())
+        var m: AnchorMatch? = null
+        var decision: TrustDecision? = null
+        if (role != null) {
+            m = match(role, chain, atTime, docType)
+            var completed = false
+            if (m == null && issuerFetcher != null) {
+                val longer = complete(extendFromPool(chain))
+                if (longer.size > chain.size) {
+                    m = match(role, longer, atTime, docType)
+                    completed = m != null
+                }
+            }
+            decision = decision(m, completed)
+        }
+        val presented = chain.drop(1)
+        val builtInMiddle = BuiltInPublicRoots.intermediates.map { it.certificate }
+        val userMiddle = intermediateStore.getEntries().filterIsInstance<TrustEntryX509Cert>().map { it.certificate }
+        val stored = allAnchors()
+        val system = runCatching { SystemTrustStore.anchors() }.getOrDefault(emptyList())
+        val known = (stored.map { it.certificate } + BuiltInCscas.all.map { it.certificate } + BuiltInPublicRoots.all.map { it.certificate } +
+            BuiltInPublicRoots.importableRoots.map { it.certificate } + system).distinct()
+
+        val certs = mutableListOf(chain.first())
+        val sources = mutableListOf(PathSource.PRESENTED)
+        val valid = mutableListOf<Boolean?>(null)
+        var downloads = 0
+        while (certs.size < MAX_CHAIN) {
+            val last = certs.last()
+            if (last.subject == last.issuer) break
+            fun pick(candidates: List<X509Cert>): X509Cert? =
+                candidates.firstOrNull { it !in certs && issues(it, last) && Pkix.signedBy(last, it) }
+            var next: X509Cert? = null
+            var source = PathSource.TRUST_SOURCE
+            m?.anchor?.let { a -> pick(listOf(a))?.let { next = it; source = if (it in presented) PathSource.PRESENTED else PathSource.TRUST_SOURCE } }
+            if (next == null) pick(presented)?.let { next = it; source = PathSource.PRESENTED }
+            if (next == null) pick(builtInMiddle)?.let { next = it; source = PathSource.BUILT_IN_INTERMEDIATE }
+            if (next == null) pick(userMiddle)?.let { next = it; source = PathSource.USER_INTERMEDIATE }
+            if (next == null) pick(known)?.let { next = it; source = PathSource.TRUST_SOURCE }
+            val fetcher = issuerFetcher
+            if (next == null && fetcher != null) {
+                val urls = runCatching { DocCrypto.caIssuerUrls(last.encoded.toByteArray()) }.getOrDefault(emptyList())
+                for (url in urls) {
+                    val list = fetched[url] ?: run {
+                        if (downloads >= MAX_FETCHES) return@run null
+                        downloads++
+                        val bytes = runCatching { fetcher(url) }.getOrNull()
+                        bytes?.let { b -> DocCrypto.certificatesIn(b).mapNotNull { runCatching { X509Cert(ByteString(it)) }.getOrNull() } }.orEmpty()
+                            .also { fetched[url] = it }
+                    } ?: break
+                    pick(list)?.let { next = it; source = PathSource.AIA }
+                    if (next != null) break
+                }
+            }
+            // A certificate sent with the chain that names the issuer but whose key does not verify the signature is
+            // shown as the next step with the broken link, rather than hidden.
+            val broken = if (next == null) presented.firstOrNull { it !in certs && issues(it, last) } else null
+            val found = next ?: broken ?: break
+            valid[valid.lastIndex] = next != null
+            certs.add(found)
+            sources.add(if (next != null) source else PathSource.PRESENTED)
+            valid.add(null)
+            if (next == null) break
+        }
+        val top = certs.last()
+        if (top.subject == top.issuer && valid.last() == null) valid[valid.lastIndex] = Pkix.signedBy(top, top)
+        val steps = certs.indices.map { i -> PathStep(certs[i], sources[i], valid[i], anchor = m?.anchor == certs[i]) }
+
+        val listings = buildList {
+            stored.filter { it.certificate == top }.forEach {
+                add(RootListing(RootListing.Kind.STORED_ANCHOR, it.metadata.displayName ?: top.displaySubject(), it.role, it.environment, it.official))
+            }
+            BuiltInCscas.all.filter { it.certificate == top }.forEach {
+                add(RootListing(RootListing.Kind.BUILT_IN_CSCA, "CSCA " + (it.country.takeIf { c -> c.isNotEmpty() }?.let { c -> "$c " } ?: "") + it.name,
+                    TrustRole.TRAVEL_DOCUMENT, TrustEnvironment.PRODUCTION))
+            }
+            BuiltInPublicRoots.all.filter { it.certificate == top }.forEach { add(RootListing(RootListing.Kind.BUILT_IN_PUBLIC, it.name)) }
+            if (top in system) add(RootListing(RootListing.Kind.PLATFORM_STORE, top.displaySubject()))
+            m?.takeIf { it.anchor == top && it.metadata.extensions[TrustMetadataKeys.LIST] != null }?.let {
+                add(RootListing(RootListing.Kind.TRUST_LIST, it.metadata.displayName ?: top.displaySubject(), role, it.environment))
+            }
+            BuiltInPublicRoots.importableRoots.filter { it.certificate == top }.forEach { add(RootListing(RootListing.Kind.IMPORTABLE, it.name)) }
+        }
+        return TrustPath(steps, presented.filter { it !in certs }.distinct(), decision, listings)
+    }
 }
 
 /** An imported VICAL or RICAL. [expired] lists no longer take part in verification. */
