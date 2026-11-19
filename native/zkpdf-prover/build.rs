@@ -6,6 +6,7 @@ fn main() {
         "ZKPDF_BB_BUILD",
         "ZKPDF_CXX",
         "ZKPDF_AR",
+        "ZKPDF_LIBCXX",
         "CXX",
         "AR",
     ] {
@@ -113,7 +114,8 @@ fn main() {
         "cargo:rustc-link-lib={}",
         if target.contains("android") {
             "c++_static"
-        } else if target.contains("apple") {
+        } else if target.contains("apple") || env::var_os("ZKPDF_LIBCXX").is_some() {
+            // ZKPDF_LIBCXX: a Linux build with Zig, which links its own libc++ statically for -lc++.
             "c++"
         } else {
             "stdc++"

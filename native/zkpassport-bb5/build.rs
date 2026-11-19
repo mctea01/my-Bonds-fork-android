@@ -4,7 +4,7 @@ const REVISION: &str = "7aa2bd616d632801fe65d97ee8a4434f26886b40";
 
 fn main() {
     println!("cargo:rerun-if-changed=cpp/bridge.cpp");
-    for name in ["DIW_BB5_SOURCE", "DIW_BB5_BUILD", "ZKPDF_CXX", "ZKPDF_AR", "CXX", "AR"] {
+    for name in ["DIW_BB5_SOURCE", "DIW_BB5_BUILD", "ZKPDF_CXX", "ZKPDF_AR", "ZKPDF_LIBCXX", "CXX", "AR"] {
         println!("cargo:rerun-if-env-changed={name}");
     }
     let target = env::var("TARGET").unwrap();
@@ -77,7 +77,8 @@ fn main() {
         "cargo:rustc-link-lib={}",
         if target.contains("android") {
             "c++_static"
-        } else if target.contains("apple") {
+        } else if target.contains("apple") || env::var_os("ZKPDF_LIBCXX").is_some() {
+            // ZKPDF_LIBCXX: a Linux build with Zig, which links its own libc++ statically for -lc++.
             "c++"
         } else {
             "stdc++"

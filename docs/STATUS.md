@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-15（main 到 PR #142，人臉比對電路已發佈）。
+最後更新：2026-11-19（main 到 PR #148，人臉比對電路已發佈；加上 Linux 原生程式庫的相容版與載入順序）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -42,6 +42,7 @@ P4 之後合併的工作：
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
+| Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開 | [native/README.md](../native/README.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 
 ## 3. 功能狀態
@@ -103,7 +104,7 @@ P4 之後合併的工作：
 | Android arm64-v8a、x86_64 | APK、AAB、分割 APK 組 | 全部；Barretenberg 5（舊 zkPassport 電路）在 Play 版是隨選模組 |
 | Android armeabi-v7a、x86 | 同一個 APK | 沒有證明後端，只有相片解碼 |
 | Windows x86_64 | .msi、jar | 年齡證明、zkTLS、zkPDF、zkPassport；沒有 Longfellow |
-| Linux x86_64 | .deb、jar | 全部 |
+| Linux x86_64 | .deb、jar | 全部（glibc 2.38、libstdc++ 13、x86-64-v2 以上）；較舊的系統或 CPU 自動改用相容版：年齡證明、zkTLS、OPRF、BBS，沒有 zkPDF 與 zkPassport |
 | macOS arm64（14 以上） | 只有 jar | 全部 |
 | Linux ARM64 | 沒有安裝檔與 CI | 原生函式庫可交叉建置；Linux 的 Barretenberg 改用 clang 編譯（GCC 版對 P-256 簽章電路算出不同的驗證金鑰）後，ARM64 交叉建置尚未重新驗證 |
 | iOS | 未開始（P6） | |
