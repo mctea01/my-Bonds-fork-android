@@ -363,7 +363,7 @@ fun DetailSections(model: WalletModel, sections: List<DetailSection>) {
         Text(section.title, style = MaterialTheme.typography.titleSmall, modifier = Modifier.padding(top = 6.dp))
         section.rows.forEach { row ->
             val open = if (row.certs.isEmpty()) null else {
-                { model.screen.value = Screen.Certificate(row.certs, row.certIndex, model.screen.value) }
+                { model.screen.value = Screen.Certificate(row.certs, row.certIndex, model.screen.value, row.role, row.docType) }
             }
             LabelValue(row.label, row.value, small = true, onClick = open)
         }
@@ -551,32 +551,3 @@ private fun PresentThisDocument(model: WalletModel, doc: Document, scan: ScanAct
     }
 }
 
-/** One certificate of a chain, with the other certificates of the chain selectable. */
-@Composable
-fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
-    var index by remember(screen) { mutableStateOf(screen.index) }
-    val cert = screen.chain[index]
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(cert.displaySubject(), style = MaterialTheme.typography.titleMedium)
-        if (screen.chain.size > 1) {
-            Text(stringResource(Res.string.certificate_chain), style = MaterialTheme.typography.titleSmall)
-            screen.chain.forEachIndexed { i, c ->
-                LabelValue(stringResource(Res.string.certificate_nth, i + 1), c.displaySubject(), small = true, onClick = if (i == index) null else ({ index = i }))
-            }
-        }
-        DetailSections(model, CredentialDetails.certificate(cert))
-        // The root of a chain that leads to no anchor (a foreign government or company CA) can be trusted from here.
-        if (index == screen.chain.lastIndex && cert.subject == cert.issuer) TrustThisRoot(model, cert)
-    }
-}
-
-/** Imports a self-signed root as the user's own anchor (T3, never official) for the roles the holder picks. */
-@Composable
-private fun TrustThisRoot(model: WalletModel, cert: X509Cert) {
-    var roles by remember(cert) { mutableStateOf(setOf(TrustRole.DOCUMENT)) }
-    SectionTitle(stringResource(Res.string.certificate_trust_root))
-    Text(stringResource(Res.string.certificate_trust_root_text),
-        style = MaterialTheme.typography.bodySmall)
-    RoleChips(listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.ISSUER, TrustRole.VERIFIER), roles) { roles = it }
-    OutlinedButton(onClick = { model.importAnchor(cert.toPem(), "", roles) }, enabled = roles.isNotEmpty()) { Text(stringResource(Res.string.action_add_trust_anchor)) }
-}

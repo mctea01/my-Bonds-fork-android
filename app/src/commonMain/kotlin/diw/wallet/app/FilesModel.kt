@@ -2042,6 +2042,15 @@ class FilesModel(private val model: WalletModel) {
 
     // ---------------------------------------------------------------- OpenPGP messages
 
+    /** Checks again the files with a signature or time stamp whose chain led to no anchor, after an anchor was added. */
+    suspend fun reinspectUnanchored() {
+        files.value.filter { f ->
+            val r = f.report ?: return@filter false
+            r.signatures.any { s -> s.trust?.labels?.contains("UNKNOWN_ANCHOR") == true || s.timestamp?.trust?.labels?.contains("UNKNOWN_ANCHOR") == true } ||
+                f.timestamps.any { !it.trusted }
+        }.forEach { runCatching { refreshed(it) } }
+    }
+
     /** Checks the OpenPGP files again after the key list or the user's trust changed. */
     suspend fun reinspectOpenPgp() {
         files.value.filter { it.report?.format == DocumentFormat.OPENPGP }.forEach { runCatching { refreshed(it) } }

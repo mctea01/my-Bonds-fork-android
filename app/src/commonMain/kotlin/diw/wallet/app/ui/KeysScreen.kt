@@ -139,7 +139,7 @@ fun KeyViewerScreen(model: WalletModel) {
                 OutlinedButton(onClick = { clipboard.setText(AnnotatedString(clientId)) }) { Text(stringResource(Res.string.vp_copy_client_id)) }
             }
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                OutlinedButton(onClick = { model.screen.value = Screen.Certificate(r.chain, 0, Screen.KeyViewer) }) {
+                OutlinedButton(onClick = { model.screen.value = Screen.Certificate(r.chain, 0, Screen.KeyViewer, TrustRole.DOCUMENT) }) {
                     Text(stringResource(Res.string.keys_show_chain, r.chain.size))
                 }
             }

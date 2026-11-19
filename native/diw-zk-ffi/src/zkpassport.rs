@@ -328,6 +328,28 @@ mod tests {
         );
     }
 
+    /// zkPassport's SDK reads a disclosed date in the query result as a date: an ISO string, its century chosen from
+    /// the proof's current date as the SDK's parseDate does, never the MRZ's YYMMDD.
+    #[test]
+    fn disclosed_dates_reach_the_query_result_as_iso_dates() {
+        let query = serde_json::json!({
+            "expiry_date": {"disclose": true}, "birthdate": {"disclose": true}, "nationality": {"disclose": true},
+            "age": {"gte": 18},
+        });
+        let disclosed = serde_json::json!({"expiry_date": "330422", "birthdate": "900101", "nationality": "TWN"});
+        // 2026-11-19T00:00:00Z
+        let result = zkpassport_core::query::build_query_result(&query, &disclosed, 1_795_046_400);
+        assert_eq!(result["expiry_date"]["disclose"]["result"], "2033-04-22T00:00:00.000Z");
+        assert_eq!(result["birthdate"]["disclose"]["result"], "1990-01-01T00:00:00.000Z");
+        assert_eq!(result["nationality"]["disclose"]["result"], "TWN");
+        assert_eq!(result["age"]["gte"]["result"], true);
+        // More than ten years ahead is the previous century, as in the SDK.
+        let late = zkpassport_core::query::build_query_result(&query, &serde_json::json!({"expiry_date": "400101"}), 1_795_046_400);
+        assert_eq!(late["expiry_date"]["disclose"]["result"], "1940-01-01T00:00:00.000Z");
+        let bad = zkpassport_core::query::build_query_result(&query, &serde_json::json!({"expiry_date": "33"}), 1_795_046_400);
+        assert!(bad["expiry_date"]["disclose"]["result"].is_null());
+    }
+
     /// Opens the Barretenberg 5 library named by DIW_BB5_LIBRARY next to this library's Barretenberg 6 and runs a
     /// legacy verification: a bundle with no proofs is refused by the checks, not by either backend.
     #[test]

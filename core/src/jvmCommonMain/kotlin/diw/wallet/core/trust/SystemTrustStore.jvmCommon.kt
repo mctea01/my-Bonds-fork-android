@@ -1,7 +1,9 @@
 package diw.wallet.core.trust
 
 import kotlinx.io.bytestring.ByteString
+import org.bouncycastle.cert.X509CertificateHolder
 import org.bouncycastle.jce.provider.BouncyCastleProvider
+import org.bouncycastle.operator.jcajce.JcaContentVerifierProviderBuilder
 import org.multipaz.crypto.X509Cert
 import java.security.KeyStore
 import java.security.Provider
@@ -75,6 +77,12 @@ actual object Pkix {
         }
         return null
     }
+
+    actual fun signedBy(child: X509Cert, issuer: X509Cert): Boolean = runCatching {
+        val holder = X509CertificateHolder(child.encoded.toByteArray())
+        val verifier = JcaContentVerifierProviderBuilder().setProvider(bc).build(X509CertificateHolder(issuer.encoded.toByteArray()))
+        holder.isSignatureValid(verifier)
+    }.getOrDefault(false)
 
     private fun validate(path: List<X509Cert>, anchors: List<X509Cert>, at: Instant, provider: Provider?): X509Cert? {
         val f = if (provider == null) factory else bcFactory

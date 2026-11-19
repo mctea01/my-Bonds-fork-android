@@ -1,6 +1,7 @@
 package diw.wallet.app.ui
 
 import diw.wallet.core.oid4vp.AttestationVerdict
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -142,7 +143,7 @@ private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
         TrustCard(if (s.channel == diw.wallet.app.ProximityChannel.DC_API) stringResource(Res.string.role_verifier) else stringResource(Res.string.prox_reader), s.verifier, s.trust, extra)
         if (s.chain.isNotEmpty()) {
             LabelValue(stringResource(Res.string.prox_reader_cert), s.chain.first().displaySubject(), small = true) {
-                model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity)
+                model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity, TrustRole.VERIFIER)
             }
         }
         s.attestations.forEach { VerifierAttestationCard(it) }
