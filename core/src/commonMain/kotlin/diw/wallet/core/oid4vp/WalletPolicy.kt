@@ -29,7 +29,26 @@ data class PresentationPolicy(
     /** Maximum accepted size of a fetched request object in bytes. */
     val maxRequestObjectBytes: Int = 256 * 1024,
     val preRegistered: List<PreRegisteredVerifier> = emptyList(),
+    /**
+     * DIW extension (docs/design/p5-verifier.md section 6.2): accept a request_uri and response_uri over plain http on
+     * a private IPv4 address under [LanEndpoints.PATH_PREFIX], when the request is signed, the response encrypted
+     * (direct_post.jwt) and both URLs name the same host. Another wallet acting as verifier on the same network.
+     */
+    val allowLanEndpoints: Boolean = false,
 )
+
+/** The local network endpoints of a wallet acting as verifier (DIW extension). */
+object LanEndpoints {
+    const val PATH_PREFIX = "/diw-oid4vp/"
+
+    /** The host of a plain http URL on a private IPv4 address under [PATH_PREFIX]; null for anything else. */
+    fun host(url: String): String? {
+        val u = runCatching { io.ktor.http.Url(url) }.getOrNull() ?: return null
+        if (u.protocol != io.ktor.http.URLProtocol.HTTP || u.user != null || u.password != null || '#' in url) return null
+        if (!u.encodedPath.startsWith(PATH_PREFIX) || u.host == "localhost" || ':' in u.host) return null
+        return u.host.takeIf { diw.wallet.core.util.isLocalTestHost(it) }
+    }
+}
 
 /** wallet_metadata sent with request_uri_method=post (OpenID4VP 1.0 section 10). */
 object WalletMetadata {

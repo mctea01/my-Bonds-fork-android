@@ -30,7 +30,9 @@ import org.multipaz.util.toBase64Url
  * listens on its Wi-Fi or hotspot addresses ([BondsLanLink]) and its challenge carries those http URLs (l) and a one-time
  * P-256 key (e). The holder posts {"jwe": ...}, the presentation JWS sealed to that key (ECDH-ES, A256GCM), because
  * unlike an age proof a presentation carries claim values and anyone on the same network can read clear text. The
- * reply only says whether the verifier took it; the verdict is on the verifier's screen.
+ * reply only says whether the verifier took it; the verdict is on the verifier's screen. The same sealing protects the
+ * presentation on the Bonds BLE link between two of these wallets ([linkPayload], [fromLink]); with the Bonds App,
+ * which ignores the key, the link stays clear text.
  */
 object BondsLanPresentation {
     /** Upper bound of a posted body: the largest presentation the other transports carry, sealed and base64url encoded. */
@@ -95,6 +97,24 @@ object BondsLanPresentation {
         val vp = runCatching { Jws.parse(jws.trim()).payload }.getOrNull() ?: throw ProtocolException("invalid_presentation", "Unreadable presentation")
         if (vp.str("challenge") != request.challenge) throw ProtocolException("invalid_presentation", "Challenge mismatch")
         return jws.trim()
+    }
+
+    /**
+     * What goes over the Bonds BLE link: the presentation sealed to the challenge's key when it has one (this
+     * wallet's verifier), else the plain JWS as Bonds sends it. The flag says whether it was sealed.
+     */
+    suspend fun linkPayload(presentationJws: String, request: BondsPresentationRequest): Pair<String, Boolean> =
+        if (request.lanKey == null) presentationJws to false else seal(presentationJws, request).decodeToString() to true
+
+    /**
+     * The presentation a holder sent over the BLE link: sealed ({"jwe": ...}, opened with [key]) by this wallet, or the
+     * plain JWS from the Bonds App, which ignores the key. The flag says whether it came sealed.
+     */
+    suspend fun fromLink(payload: ByteArray, key: EcPrivateKey?, request: BondsPresentationRequest): Pair<String, Boolean> {
+        val text = payload.decodeToString().trim()
+        if (!text.startsWith("{")) return text to false
+        val k = key ?: throw ProtocolException("invalid_presentation", "Sealed presentation without a key")
+        return open(payload, k, request) to true
     }
 
     fun received(): ByteArray = """{"status":"received"}""".encodeToByteArray()
