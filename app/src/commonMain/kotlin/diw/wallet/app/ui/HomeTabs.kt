@@ -286,9 +286,9 @@ fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
             }
         } else IntegrationOffRow(model, Integration.ZKPASSPORT, stringResource(Res.string.verify_zkpassport))
         SectionTitle(stringResource(Res.string.verify_verifier_identity))
-        ActionRow(WalletIcons.Person, stringResource(Res.string.verify_as_whom), stringResource(Res.string.verify_as_whom_text), enabled = false) {}
+        ActionRow(WalletIcons.Person, stringResource(Res.string.verify_as_whom), stringResource(Res.string.verify_as_whom_text)) { model.verifier.openProfiles() }
         SectionTitle(stringResource(Res.string.verify_other_methods))
-        ActionRow(WalletIcons.Link, stringResource(Res.string.verify_online), stringResource(Res.string.verify_online_text), enabled = false) {}
+        ActionRow(WalletIcons.Link, stringResource(Res.string.verify_online), stringResource(Res.string.verify_online_text)) { model.verifier.openOnline() }
         ActionRow(WalletIcons.Nfc, stringResource(Res.string.verify_reader), stringResource(Res.string.verify_reader_text)) { model.reader.open() }
     }
 }

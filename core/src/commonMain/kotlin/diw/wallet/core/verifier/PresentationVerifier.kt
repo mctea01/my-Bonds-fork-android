@@ -120,6 +120,19 @@ data class PresentationVerification(
 }
 
 /**
+ * Rendered value of a disclosed CBOR claim: text, booleans and numbers as they read (not Tstr("...") or Simple(TRUE)),
+ * so names compare with a declaration and show cleanly; other values keep their diagnostic form.
+ */
+internal fun plainValue(v: org.multipaz.cbor.DataItem): String = when (v) {
+    is org.multipaz.cbor.Tstr -> v.value
+    org.multipaz.cbor.Simple.TRUE -> "true"
+    org.multipaz.cbor.Simple.FALSE -> "false"
+    is org.multipaz.cbor.CborInt -> v.asNumber.toString()
+    is org.multipaz.cbor.Tagged -> if (v.taggedItem is org.multipaz.cbor.Tstr) (v.taggedItem as org.multipaz.cbor.Tstr).value else v.toString()
+    else -> v.toString()
+}
+
+/**
  * Verifier-side checks on top of Multipaz VerificationUtil: KB-JWT audience and freshness, issuer trust
  * through the environment-partitioned registry, validity window and Token Status List.
  */
@@ -294,7 +307,7 @@ class PresentationVerifier(
                     // Chip files of a Photo ID are shown by size; the evidence checks their content.
                     "${c.namespaceName}.${c.dataElementName}" to if (c.namespaceName == TravelDocumentPhotoId.DATAGROUPS_NAMESPACE) {
                         runCatching { "${c.value.asBstr.size} bytes" }.getOrDefault(c.value.toString())
-                    } else c.value.toString()
+                    } else plainValue(c.value)
                 }
             )
             else -> Triple("unknown", "unknown", emptyMap())

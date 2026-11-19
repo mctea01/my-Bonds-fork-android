@@ -323,9 +323,12 @@ class VerifierDeclarationCheck(
         private const val SERIAL_NUMBER = "2.5.4.5"
 
         /** Claim names whose value names a person or organisation. */
-        private val NAME_CLAIMS = setOf("name", "full_name", "legal_name", "legal_person_name", "organization_name", "姓名", "name_zh", "chinese_name")
-        private val GIVEN_CLAIMS = setOf("given_name", "first_name")
-        private val FAMILY_CLAIMS = setOf("family_name", "last_name", "surname")
+        internal val NAME_CLAIMS = setOf("name", "full_name", "legal_name", "legal_person_name", "organization_name", "姓名", "name_zh", "chinese_name")
+        internal val GIVEN_CLAIMS = setOf("given_name", "first_name")
+        internal val FAMILY_CLAIMS = setOf("family_name", "last_name", "surname")
+        /** Claim names whose value identifies an organisation (unified business number, EUID, LEI). */
+        internal val ID_CLAIMS = setOf("legal_person_id", "legal_person_identifier", "organization_identifier", "euid", "lei", "ubn",
+            "unified_business_number", "統一編號")
 
         fun normalize(s: String): String = s.filterNot { it.isWhitespace() || it == '·' || it == '.' }.lowercase()
 
@@ -353,29 +356,35 @@ class VerifierDeclarationCheck(
 
         private fun leafKey(path: String): String = path.substringAfterLast('.')
 
-        /** The party evidence must disclose the party's identifier or name. */
+        /** The party evidence must disclose the party's identifier or name (a person's name may come as given and family names). */
         fun partyEvidenceCheck(party: VerifierParty, r: EvidenceResult): Check {
             val values = r.claims.values.map { it.trim('"') }
             val id = party.id
+            val names = namesIn(r)
             return when {
                 id != null && values.any { it == id.value || it.endsWith("-" + id.value) } -> Check(ct("core_vd_chk_party"), CheckStatus.PASS, r.title)
-                values.any { normalize(it) == normalize(party.name) } -> Check(ct("core_vd_chk_party"), CheckStatus.PASS, r.title)
-                r.claims.keys.any { leafKey(it) in NAME_CLAIMS } -> Check(ct("core_vd_chk_party"), CheckStatus.FAIL, ct("core_vd_party_other", r.title))
+                normalize(party.name) in names -> Check(ct("core_vd_chk_party"), CheckStatus.PASS, r.title)
+                names.isNotEmpty() -> Check(ct("core_vd_chk_party"), CheckStatus.FAIL, ct("core_vd_party_other", r.title))
                 else -> Check(ct("core_vd_chk_party"), CheckStatus.WARN, ct("core_vd_party_not_disclosed", r.title))
             }
         }
 
-        /** The agent evidence must disclose the agent's name (full name, or given and family names). */
-        fun agentEvidenceCheck(agent: VerifierAgent, r: EvidenceResult): Check {
+        /** The names [r] discloses, normalized: full names, and given and family names joined in either order. */
+        private fun namesIn(r: EvidenceResult): List<String> {
             val byLeaf = r.claims.entries.associate { (k, v) -> leafKey(k) to v.trim('"') }
             val full = byLeaf.filterKeys { it in NAME_CLAIMS }.values
             val given = byLeaf.filterKeys { it in GIVEN_CLAIMS }.values.firstOrNull()
             val family = byLeaf.filterKeys { it in FAMILY_CLAIMS }.values.firstOrNull()
-            val n = normalize(agent.name)
-            val candidates = full.map { normalize(it) } + listOfNotNull(
+            return full.map { normalize(it) } + listOfNotNull(
                 if (given != null && family != null) normalize(family + given) else null,
                 if (given != null && family != null) normalize(given + family) else null,
             )
+        }
+
+        /** The agent evidence must disclose the agent's name (full name, or given and family names). */
+        fun agentEvidenceCheck(agent: VerifierAgent, r: EvidenceResult): Check {
+            val n = normalize(agent.name)
+            val candidates = namesIn(r)
             return when {
                 candidates.isEmpty() -> Check(ct("core_vd_chk_agent"), CheckStatus.WARN, ct("core_vd_agent_not_disclosed", r.title))
                 n in candidates -> Check(ct("core_vd_chk_agent"), CheckStatus.PASS, r.title)

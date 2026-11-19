@@ -44,10 +44,10 @@ class RequestResolver(
     private val httpClient: HttpClient,
     private val policy: PresentationPolicy,
     private val allowInsecureLoopback: Boolean,
-    /** Wallet-controlled, locally held ECDH-ES request-object keys (never verifier-supplied JWKs). */
-    private val decryptionKeys: suspend () -> List<AsymmetricKey> = { emptyList() },
     /** Clear text to a wallet verifying on the local network ([LanEndpoints]); null uses [httpClient]. */
     private val lanHttp: SignedDataHttp? = null,
+    /** Wallet-controlled, locally held ECDH-ES request-object keys (never verifier-supplied JWKs). */
+    private val decryptionKeys: suspend () -> List<AsymmetricKey> = { emptyList() },
 ) {
     /** Schemes the wallet registers for OpenID4VP invocation. */
     val supportedSchemes = setOf("openid4vp", "haip-vp", "eudi-openid4vp", "mdoc-openid4vp", "https", "openid-vc", "openid", "siopv2")

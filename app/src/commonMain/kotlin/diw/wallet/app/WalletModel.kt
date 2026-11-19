@@ -305,6 +305,10 @@ sealed class Screen {
     data object Proximity : Screen()
     /** In-person verification: the wallet reads another wallet's mdoc by NFC (ISO/IEC 18013-5 reader). */
     data object Reader : Screen()
+    /** Online verification as an OpenID4VP verifier, through the user's server or the local network. */
+    data object OnlineVerify : Screen()
+    /** Who this wallet says it is when it verifies: verifier profiles with their evidence and mandates. */
+    data object VerifierProfiles : Screen()
     /** A stored file with its signature report. */
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
@@ -515,6 +519,7 @@ class WalletModel(val platform: PlatformServices) {
     val ms = MsIssuanceModel(this)
     val proximity = ProximityModel(this)
     val reader = ReaderModel(this)
+    val verifier = VerifierModel(this)
     val files = FilesModel(this)
     val csc = CscModel(this)
     val openPgp = OpenPgpModel(this)
@@ -608,6 +613,7 @@ class WalletModel(val platform: PlatformServices) {
         )
         historyLog = HistoryLog(storage)
         history.value = historyLog.load()
+        verifier.load()
         status.load()
         openPgp.load()
         files.load()
@@ -843,6 +849,13 @@ class WalletModel(val platform: PlatformServices) {
             Screen.Reader -> {
                 reader.close()
                 showTab(HomeTab.VERIFY)
+            }
+            Screen.OnlineVerify -> {
+                verifier.close()
+                showTab(HomeTab.VERIFY)
+            }
+            Screen.VerifierProfiles -> {
+                if (verifier.editing.value != null) verifier.editing.value = null else showTab(HomeTab.VERIFY)
             }
             is Screen.FileDetail -> showTab(HomeTab.FILES)
             is Screen.FileSign -> screen.value = Screen.FileDetail(s.fileId)

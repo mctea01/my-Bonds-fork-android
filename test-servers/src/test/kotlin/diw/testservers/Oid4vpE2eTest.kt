@@ -175,7 +175,7 @@ class Oid4vpE2eTest {
         assertEquals("org.iso.23220.photoid.1", c["type"]!!.jsonPrimitive.content, "result: $c")
         assertEquals("T3", c["issuer_trust_tier"]!!.jsonPrimitive.content, "result: $c")
         val claims = c["claims"]!!.jsonObject
-        assertTrue("\"LIN\"" in claims["org.iso.23220.1.family_name"]!!.jsonPrimitive.content, "claims: $claims")
+        assertEquals("LIN", claims["org.iso.23220.1.family_name"]!!.jsonPrimitive.content, "claims: $claims")
         assertTrue(claims["org.iso.23220.datagroups.1.dg1"]!!.jsonPrimitive.content.endsWith("bytes"), "claims: $claims")
         val evidence = c["evidence"]!!.jsonArray.map { it.jsonObject["status"]!!.jsonPrimitive.content }
         assertEquals(listOf("UNKNOWN"), evidence, "result: $c")

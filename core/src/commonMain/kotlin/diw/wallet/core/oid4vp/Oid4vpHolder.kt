@@ -113,7 +113,7 @@ class Oid4vpHolder(
     /** Clear text to a wallet verifying on the local network (request_uri and response_uri under [LanEndpoints]). */
     private val lanHttp: diw.wallet.core.document.sign.SignedDataHttp? = null,
 ) {
-    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys, lanHttp)
+    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, lanHttp, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
     private val validator = RequestValidator(
         trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust,
