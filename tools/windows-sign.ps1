@@ -7,7 +7,9 @@
 # .sha256 rewritten, since ZkNative checks the library against it), build the MSI again with jpackage from that image
 # (same name, version, upgrade UUID and install options as the CI build) and sign the MSI. The Windows release jar
 # (DIW-MY-WALLET-windows-x64-<version>-release.jar) gets the same native library signatures and is uploaded too.
-# Needs JDK 21 or later (jpackage) and WiX Toolset 3.14 (JDK 21 and 22) or WiX 4 / 5 (JDK 23+).
+# Needs jpackage (JDK 21 or later, from -JdkHome, JAVA_HOME or the PATH) and the WiX Toolset: WiX 3.14 (candle.exe,
+# light.exe) with any of them, or WiX 4 and later (wix.exe) with jpackage from JDK 24 or later and the
+# WixToolset.Util.wixext extension. Only jpackage is taken from that JDK: the MSI keeps the Java runtime of the image.
 # MsiOnly: sign the MSI as it is; the launcher and the native libraries inside stay unsigned. Needs only signtool.
 # Native: the experimental GraalVM executable (the desktop-native-windows artifact of a CI run, as its .zip or
 # unpacked folder): sign diw-desktop.exe and every unsigned .exe and .dll beside it (the JDK libraries native-image
@@ -31,6 +33,7 @@ param(
     [string]$Tag,
     [string]$Msi,
     [string]$Path,
+    [string]$JdkHome = $env:JAVA_HOME,
     [string]$Repo = "mctea01/my-Bonds-fork-android",
     [ValidateSet("Full", "MsiOnly", "Native")] [string]$Mode = "Full",
     [string]$Thumbprint,
@@ -200,10 +203,33 @@ if ($Mode -eq "Native") {
     if ($Mode -eq "MsiOnly") {
         Copy-Item $Msi $signed
     } else {
-        $jpackage = Find-Tool "jpackage.exe" @("$env:JAVA_HOME\bin")
-        if (-not $jpackage) { throw "jpackage.exe not found: install JDK 21 or later and set JAVA_HOME" }
-        if (-not ((Get-Command candle.exe -ErrorAction SilentlyContinue) -or (Get-Command wix.exe -ErrorAction SilentlyContinue))) {
-            throw "WiX Toolset not found on PATH: install WiX 3.14 (candle.exe, light.exe) for JDK 21 and 22, or WiX 4 / 5 for JDK 23+"
+        # jpackage from -JdkHome (default JAVA_HOME) first, then the PATH.
+        $jpackage = if ($JdkHome -and (Test-Path (Join-Path $JdkHome "bin\jpackage.exe"))) { Join-Path $JdkHome "bin\jpackage.exe" } else { Find-Tool "jpackage.exe" @() }
+        if (-not $jpackage) { throw "jpackage.exe not found: install JDK 21 or later and pass -JdkHome or set JAVA_HOME" }
+        $jdkVersion = ((& $jpackage --version | Out-String).Trim() -split "\s+")[0]
+        if ($LASTEXITCODE -ne 0 -or $jdkVersion -notmatch "^(\d+)") { throw "$jpackage --version failed" }
+        $jdkMajor = [int]$Matches[1]
+
+        # The WiX tools jpackage can use: WiX 3 (candle.exe) with every jpackage, WiX 4 and later (wix.exe) from JDK 24.
+        # Paths only; jpackage itself looks on the PATH and in these default install folders.
+        $candle = (Get-Command candle.exe -ErrorAction SilentlyContinue).Source
+        if (-not $candle) { $candle = Get-ChildItem "${env:ProgramFiles(x86)}\WiX Toolset v3*\bin\candle.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1 -ExpandProperty FullName }
+        $wix = (Get-Command wix.exe -ErrorAction SilentlyContinue).Source
+        if (-not $wix) { $wix = Get-ChildItem "$env:ProgramFiles\WiX Toolset v*\bin\wix.exe" -ErrorAction SilentlyContinue | Select-Object -Last 1 -ExpandProperty FullName }
+        $wixVersion = if ($wix) { ((& $wix --version | Out-String).Trim() -split "[+\s]")[0] } else { $null }
+        if ($wix -and $jdkMajor -ge 24) {
+            # jpackage runs "wix build -ext WixToolset.Util.wixext"; the extension version must match WiX itself.
+            $extensions = (& $wix extension list -g | Out-String)
+            if ($extensions -notmatch "WixToolset\.Util\.wixext") {
+                throw "WiX $wixVersion lacks the WixToolset.Util.wixext extension that jpackage needs: run  wix extension add -g WixToolset.Util.wixext/$wixVersion"
+            }
+            Write-Host "Building the MSI with jpackage $jdkVersion and WiX $wixVersion"
+        } elseif ($candle) {
+            Write-Host "Building the MSI with jpackage $jdkVersion and WiX 3 ($candle)"
+        } elseif ($wix) {
+            throw "WiX $wixVersion (wix.exe) needs jpackage from JDK 24 or later, found ${jdkVersion}: pass -JdkHome <JDK 24+> (the MSI keeps the app's own Java runtime) or install WiX 3.14"
+        } else {
+            throw "WiX Toolset not found: install WiX 3.14, or WiX 4 or later with jpackage from JDK 24+ (-JdkHome)"
         }
 
         # Administrative install: the files of the MSI without installing it.
@@ -222,8 +248,6 @@ if ($Mode -eq "Native") {
         # Write it again for the jpackage that rebuilds the MSI (its version must match that jpackage).
         $state = Join-Path $image "app\.jpackage.xml"
         if (-not (Test-Path $state)) {
-            $jdkVersion = ((& $jpackage --version | Out-String).Trim() -split "\s+")[0]
-            if ($LASTEXITCODE -ne 0 -or -not $jdkVersion) { throw "jpackage --version failed" }
             $mainClass = "diw.wallet.app.desktop.MainKt"
             $cfg = Join-Path $image "app\$PackageName.cfg"
             if (Test-Path $cfg) {
