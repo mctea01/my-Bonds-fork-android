@@ -3,6 +3,18 @@ package diw.wallet.core.trust
 import diw.wallet.core.env.TrustEnvironment
 import org.multipaz.crypto.X509Cert
 
+/**
+ * Self-issued and naming its own key: subject and issuer are the same name and the key identifiers, when both are
+ * present, are the same. A link certificate (a CSCA's new key signed by its old one, under the same name) is
+ * self-issued but names the old key, so a path goes on from it to the root that signed it.
+ */
+val X509Cert.selfIssuedRoot: Boolean
+    get() = subject == issuer && runCatching {
+        val aki = authorityKeyIdentifier
+        val ski = subjectKeyIdentifier
+        aki == null || ski == null || aki.contentEquals(ski)
+    }.getOrDefault(true)
+
 /** Where a certificate of a [TrustPath] came from. */
 enum class PathSource {
     /** Sent with the signature, credential, request or document. */
@@ -81,8 +93,8 @@ data class TrustPath(
 ) {
     val top: X509Cert? get() = steps.lastOrNull()?.certificate
 
-    /** The path ends in a self-issued certificate whose own signature verifies. */
-    val rootReached: Boolean get() = steps.lastOrNull()?.let { s -> s.certificate.subject == s.certificate.issuer && s.signatureValid == true } ?: false
+    /** The path ends in a self-issued certificate ([selfIssuedRoot]) whose own signature verifies. */
+    val rootReached: Boolean get() = steps.lastOrNull()?.let { s -> s.certificate.selfIssuedRoot && s.signatureValid == true } ?: false
 
     /** The top certificate is an anchor or a known root for some role (not necessarily the one asked). */
     val rootKnown: Boolean get() = rootListings.any { it.kind != RootListing.Kind.IMPORTABLE }

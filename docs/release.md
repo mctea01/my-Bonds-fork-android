@@ -1,6 +1,15 @@
 # 發佈建置
 
-CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮：
+## 發佈管道
+
+| 管道 | 何時產生 | GitHub Release | 內容 |
+|---|---|---|---|
+| 穩定版 | 手動執行 `Stable release` workflow（見下方「穩定版發佈」） | 標籤 `v<主>.<次>.<修訂>`，標示為 Latest，一直保留 | release 最佳化建置，不含 debug 版 |
+| nightly | 每次 push 到 main | `nightly` 預先發行版，每次取代 | 同上，另附 debug APK 與 debug AAB |
+
+兩者都由同一個 CI workflow 建置，Android 走 R8、桌面走 ProGuard，檔案不經壓縮。Release 頁的內文由 `tools/release-notes.py` 產生：最上方是一次性的下載指引（依裝置列出該下載的檔案，只列出這次真的有的檔案，其他檔案收在摺疊區），下面是上一個穩定版標籤以來的變更（相依套件更新摺疊在一起），GitHub 的檔案清單接在最後並顯示每個檔案的 SHA-256。下載指引只放在 Release 頁，README 與本頁不再重複；要改說明文字時改這個腳本，不必改 workflow。
+
+下表是開發者參考，說明每個檔案怎麼產生：
 
 | 檔案 | 說明 |
 |---|---|
@@ -15,7 +24,7 @@ CI 在 push 到 main 時重建「nightly」預先發行版，檔案不經壓縮�
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
 | `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
 
-Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 nightly 取 AAB 上傳）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。
+Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，預設從 nightly 取 AAB 上傳，手動執行時 `tag` 填穩定版標籤如 `v0.5.3` 即上傳穩定版）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。
 
 每個 64 位元平台都連結零知識證明的 OpenAC 年齡證明、TLSNotary（zkTLS）與 zkPDF／zkPassport（Barretenberg 6.0.0）後端，另含驗證舊 zkPassport 電路的 Barretenberg 5（CI 以 `DIW_ZK_FEATURES=openac,tlsn,zkpdf,bb5` 建置；Android 的 Barretenberg 5 是選用元件，見下方）。Windows 的函式庫不能在 Windows 主機上連結 zkPDF，CI 在 Linux 上交叉建置整個函式庫（`native/build.sh x86_64-pc-windows-gnullvm`，腳本會下載固定版本的 llvm-mingw；產物靜態連結 libc++ 等寬鬆授權的執行階段，不含 libstdc++ 與 libgcc）。各平台有哪些後端見 [專案現況](STATUS.md#35-平台)。Android 的 32 位元 ABI（`armeabi-v7a`、`x86`）只有不含證明後端的 runtime 函式庫，用來解碼 JPEG 2000 相片。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。zkPassport 人臉比對的金鑰證明版電路在 `zkpassport-facematch-v1` release，由手動執行的 `zkPassport FaceMatch assets` workflow 從 `native/circuits-zkpassport` 建置，金鑰雜湊須與 `circuits.json` 相同才發佈；App 只在需要時下載這台裝置用得到的那一個。Linux 的 Barretenberg 須以 clang 編譯（GCC 版對 P-256 簽章電路算出不同的驗證金鑰，見 `native/zkpdf-prover/README.md`）。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 
@@ -25,17 +34,38 @@ Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，從 ni
 
 ## 版本號
 
-版本號只記在 repo 根目錄的 `version.properties`（`version=主版號.次版號`，進入新階段或正式發佈時手動修改），建置時補上修訂號：從最後一次修改 `version=` 那一行的 commit 起算的 commit 數。同一個 commit 在任何機器算出的版本都相同，換新的主版號或次版號時修訂號從 0 重新開始，之後每合併一次到 main 加 1。不再使用 CI 執行次數。
+版本號只記在 repo 根目錄的 `version.properties`（`version=主版號.次版號`，由穩定版發佈 workflow 或 PR 修改；目前 `0.5`，對應 P5），建置時補上修訂號：從最後一次修改 `version=` 那一行的 commit 起算的 commit 數。同一個 commit 在任何機器算出的版本都相同，換新的主版號或次版號時修訂號從 0 重新開始，之後每合併一次到 main 加 1。不再使用 CI 執行次數。
 
 | 建置 | 版本 | Android versionCode |
 |---|---|---|
-| push 到 main（nightly） | `0.4.<修訂號>` | 主版號 × 1,000,000 + 次版號 × 10,000 + 修訂號（0.4.3 為 40003） |
-| pull request | `0.4.<修訂號>-pr<PR 編號>` | 同上 |
-| 本機 | `0.4.<修訂號>-dev` | 同上 |
+| 穩定版標籤 `v0.5.<修訂號>` | `0.5.<修訂號>`，與標籤相同 | 主版號 × 1,000,000 + 次版號 × 10,000 + 修訂號（0.5.3 為 50003） |
+| push 到 main（nightly） | `0.5.<修訂號>` | 同上 |
+| pull request | `0.5.<修訂號>-pr<PR 編號>` | 同上 |
+| 本機 | `0.5.<修訂號>-dev` | 同上 |
 
-修訂號需要完整的 git 歷史：CI 的 checkout 使用 `fetch-depth: 0`，`tools/app-version.sh` 在歷史不完整時讓發佈檔案的工作失敗；只跑測試的工作只警告並以修訂號 0 繼續。修訂號達 10,000 時建置要求換新的版本線。
+修訂號需要完整的 git 歷史：CI 的 checkout 使用 `fetch-depth: 0`，`tools/app-version.sh` 在歷史不完整時讓發佈檔案的工作失敗；只跑測試的工作只警告並以修訂號 0 繼續。修訂號達 10,000 時建置要求換新的版本線。在 `v*` 標籤上建置時，`tools/app-version.sh` 要求標籤與算出的版本完全相同，手動推錯號碼的標籤會讓發佈失敗，不會發出版本號不符的檔案。
 
-versionCode 由版本算出，換新版本線時一定變大（0.4 起為 40000 以上，大於舊規則的 CI 執行次數），所以新建置能覆蓋安裝舊版（同一把簽章金鑰時）；同一版本線內只要從 main 依序建置，也一定變大。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本（`0.4.<修訂號>`）。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫。CI 以 `tools/app-version.sh`（與 Gradle 同一規則）算出 `APP_VERSION` 為檔名，`./gradlew -q :app:printVersion` 可查看 Gradle 算出的版本。關於頁顯示版本與 commit。
+versionCode 由版本算出，換新版本線時一定變大（0.5 起為 50000 以上，大於 0.4 的所有建置），所以新建置能覆蓋安裝舊版（同一把簽章金鑰時）；同一版本線內只要從 main 依序建置，也一定變大。Windows 安裝檔與 Linux 套件使用不含字尾的數字版本（`0.5.<修訂號>`）。`-Pdiw.versionName`、`-Pdiw.versionCode`、`-Pdiw.desktopVersion` 仍可覆寫。CI 以 `tools/app-version.sh`（與 Gradle 同一規則）算出 `APP_VERSION` 為檔名，`./gradlew -q :app:printVersion` 可查看 Gradle 算出的版本。關於頁顯示版本與 commit。
+
+## 穩定版發佈
+
+在 GitHub 的 Actions 頁選 `Stable release`，在 main 上按 Run workflow：
+
+| 輸入 | 結果 |
+|---|---|
+| `bump: keep`（預設） | 發佈目前的版本線，版本是 main 現在的版本，例如 `v0.5.12`；只推標籤 |
+| `bump: minor` | 開始下一個次版本線並發佈它的第一版：`version.properties` 改成 `0.6`，發佈 `v0.6.0` |
+| `bump: major` | 開始下一個主版本線：改成 `1.0`，發佈 `v1.0.0` |
+| `version: 主.次`（選填） | 直接指定新的版本線，例如 `1.2` 發佈 `v1.2.0`，優先於 `bump`；不可低於目前的版本線（Android 會拒絕降版） |
+| `dry_run` | 只顯示會發佈的版本，不改任何東西 |
+
+流程：`tools/stable-release.sh` 決定版本，要換版本線時在 main 加一個只改 `version.properties` 的 commit，與標籤一起以一次原子推送送出；之後 CI 在標籤上完整建置與測試（約一個半小時），通過後以 `tools/release-notes.py` 產生內文並建立穩定版 Release。同一個 commit 已經有標籤時（main 沒有新 commit）會直接失敗。要上架 Google Play 時，手動執行 `Google Play` workflow 並把 `tag` 填成這次的標籤。
+
+權限：
+
+- `keep` 只推標籤，workflow 自己的權杖就夠；由於這個權杖推的標籤不會觸發其他 workflow，`Stable release` 會改以 workflow_dispatch 在標籤上啟動 CI。
+- `minor`、`major` 與指定版本要直接推 commit 到 main，main 的 `MUST CI` 規則集只允許 bypass 對象推送。請建立 secret `RELEASE_TOKEN`：repo 管理員的 fine-grained personal access token，只選這個 repo，權限 Contents 讀寫。有這個 secret 時推送由它完成，標籤的 push 觸發 CI（main 的 commit 也會觸發一次 nightly）。沒有時推送會被拒絕並提示，什麼都不會改；也可以改用 PR 修改 `version.properties`，合併後再以 `keep` 發佈。
+- 也可以在本機推標籤（`git tag -a v0.5.12 -m ... && git push origin v0.5.12`），CI 一樣會發佈，但標籤必須等於該 commit 算出的版本。
 
 ## Android 選用元件與 APK
 

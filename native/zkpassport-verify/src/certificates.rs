@@ -11,6 +11,7 @@ pub const CERTIFICATE_TREE_HEIGHT: usize = 16;
 pub const REVOCATION_TREE_HEIGHT: usize = 14;
 pub const MASTERLIST_TREE_HEIGHT: usize = 8;
 const CSCA: u8 = 1;
+const UIDAI: u8 = 3;
 const TAG_LIMB_BITS: usize = 253;
 
 fn bytes(hex: &str) -> Result<Vec<u8>, String> {
@@ -47,13 +48,22 @@ fn public_key(cert: &Value) -> Result<Vec<u8>, String> {
     }
 }
 
+/// `getCertificateType`: CSCA unless the package names another type (Aadhaar's UIDAI keys since utils 0.41).
+fn kind(cert: &Value) -> Result<u8, String> {
+    match cert.get("type") {
+        None | Some(Value::Null) => Ok(CSCA),
+        Some(Value::String(t)) if t == "uidai" => Ok(UIDAI),
+        _ => Err("certificates_type".into()),
+    }
+}
+
 /// `getCertificateLeafHash` for schema versions 0 and 1.
 fn leaf(cert: &Value, version: u64) -> Result<BigUint, String> {
     let country = text(cert, "country")?.as_bytes();
     if country.len() != 3 {
         return Err("certificates".into());
     }
-    let mut meta = vec![CSCA, country[0], country[1], country[2]];
+    let mut meta = vec![kind(cert)?, country[0], country[1], country[2]];
     let mut inputs = tags(cert)?;
     if version == 1 {
         let expiry = cert.pointer("/validity/not_after").and_then(Value::as_u64).filter(|e| *e <= u32::MAX as u64).ok_or("certificates")?;
@@ -108,13 +118,15 @@ pub fn root(package: &Value) -> Result<BigUint, String> {
     Ok(poseidon2_hash(&[pack_be_bytes(&meta, 31).remove(0), state]))
 }
 
-/// The root a package hashes to and its CSCA keys: country, key bytes (hex), fingerprint and validity.
+/// The root a package hashes to and its CSCA keys: country, key bytes (hex), fingerprint and validity. Keys of
+/// other types (UIDAI) count toward the root but sign no passport, so they are left out.
 pub fn package_json(package: &str) -> Result<String, String> {
     let package: Value = serde_json::from_str(package).map_err(|_| "json".to_string())?;
     let root = root(&package)?;
     let certs = package.get("certificates").and_then(Value::as_array).ok_or("certificates")?;
     let keys = certs
         .iter()
+        .filter(|c| kind(c) == Ok(CSCA))
         .map(|c| {
             Ok(json!({
                 "country": text(c, "country")?,

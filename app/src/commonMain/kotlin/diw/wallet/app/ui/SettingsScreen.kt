@@ -101,6 +101,9 @@ fun SettingsScreen(model: WalletModel) {
     val zkCapability by model.zk.capability.collectAsState()
     LaunchedEffect(Unit) { model.zk.probe() }
     SettingsColumn {
+        ActionRow(WalletIcons.Info, stringResource(Res.string.settings_user_guide), stringResource(Res.string.settings_user_guide_text)) {
+            model.platform.openBrowser(USER_GUIDE_URL)
+        }
         SettingsSection.entries.forEach { section ->
             val summary = when (section) {
                 SettingsSection.SECURITY -> listOfNotNull(
@@ -517,6 +520,9 @@ private fun GeneralPage(model: WalletModel) {
 
 private const val SOURCE_URL = "https://github.com/mctea01/my-Bonds-fork-android"
 
+/** The user guide for people who use the app (docs/guides/user-guide.md), opened in the browser. */
+internal const val USER_GUIDE_URL = "$SOURCE_URL/blob/main/docs/guides/user-guide.md"
+
 @Composable
 private fun appVersion(): String = AppBuild.version ?: stringResource(Res.string.settings_dev_build)
 
@@ -561,6 +567,7 @@ private fun AboutPage(model: WalletModel) {
     HorizontalDivider()
     SectionTitle(stringResource(Res.string.settings_source))
     LabelValue("GitHub", SOURCE_URL, small = true) { model.platform.openBrowser(SOURCE_URL) }
+    OutlinedButton(onClick = { model.platform.openBrowser(USER_GUIDE_URL) }) { Text(stringResource(Res.string.settings_user_guide)) }
     OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/LICENSE") }) { Text(stringResource(Res.string.settings_license_full)) }
     OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/NOTICE") }) { Text(stringResource(Res.string.settings_notice)) }
 }

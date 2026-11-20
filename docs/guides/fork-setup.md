@@ -35,6 +35,7 @@ push 到 main 後，CI 會建立「nightly」預先發行版。沒有 secret 時
 | `TWDIW_APP_PRIVATE_KEY`、`TWDIW_APP_PUBLIC_KEY` | secret | TWDIW 應用簽章的固定配對 | 要跨版本保持同一個 keyId 才需要 |
 | `PLAY_SERVICE_ACCOUNT_JSON` | secret（可放在 `google-play` environment） | 上傳 Google Play 的服務帳戶 | 上架才需要，見 [google-play.md](../google-play.md) |
 | `PLAY_AUTO_TRACK`、`PLAY_AUTO_STATUS` | variable | 每次 nightly 自動上傳的 track 與狀態 | 可選 |
+| `RELEASE_TOKEN` | secret | `Stable release` 開新版本線時推 commit 到 main（repo 管理員的 fine-grained token，Contents 讀寫） | 只有用 `minor`、`major` 或指定版本時需要，見 [release.md](../release.md#穩定版發佈) |
 
 金鑰一律自己產生，不要沿用別人的：
 
@@ -64,7 +65,7 @@ App 註冊的連結 scheme（`diw-wallet://`、`diw-zktls://`、`diw-server://`�
 
 | 項目 | 位置 |
 |---|---|
-| 原始碼網址 | `LegalTexts.kt` 與 `SettingsScreen.kt` 的 `SOURCE_URL`；`SelfAttestationWalletProvider.kt`、`MultipazTestWalletProvider.kt` 與 `test-servers` 的 `WalletProviderService.kt` 的 `wallet_link` |
+| 原始碼網址 | `LegalTexts.kt` 與 `SettingsScreen.kt` 的 `SOURCE_URL`（使用教程的連結 `USER_GUIDE_URL` 由它組成，指向 `docs/guides/user-guide.md`）；`SelfAttestationWalletProvider.kt`、`MultipazTestWalletProvider.kt` 與 `test-servers` 的 `WalletProviderService.kt` 的 `wallet_link` |
 | 法律聲明中的開發者 | `LegalTexts.kt` 與 `LegalTextsEn.kt` 的 `DEVELOPER`，以及內文中的聯絡方式與發布事實 |
 | 商店的版本說明 | `distribution/whatsnew/` |
 | 商店資訊與隱私權政策網址 | [google-play.md](../google-play.md) 第 5、6 節 |

@@ -20,9 +20,9 @@
 | `app/src/desktopTest` | 以桌面 JVM 跑 App 流程測試 |
 | `test-servers` | 測試用發證端、驗證端、Wallet Provider，以及全部協議測試 |
 | `native/` | 零知識證明的 Rust 工作區（uniffi 以 JNA 綁定）：runtime（`diw-zk-ffi`，含 BBS、JPEG 2000 與本專案 OPRF）、OpenAC 年齡證明、TLSNotary（`zktls`）、Noir 電路（`native/circuits`）與 zkPDF 證明器（`zkpdf-prover`）、zkPassport 證明組查驗（`zkpassport-verify`）、舊 zkPassport 電路用的 Barretenberg 5 選用函式庫（`zkpassport-bb5`）；建置見 `native/README.md`。`native/vendor/zkpassport` 是收進 repo 的上游原始碼（zkPassport 的輸入產生與 driver），只改 Cargo.toml，工作區排除、不跑其測試。`native/circuits-zkpassport` 是本專案自己的 FaceMatch 電路（金鑰證明版由 `tools/keyattest.py` 產生、自我聲明版；nargo 1.0.0，與 `native/circuits` 的版本不同，不可混用），依賴原樣收進 `native/vendor/zkpassport-circuits` 的官方 Noir 程式庫；`circuits.json` 是錢包與查驗端內建的電路金鑰雜湊清單，自我聲明版的電路在 `artifacts/` 隨函式庫內建，金鑰證明版由 `zkPassport FaceMatch assets` workflow 發佈到 `zkpassport-facematch-v1` release（`docs/design/zkpassport.md` 第 5.6 節） |
-| `templates/` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），簽章後隨 nightly 發佈，格式見 `templates/README.md` |
+| `templates/` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），簽章後隨 nightly 與穩定版發佈，格式見 `templates/README.md` |
 | `features/bb5` | Android 隨選動態功能模組，只含 Barretenberg 5 原生函式庫；Google Play 版用到時才安裝，其他版本內含（`docs/release.md`「Android 選用元件與 APK」） |
-| `tools/` | 開發與維護工具：`trust-roots`（內建根憑證、CSCA、C2PA 信任清單產生器）、`dss-check`（EU DSS 交叉驗證）、`zk-prover-server`（自架 zkPDF 證明主機，Gradle 模組）、`i18n`（字串搬移與檢查）、`ld`（JSON-LD context 產生器）、`twdiw`（應用金鑰產生）、`twdiw-jws`、`twdiw-assets`（TWDIW 研究用的離線工具）、`zkpdf-testdocs`、`test-fonts`（合成測試文件與字型）、`native-research`（原生依賴研究的探測程式）、`app-version.sh`、`bundle-apks.sh`、`desktop-native.sh` |
+| `tools/` | 開發與維護工具：`trust-roots`（內建根憑證、CSCA、C2PA 信任清單產生器）、`dss-check`（EU DSS 交叉驗證）、`zk-prover-server`（自架 zkPDF 證明主機，Gradle 模組）、`i18n`（字串搬移與檢查）、`ld`（JSON-LD context 產生器）、`twdiw`（應用金鑰產生）、`twdiw-jws`、`twdiw-assets`（TWDIW 研究用的離線工具）、`zkpdf-testdocs`、`test-fonts`（合成測試文件與字型）、`native-research`（原生依賴研究的探測程式）、`app-version.sh`（版本號）、`stable-release.sh`（穩定版的版本與標籤）、`release-notes.py`（Release 頁內文）、`bundle-apks.sh`、`desktop-native.sh` |
 | `distribution/` | Google Play 商店圖像（`play/`）與版本說明（`whatsnew/`） |
 
 `core` 內的主要套件：
@@ -279,12 +279,12 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 
 - **狀態的唯一來源是 [docs/STATUS.md](docs/STATUS.md)。** 每個會改變狀態的提交或 PR（完成或新增功能、留下未完成或待驗證的項目、平台支援改變、決定改變）要在同一個 PR 內更新它：改對應的表格列與「最後更新」日期。還沒合併的工作列在「進行中」，合併它的 PR 把它移到完成。交付前檢查：只讀 STATUS.md 的人，對這次改動之後的狀態不會有錯誤的認知。
 - 同一個 PR 也要更新受影響的其他現行文件：使用者看得到的變更改 README 的功能清單，規則或實作要點改變時改本檔，新增第三方元件或內建第三方資料時改 `NOTICE`，發佈檔案或 secrets 改變時改 `docs/release.md`。
-- README 面向使用者（功能、畫面、下載、建置），開發規則與實作要點寫在本檔。截圖以 `uiScreenshots` 產生，縮成 412 像素寬、128 色後放在 `docs/images`。
+- README 面向使用者（功能、畫面、下載、建置），開發規則與實作要點寫在本檔。一般使用者的操作步驟寫在 [docs/guides/user-guide.md](docs/guides/user-guide.md)（App 以 `SettingsScreen.kt` 的 `USER_GUIDE_URL` 連到它）：使用者看得到的流程、按鈕名稱或平台差異改變時，同一個 PR 更新對應段落，文中的按鈕與畫面名稱照 `values-zh/strings.xml` 的文字。截圖以 `uiScreenshots` 產生，縮成 412 像素寬、128 色後放在 `docs/images`。
 - 設計與研究文件在 `docs/design`、`docs/research`，驗收紀錄在 `docs/acceptance`。每份文件屬於「現行、規格、紀錄」其中一種（定義與索引在 `docs/README.md`），新增文件時加入索引並標明性質。設計文件寫約定與理由，不寫目前進度；被取代的內容直接改寫或刪除，不留「以下為原規劃」之類的舊段落；紀錄類文件不回頭改寫。
 - 文件內不放個資（實機記錄的卡號、UID、憑證效期、姓名與證號先遮蔽）。
 - 授權為 Apache-2.0（`LICENSE` 為官方全文）。`NOTICE` 列出隨 App 散布的第三方元件、只在開發與測試使用的工具、另外下載的證明資產與內建的第三方資料。
 - 每項工作從最新的 main 開 `claude/...` 分支並開新 PR，以 Squash 合併；PR 合併後不再沿用同一個分支的 PR。
 - `.github/workflows` 無法由代理推送（缺 workflow 權限）；需要修改時把完整檔案交給使用者手動貼上。
-- CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly）需要三者都成功。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
+- CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly，或 `v*` 標籤的穩定版）需要三者都成功。穩定版由手動的 `stable-release.yml` 經 `tools/stable-release.sh` 推標籤；Release 內文由 `tools/release-notes.py` 產生，下載指引只放在內文最上方一次，改說明改腳本即可。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
 - 發佈流程與簽章 secrets 見 [docs/release.md](docs/release.md)。版本只記在 `version.properties`（主版號.次版號），修訂號為最後一次修改 `version=` 那一行之後的 commit 數（不用 CI 執行次數），Android versionCode 為主版號 × 1,000,000 + 次版號 × 10,000 + 修訂號；規則在 `app/build.gradle.kts`，CI 檔名用同規則的 `tools/app-version.sh`（需要 `fetch-depth: 0`）。PR 建置加 `-pr<N>`，本機為 `-dev`；debug 簽章金鑰由 `DIW_DEBUG_KEYSTORE_FILE` 指定。
 - Google Play 上架資訊在 [docs/google-play.md](docs/google-play.md)。新增權限、把資料傳出裝置的功能（含預設伺服器）、分析／當機回報／廣告 SDK，或從網路下載的檔案類型時，要同步更新其中的權限表與資料安全答案；不可下載或載入可執行程式碼（dex、jar、.so），Play 只允許下載資料。

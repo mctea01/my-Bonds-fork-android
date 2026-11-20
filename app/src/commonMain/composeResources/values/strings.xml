@@ -3421,6 +3421,9 @@
     <string name="settings_nfc_static_text">Off (default): negotiated handover lets the reader choose BLE or NFC. On: both BLE modes and NFC data transfer are offered at once, for readers that support only static handover.</string>
     <string name="settings_no_builtin_sp">This version has no built-in SP account.</string>
     <string name="settings_notice">Third-party notices (NOTICE)</string>
+    <string name="settings_user_guide">User guide</string>
+    <string name="settings_user_guide_text">Step-by-step help for everyday tasks: adding and presenting documents, files and signing, verifying others, zkPassport and the desktop app. Opens in the browser (Traditional Chinese).</string>
+    <string name="legal_done_guide">Read the user guide</string>
     <string name="settings_old_device_keys">These device key records were left by an earlier version and are no longer used. You can delete them.</string>
     <string name="settings_old_record">Old record</string>
     <string name="settings_openpgp_text">Public keys for OpenPGP signatures and encryption: your own cards, keys whose fingerprint you checked, introducers and untrusted keys</string>

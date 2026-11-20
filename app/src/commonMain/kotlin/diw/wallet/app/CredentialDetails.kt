@@ -10,6 +10,7 @@ import diw.wallet.core.profile.bonds.MoicaVerification
 import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.status.W3cStatusEntry
 import diw.wallet.core.trust.TrustRole
+import diw.wallet.core.trust.selfIssuedRoot
 import diw.wallet.core.w3c.SdJwtDisclosures
 import diw.wallet.core.w3c.W3cEncoding
 import diw.wallet.core.w3c.W3cVcCredential
@@ -317,7 +318,7 @@ object CredentialDetails {
     private fun chainRows(chain: List<X509Cert>, role: TrustRole, docType: String? = null): List<DetailRow> = chain.mapIndexed { i, c ->
         val label = when {
             i == 0 -> tr(Res.string.reader_issuer_cert_signer)
-            i == chain.lastIndex && c.subject == c.issuer -> tr(Res.string.certificate_trust_root_label)
+            i == chain.lastIndex && c.selfIssuedRoot -> tr(Res.string.certificate_trust_root_label)
             else -> tr(Res.string.cd_intermediate_n, i)
         }
         DetailRow(label, c.displaySubject(), chain, i, role, docType)
@@ -514,7 +515,7 @@ object CredentialDetails {
             DetailSection(tr(Res.string.cert_subject_issuer), listOf(
                 DetailRow(tr(Res.string.cert_subject), c.subject.name),
                 DetailRow(tr(Res.string.cert_issuer), c.issuer.name),
-                DetailRow(tr(Res.string.cert_self_signed), if (c.subject == c.issuer) tr(Res.string.answer_yes) else tr(Res.string.answer_no)),
+                DetailRow(tr(Res.string.cert_self_signed), if (c.selfIssuedRoot) tr(Res.string.answer_yes) else tr(Res.string.answer_no)),
             )),
             DetailSection(tr(Res.string.cert_basic), listOf(
                 DetailRow(tr(Res.string.oa_version), "v${c.version + 1}"),
