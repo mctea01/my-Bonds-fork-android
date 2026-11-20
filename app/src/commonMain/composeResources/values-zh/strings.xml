@@ -1837,6 +1837,7 @@
     <string name="derive_zk_claim">zkPDF 零知識證明（出示文件欄位時一併勾選）</string>
     <string name="derive_zk_opening">「%1$s」的零知識開啟資料</string>
     <string name="derive_zk_suffix">（zkPDF）</string>
+    <string name="desktop_already_running">DIW MY WALLET 已經在執行，正在使用資料夾 %1$s（可能是另一個視窗，或另一個電腦版本）。請先關閉它；如果看不到視窗，請從工作管理員結束它。</string>
     <string name="desktop_error_log">App 因錯誤而停止：%1$s\n\n詳細紀錄已存到 %2$s</string>
     <string name="desktop_error_title">DIW MY WALLET 錯誤</string>
     <string name="did_hint">DID（did:web、did:key、did:ion…）</string>

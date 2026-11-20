@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-20（版本線升到 0.5、穩定版發佈流程與 Release 頁下載指引、Windows 本機簽章腳本；main 到 PR #156）。
+最後更新：2026-11-20（版本線升到 0.5、穩定版發佈流程與 Release 頁下載指引、Windows 本機簽章腳本；main 到 PR #159；桌面版同一資料夾只允許一個 App 執行）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -42,7 +42,7 @@ P4 之後合併的工作：
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | 電腦版版面與鍵盤操作（PR #146） | 可用：寬視窗改側邊導覽列、內容限寬置中、按鈕列自動換行、捲軸、視窗大小記憶；Esc／Alt+左鍵／滑鼠側鍵返回、Ctrl+1 至 5 切分頁、Ctrl+, 設定、PIN 欄 Enter | [guides/desktop-usage.md](guides/desktop-usage.md) |
-| 桌面版原生執行檔修正（PR #146） | 2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact；2026-11-20 使用者在實體 Windows 確認原生版可輸入、右鍵與中文輸入法正常；2026-11-20 使用者回報原生版讀卡機顯示 TerminalFactory 無法初始化：native-image 把 javax.smartcardio 的 j2pcsc 當成自己會連結的 JDK 函式庫，System.loadLibrary 不會開啟任何檔案，第一次呼叫即 UnsatisfiedLinkError；改為隨執行檔附上 j2pcsc，由 PcscReaders 以完整路徑載入，並補 PC/SC 提供者的反射與 JNI 註冊，CI 比對 JVM 與原生版的 PC/SC 自我檢查結果須相同；同日修正原生版 Ctrl+V 貼上時 AssertionError（剪貼簿排序資料格式時以反射取 java.rmi.MarshalledObject 建構子），自我檢查加入剪貼簿來回測試 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 桌面版原生執行檔修正（PR #146） | 2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact；2026-11-20 使用者在實體 Windows 確認原生版可輸入、右鍵與中文輸入法正常；2026-11-20 使用者回報原生版讀卡機顯示 TerminalFactory 無法初始化：native-image 把 javax.smartcardio 的 j2pcsc 當成自己會連結的 JDK 函式庫，System.loadLibrary 不會開啟任何檔案，第一次呼叫即 UnsatisfiedLinkError；改為隨執行檔附上 j2pcsc，由 PcscReaders 以完整路徑載入，並補 PC/SC 提供者的反射與 JNI 註冊，CI 比對 JVM 與原生版的 PC/SC 自我檢查結果須相同；同日修正原生版 Ctrl+V 貼上時 AssertionError（剪貼簿排序資料格式時以反射取 java.rmi.MarshalledObject 建構子），自我檢查加入剪貼簿來回測試；2026-11-20 使用者回報 SQLITE_BUSY（資料庫被鎖住）：同一資料夾同時開了兩個 App（含 JVM 版與原生版並開），改為以資料夾內的 app.lock 只允許一個執行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；CSCA 的鏈結憑證（新金鑰由舊金鑰簽署、名稱相同）不當成根，繼續走到自簽的 CSCA（2026-11-20 修正，台灣護照原本顯示「找不到根憑證」）；其他項目未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
