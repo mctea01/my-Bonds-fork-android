@@ -191,7 +191,7 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
                     updated = consent.record(i) != null,
                 )
             }
-            OnboardingStep.DONE -> DonePage(consent, onDone)
+            OnboardingStep.DONE -> DonePage(consent, onDone) { model.platform.openBrowser(USER_GUIDE_URL) }
         }
     }
 }
@@ -269,13 +269,14 @@ private fun StatementHeader(i: Integration) {
 }
 
 @Composable
-private fun DonePage(consent: LegalConsent, onDone: () -> Unit) {
+private fun DonePage(consent: LegalConsent, onDone: () -> Unit, onGuide: () -> Unit) {
     Text(LegalStrings.DONE_TITLE, style = MaterialTheme.typography.headlineSmall)
     Integration.entries.filter { it.available }.forEach { i ->
         LabelValue(LegalTexts.statement(i).name, statusLine(consent, i))
     }
     Text(LegalStrings.DONE_TEXT, style = MaterialTheme.typography.bodySmall)
     Button(onClick = onDone, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.DONE_START) }
+    TextButton(onClick = onGuide, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.DONE_GUIDE) }
 }
 
 /** The legal settings page: the accepted texts and every statement with its state. */

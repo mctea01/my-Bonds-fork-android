@@ -129,7 +129,7 @@ main 每次更新後，CI 發佈「nightly」預先發行版。
 - **Android**：Android 10（API 29）以上。release APK 經 R8 最佳化，另有單一 ABI 的 APK、分割 APK 組（.apks）與 AAB；debug APK 允許連到區網測試伺服器的 HTTP。零知識證明需要 64 位元裝置。
 - **桌面版**：Windows（.msi）與 Linux（.deb）安裝檔，內含 Java 執行環境；macOS（Apple 晶片，14 以上）與其他系統可用 Java 21 執行 jar。
 
-檔案說明與簽章方式見 [docs/release.md](docs/release.md)。
+要下載哪個檔案、怎麼安裝見[使用教程](docs/guides/user-guide.md#1-安裝)；檔案說明與簽章方式見 [docs/release.md](docs/release.md)。
 
 ## 建置與測試
 
@@ -182,6 +182,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 ## 文件
 
+- [使用教程](docs/guides/user-guide.md)：給一般使用者，說明安裝、加入與出示證件、文件與簽署、查驗他人、電子護照與電腦版的操作。App 內在「設定」第一列開啟。
 - [專案現況](docs/STATUS.md)：單頁，各階段與功能的狀態、未完成項目與待實機驗證。
 - [AGENTS.md](AGENTS.md)：開發規則、模組職責與實作要點。貢獻前請先閱讀。
 - [docs/README.md](docs/README.md)：所有文件的索引，標明哪些是現行文件、設計規格或歷史紀錄。

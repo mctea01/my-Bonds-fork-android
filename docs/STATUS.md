@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-19（main 到 PR #152：zkPassport 查詢結果日期格式、信任鏈完整顯示到根憑證、P5 驗證者透明與主動查驗；加上 Linux 原生程式庫的相容版與載入順序）。
+最後更新：2026-11-20（一般使用者的使用教程與 App 內連結；main 到 PR #152：zkPassport 查詢結果日期格式、信任鏈完整顯示到根憑證、P5 驗證者透明與主動查驗；加上 Linux 原生程式庫的相容版與載入順序）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -45,6 +45,7 @@ P4 之後合併的工作：
 | 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟 | [native/README.md](../native/README.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 一般使用者的使用教程 | 完成：[user-guide.md](guides/user-guide.md) 涵蓋安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版與常見問題，附測試資料繪製的畫面；App 在設定清單第一列、關於頁與首次啟動完成頁以瀏覽器開啟它。教程只有繁體中文 | [user-guide.md](guides/user-guide.md) |
 
 ## 3. 功能狀態
 
