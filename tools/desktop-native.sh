@@ -107,7 +107,8 @@ done
 # What the agent sees only by chance: AWT's toolkit thread looks up Thread.yield through JNI only when its event loop
 # has to wait, so a run may or may not record it, and without it the window's toolkit thread dies. The PC/SC provider
 # (javax.smartcardio) is created reflectively and only when a run reaches it with a working PC/SC service, and
-# PcscReaders resets its cached context through a private field.
+# PcscReaders resets its cached context through a private field. Reading the clipboard sorts its flavors through
+# java.rmi.MarshalledObject, looked up reflectively; without its constructor every paste throws an AssertionError.
 extra=$work/extra
 mkdir -p "$extra"
 cat > "$extra/reachability-metadata.json" <<'JSON'
@@ -119,6 +120,9 @@ cat > "$extra/reachability-metadata.json" <<'JSON'
     { "type": "sun.security.smartcardio.SunPCSC$Factory",
       "methods": [ { "name": "<init>", "parameterTypes": [ "java.lang.Object" ] } ] },
     { "type": "sun.security.smartcardio.PCSCTerminals", "fields": [ { "name": "contextId" } ] },
+    { "type": "java.rmi.Remote" },
+    { "type": "java.rmi.MarshalledObject",
+      "methods": [ { "name": "<init>", "parameterTypes": [ "java.lang.Object" ] }, { "name": "get", "parameterTypes": [] } ] },
     { "type": "sun.security.smartcardio.PCSCException", "jniAccessible": true,
       "methods": [ { "name": "<init>", "parameterTypes": [ "int" ] } ] }
   ]
