@@ -54,4 +54,20 @@ class GpkiTapSigner(
         }
         return signature
     }
+
+    /** PS256: the card applies its key to the EMSA-PSS block built here, then the signature is checked as PS256. */
+    override suspend fun signRsaPss(data: ByteArray): ByteArray? {
+        val k = key ?: throw SigningException(ct("core_card_not_read"))
+        val block = diw.wallet.core.document.sign.RsaPss.encode(data, GpkiCard.RSA_LEN * 8)
+        val signature = reader.scan(ct("core_gpki_hold_again"), tagInteractionFunc = { tag ->
+            val card = GpkiCard(NfcCardChannel(tag))
+            card.connect()
+            card.signBlock(pin, k.keyRef, block)
+        })
+        val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(k.certificate) ?: throw SigningException(ct("core_card_not_rsa"))
+        if (!PlatformCrypto.verifyRsa("PS256", rsa, data, signature)) {
+            throw SigningException(ct("core_card_pss_refused"))
+        }
+        return signature
+    }
 }

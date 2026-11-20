@@ -6,6 +6,8 @@ import java.security.Provider
 import java.security.Signature
 import java.security.cert.X509Certificate
 import java.security.interfaces.ECPublicKey
+import java.security.spec.MGF1ParameterSpec
+import java.security.spec.PSSParameterSpec
 
 /**
  * A [DocumentSigner] over a JCA private key: Android KeyChain, the Windows or macOS certificate store, or a PKCS#11
@@ -41,7 +43,40 @@ class JcaDocumentSigner(
         return signature
     }
 
+    /**
+     * PS256 with the key's own provider: the JCA name RSASSA-PSS with parameters, or the Android KeyStore and
+     * KeyChain name SHA256withRSA/PSS (whose parameters are fixed to SHA-256, MGF1-SHA-256 and a 32-byte salt).
+     * Checked against the certificate like [sign].
+     */
+    override suspend fun signRsaPss(data: ByteArray): ByteArray? {
+        if (keyType != SignerKeyType.RSA) return null
+        val attempts = listOf<() -> Signature>(
+            { (if (provider != null) Signature.getInstance("RSASSA-PSS", provider) else Signature.getInstance("RSASSA-PSS")).apply { setParameter(PSS_SHA256) } },
+            { if (provider != null) Signature.getInstance("SHA256withRSA/PSS", provider) else Signature.getInstance("SHA256withRSA/PSS") },
+        )
+        var last: Exception? = null
+        for (make in attempts) {
+            val signature = try {
+                make().run { initSign(key); update(data); sign() }
+            } catch (e: Exception) {
+                last = e
+                continue
+            }
+            val ok = runCatching {
+                Signature.getInstance("RSASSA-PSS", diw.wallet.core.document.Bc.provider).run {
+                    setParameter(PSS_SHA256); initVerify(certificate.publicKey); update(data); verify(signature)
+                }
+            }.getOrDefault(false)
+            if (!ok) throw SigningException(ct("core_jds_mismatch"))
+            return signature
+        }
+        throw SigningException(ct("core_jds_sign_failed") + (last?.message ?: last?.let { it::class.simpleName } ?: "RSASSA-PSS"), last)
+    }
+
     companion object {
+        /** RSASSA-PSS parameters of PS256 (RFC 8017, RFC 8230): SHA-256, MGF1 with SHA-256, 32-byte salt, trailer 1. */
+        val PSS_SHA256 = PSSParameterSpec("SHA-256", "MGF1", MGF1ParameterSpec.SHA256, 32, 1)
+
         /** RSA, or EC on P-256; other keys are refused with a message. */
         fun typeOf(certificate: X509Certificate): SignerKeyType {
             val pub = certificate.publicKey

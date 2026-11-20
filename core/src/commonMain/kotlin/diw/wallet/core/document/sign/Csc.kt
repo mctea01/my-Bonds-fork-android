@@ -412,13 +412,18 @@ class CscClient(private val http: HttpClient, val service: CscService) {
         return o.str("SAD") ?: throw CscException(ct("core_csc_no_sad"))
     }
 
-    suspend fun signHash(token: CscToken, credentialId: String, hashes: List<ByteArray>, signAlgorithm: String, sad: String? = null): List<ByteArray> {
+    suspend fun signHash(
+        token: CscToken, credentialId: String, hashes: List<ByteArray>, signAlgorithm: String, sad: String? = null,
+        /** DER of the algorithm parameters (signAlgoParams), such as the RSASSA-PSS-params of RSA-PSS. */
+        signAlgorithmParams: ByteArray? = null,
+    ): List<ByteArray> {
         val o = call("signatures/signHash", buildJsonObject {
             put("credentialID", credentialId)
             sad?.let { put("SAD", it) }
             putJsonArray("hashes") { hashes.forEach { add(JsonPrimitive(Base64.Default.encode(it))) } }
             put("hashAlgorithmOID", SHA256_OID)
             put("signAlgo", signAlgorithm)
+            signAlgorithmParams?.let { put("signAlgoParams", Base64.Default.encode(it)) }
             put("operationMode", "S")
         }, token)
         // A service may process the request asynchronously anyway and answer with a responseID (section 11.13).
@@ -505,6 +510,12 @@ class CscClient(private val http: HttpClient, val service: CscService) {
         const val ECDSA_SHA256 = "1.2.840.10045.4.3.2"
         const val EC_PUBLIC_KEY = "1.2.840.10045.2.1"
         const val RSA_SHA256 = "1.2.840.113549.1.1.11"
+        const val RSA_PSS = "1.2.840.113549.1.1.10"
+
+        /** RSASSA-PSS-params (RFC 4055) of PS256: SHA-256, MGF1 with SHA-256, salt length 32, trailer field 1. */
+        val PSS_SHA256_PARAMS: ByteArray = diw.wallet.core.document.DocCryptoUtil.unhex(
+            "3034a00f300d06096086480165030402010500a11c301a06092a864886f70d010108300d06096086480165030402010500a203020120",
+        )
         const val RSA_ENCRYPTION = "1.2.840.113549.1.1.1"
         private const val POLL_ATTEMPTS = 60
         private const val POLL_INTERVAL_MS = 2000L
@@ -569,6 +580,19 @@ class CscSigner(
         return if (keyTypeOf(c.certificates.first()) == SignerKeyType.EC_P256 && signature.size == 64) {
             EcSignature(signature.copyOfRange(0, 32), signature.copyOfRange(32, 64)).toDerEncoded()
         } else signature
+    }
+
+    /**
+     * PS256 through signatures/signHash with RSASSA-PSS (signAlgo 1.2.840.113549.1.1.10 and its parameters), when the
+     * credential lists that algorithm; null otherwise.
+     */
+    override suspend fun signRsaPss(data: ByteArray): ByteArray? {
+        val c = credential ?: load()
+        if (keyTypeOf(c.certificates.first()) != SignerKeyType.RSA || CscClient.RSA_PSS !in c.keyAlgorithms) return null
+        val hash = PlatformCrypto.sha256(data)
+        val (token, sad) = authorize(c, hash)
+        onStatus(ct("core_csc_signing"))
+        return client.signHash(token, c.id, listOf(hash), CscClient.RSA_PSS, sad, CscClient.PSS_SHA256_PARAMS).single()
     }
 
     /** The service offers raw signatures (signatures/signHash); a service without it can still sign PAdES through signDoc. */

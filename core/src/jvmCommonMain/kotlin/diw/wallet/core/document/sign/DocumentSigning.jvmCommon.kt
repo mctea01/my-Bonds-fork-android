@@ -334,6 +334,15 @@ actual object DocumentSigning {
                 s.update(data)
                 return s.sign()
             }
+
+            override suspend fun signRsaPss(data: ByteArray): ByteArray? {
+                if (type != SignerKeyType.RSA) return null
+                val s = Signature.getInstance("RSASSA-PSS", Bc.provider)
+                s.setParameter(JcaDocumentSigner.PSS_SHA256)
+                s.initSign(key)
+                s.update(data)
+                return s.sign()
+            }
         }
     }
 

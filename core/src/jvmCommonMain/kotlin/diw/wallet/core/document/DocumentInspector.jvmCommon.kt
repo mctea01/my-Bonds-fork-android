@@ -2,6 +2,7 @@ package diw.wallet.core.document
 
 import diw.wallet.core.i18n.ct
 import diw.wallet.core.i18n.CoreText
+import diw.wallet.core.document.c2pa.AiProvenanceReader
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
@@ -62,8 +63,8 @@ actual object DocumentInspector {
                 DocumentFormat.EMRTD -> MrtdInspection.inspect(data, base, checks, pki, now)
                 DocumentFormat.OPENPGP -> OpenPgpInspection.inspect(data, detachedContent, base, trust, now)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
-                DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, now)
-                else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, now)
+                DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, trust, now)
+                else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, trust, now)
                     else base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
@@ -184,12 +185,21 @@ actual object DocumentInspector {
         return ct("core_tiff_pages", pages.size, pages.first().describe())
     }
 
-    /** Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one. */
-    private suspend fun contentCredentials(b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, now: Instant): DocumentReport {
-        val store = runCatching { C2paManifests.read(b) }.getOrNull() ?: return report
-        val (info, signature) = C2paSignatures(pki, checks).inspect(store, now)
+    /**
+     * Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one, and what the file declares
+     * about AI generation and watermarks (C2PA actions, soft bindings, XMP), which is read without detecting anything.
+     */
+    private suspend fun contentCredentials(b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, trust: DocumentTrustSource, now: Instant): DocumentReport {
+        val store = runCatching { C2paManifests.read(b) }.getOrNull()
+        if (store == null) {
+            val ai = if (report.format == DocumentFormat.IMAGE) runCatching { AiProvenanceReader.read(b, null) }.getOrNull() else null
+            return report.copy(aiProvenance = ai)
+        }
+        val (info, signature) = C2paSignatures(pki, checks, trust).inspect(store, now)
+        val signed = info.manifests.filter { m -> m.statuses.any { it.code == "claimSignature.validated" } }.map { it.label }.toSet()
+        val ai = runCatching { AiProvenanceReader.read(if (store.asset != null) b else null, store, signed) }.getOrNull()
         val note = ct("core_c2pa_present", info.manifests.size, store.container)
-        return report.copy(c2pa = info, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
+        return report.copy(c2pa = info, aiProvenance = ai, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
     }
 
     private fun certificateNote(b: ByteArray): String? =

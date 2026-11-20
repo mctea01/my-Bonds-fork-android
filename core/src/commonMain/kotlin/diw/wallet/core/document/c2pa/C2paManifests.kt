@@ -39,19 +39,63 @@ data class C2paAction(
 @Serializable
 data class C2paIngredient(val title: String?, val format: String?, val relationship: String?, val manifest: String?)
 
-/** A CAWG identity assertion: who the named actor is and how that is bound ([sigType]). */
+/** One entry of the verifiedIdentities of a CAWG identity claims aggregation credential. */
+@Serializable
+data class C2paVerifiedIdentity(
+    /** cawg.social_media, cawg.document_verification, cawg.web_site, cawg.affiliation, cawg.crypto_wallet... */
+    val type: String,
+    val name: String? = null,
+    val username: String? = null,
+    val address: String? = null,
+    val uri: String? = null,
+    val method: String? = null,
+    val verifiedAt: String? = null,
+    val providerId: String? = null,
+    val providerName: String? = null,
+)
+
+/**
+ * A CAWG identity assertion (1.3): who the named actor is and how that is bound ([sigType]), with the CAWG status
+ * codes of its validation.
+ */
 @Serializable
 data class C2paIdentity(
     val sigType: String,
     val names: List<String>,
     val issuer: String? = null,
+    /** The binding and the signature: PASS when every failure code is absent. */
     val signature: Check = Check.NOT_CHECKED,
     val detail: List<String> = emptyList(),
+    /** The assertion label (cawg.identity, cawg.identity__1...). */
+    val label: String? = null,
+    /** Roles of the named actor (signer_payload.role). */
+    val roles: List<String> = emptyList(),
+    /** Labels of the assertions the signer payload references. */
+    val referenced: List<String> = emptyList(),
+    /** Status codes in the CAWG specification's terms; url is the identity assertion's label. */
+    val statuses: List<C2paStatus> = emptyList(),
+    /** cawg.identity.trusted: valid, and the named actor is trusted under the CAWG trust model. */
+    val trusted: Boolean = false,
+    /** The X.509 signature (cawg.x509.cose) checked as a document signature: chain, trust tier, validity, time stamp. */
+    val x509: diw.wallet.core.document.SignatureInfo? = null,
+    /** The identities an identity claims aggregator verified (cawg.identity_claims_aggregation). */
+    val verifiedIdentities: List<C2paVerifiedIdentity> = emptyList(),
+    /** Trust of the aggregator's DID ([diw.wallet.core.trust.DidTrust]). */
+    val issuerTrust: diw.wallet.core.document.TrustSummary? = null,
+    val validFrom: String? = null,
+    val validUntil: String? = null,
 )
 
 /** A validation result in the C2PA specification's own codes (claimSignature.validated, assertion.dataHash.match...). */
 @Serializable
-data class C2paStatus(val code: String, val url: String?, val success: Boolean, val explanation: String? = null)
+data class C2paStatus(
+    val code: String,
+    val url: String?,
+    val success: Boolean,
+    val explanation: String? = null,
+    /** An informational code (neither success nor failure), such as cawg.x509.ocsp.skipped. */
+    val informational: Boolean = false,
+)
 
 /** What one manifest says about the asset, with the results of checking it. */
 @Serializable
@@ -97,6 +141,9 @@ class JumbfSuperbox internal constructor(
 ) {
     /** The bytes C2PA hashes for a hashed URI: the description box and the content boxes, not the superbox header. */
     val hashedBytes: ByteArray get() = store.copyOfRange(start + header, end)
+
+    /** The whole superbox as stored, header included: a manifest copied unchanged into a new store keeps its hashes. */
+    val rawBytes: ByteArray get() = store.copyOfRange(start, end)
 
     fun child(label: String): JumbfSuperbox? = children.firstOrNull { it.label == label }
     fun content(type: String): ByteArray? = contents.firstOrNull { it.first == type }?.second
@@ -489,14 +536,17 @@ object C2paManifests {
     }
 
     /** The raw CAWG identity assertions of [m]: signer payload (CBOR), signature bytes and the sig_type. */
-    fun identityAssertions(m: C2paManifest): List<Triple<DataItem, ByteArray, String>> {
-        return signedAssertions(m).filter { it.label == "cawg.identity" || it.label?.startsWith("cawg.identity__") == true }.mapNotNull { b ->
+    fun identityAssertions(m: C2paManifest): List<Triple<DataItem, ByteArray, String>> =
+        identityBoxes(m).mapNotNull { b ->
             val d = runCatching { Cbor.decode(b.content("cbor") ?: return@mapNotNull null) }.getOrNull() ?: return@mapNotNull null
             val payload = d.getOrNullAny("signer_payload") ?: return@mapNotNull null
             val sig = (d.getOrNullAny("signature") as? Bstr)?.value ?: return@mapNotNull null
             Triple(payload, sig, (payload.getOrNullAny("sig_type") as? Tstr)?.value ?: "")
         }
-    }
+
+    /** The CAWG identity assertion boxes of [m] that its signed claim references (cawg.identity and its instances). */
+    fun identityBoxes(m: C2paManifest): List<JumbfSuperbox> =
+        signedAssertions(m).filter { it.label == "cawg.identity" || it.label?.startsWith("cawg.identity__") == true }
 
     // ---------------------------------------------------------------- helpers
 
