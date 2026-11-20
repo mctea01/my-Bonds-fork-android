@@ -15,6 +15,7 @@ import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.trust.selfIssuedRoot
 import kotlinx.coroutines.runBlocking
 import kotlinx.io.bytestring.ByteString
 import org.bouncycastle.asn1.x500.X500Name
@@ -455,5 +456,33 @@ class TrustAnchorsTest {
         assertTrue(p.rootListings.any { it.kind == RootListing.Kind.BUILT_IN_CSCA && it.name.startsWith("CSCA TW") })
         assertTrue(p.anchoredFor(TrustRole.TRAVEL_DOCUMENT))
         assertEquals(TrustTier.T2, p.decision?.tier)
+    }
+
+    /**
+     * Taiwan's CSCA link certificates (a new key signed by the previous one, under the same name) are not roots: the
+     * path goes on to the CSCA that signed itself, and prefers a self-signed CSCA with the same key to a link.
+     */
+    @Test
+    fun pathGoesPastCscaLinkCertificates() = runBlocking<Unit> {
+        val tw = BuiltInCscas.all.filter { it.country == "TW" }
+        fun csca(prefix: String) = tw.single { it.sha256.startsWith(prefix) }.certificate
+        val root2018 = csca("38769ECF")
+        val link2020 = csca("48E62956")
+        val root2020 = csca("C63466EF")
+        val link2024 = csca("8C894B99")
+        assertTrue(link2020.subject == link2020.issuer && !link2020.selfIssuedRoot)
+        assertTrue(root2018.selfIssuedRoot && root2020.selfIssuedRoot)
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+
+        val p = registry.path(listOf(link2020), TrustRole.TRAVEL_DOCUMENT)
+        assertEquals(listOf(link2020, root2018), p.steps.map { it.certificate })
+        assertTrue(p.rootReached, p.steps.toString())
+        assertTrue(p.steps.all { it.signatureValid == true })
+        assertTrue(p.steps.first().anchor)
+        assertEquals(TrustTier.T2, p.decision?.tier)
+
+        val q = registry.path(listOf(link2024))
+        assertEquals(listOf(link2024, root2020), q.steps.map { it.certificate })
+        assertTrue(q.rootReached)
     }
 }

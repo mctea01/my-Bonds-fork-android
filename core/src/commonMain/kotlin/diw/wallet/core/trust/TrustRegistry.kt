@@ -395,7 +395,7 @@ class TrustRegistry(
         val out = chain.toMutableList()
         while (out.size < MAX_CHAIN) {
             val last = out.last()
-            if (last.subject == last.issuer) break
+            if (last.selfIssuedRoot) break
             out.add(candidates.firstOrNull { c -> c !in out && issues(c, last) } ?: break)
         }
         return out
@@ -530,7 +530,7 @@ class TrustRegistry(
         var downloads = 0
         while (out.size < MAX_CHAIN && downloads < MAX_FETCHES) {
             val last = out.last()
-            if (last.subject == last.issuer) break
+            if (last.selfIssuedRoot) break
             val urls = runCatching { DocCrypto.caIssuerUrls(last.encoded.toByteArray()) }.getOrDefault(emptyList())
             var next: X509Cert? = null
             for (url in urls) {
@@ -663,9 +663,15 @@ class TrustRegistry(
         var downloads = 0
         while (certs.size < MAX_CHAIN) {
             val last = certs.last()
-            if (last.subject == last.issuer) break
+            // A self-issued certificate ends the path only when it signed itself: a link certificate, or one whose
+            // key identifiers are missing, goes on to the certificate that signed it.
+            if (last.subject == last.issuer && Pkix.signedBy(last, last)) {
+                valid[valid.lastIndex] = true
+                break
+            }
+            // A root that signed itself before a link certificate with the same key, so the path ends sooner.
             fun pick(candidates: List<X509Cert>): X509Cert? =
-                candidates.firstOrNull { it !in certs && issues(it, last) && Pkix.signedBy(last, it) }
+                candidates.sortedByDescending { it.selfIssuedRoot }.firstOrNull { it !in certs && issues(it, last) && Pkix.signedBy(last, it) }
             var next: X509Cert? = null
             var source = PathSource.TRUST_SOURCE
             m?.anchor?.let { a -> pick(listOf(a))?.let { next = it; source = if (it in presented) PathSource.PRESENTED else PathSource.TRUST_SOURCE } }
@@ -699,7 +705,9 @@ class TrustRegistry(
             if (next == null) break
         }
         val top = certs.last()
-        if (top.subject == top.issuer && valid.last() == null) valid[valid.lastIndex] = Pkix.signedBy(top, top)
+        // A top certificate that claims to have signed itself and does not verify is shown as such; a link
+        // certificate whose signer is nowhere is left unchecked, like any other certificate whose issuer is missing.
+        if (top.selfIssuedRoot && valid.last() == null) valid[valid.lastIndex] = Pkix.signedBy(top, top)
         val steps = certs.indices.map { i -> PathStep(certs[i], sources[i], valid[i], anchor = m?.anchor == certs[i]) }
 
         val listings = buildList {

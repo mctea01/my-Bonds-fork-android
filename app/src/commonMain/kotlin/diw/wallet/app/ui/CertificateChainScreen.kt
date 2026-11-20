@@ -44,6 +44,7 @@ import diw.wallet.core.trust.RootListing
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustPath
+import diw.wallet.core.trust.selfIssuedRoot
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.x509.displaySubject
@@ -129,7 +130,7 @@ private fun ChainList(p: TrustPath, selected: X509Cert, at: kotlin.time.Instant?
     p.steps.indices.reversed().forEachIndexed { depth, i ->
         val step = p.steps[i]
         val c = step.certificate
-        val selfIssued = c.subject == c.issuer
+        val selfIssued = c.selfIssuedRoot
         val position = when {
             i == last && selfIssued -> stringResource(Res.string.certificate_trust_root_label)
             i == last && last > 0 -> stringResource(Res.string.chain_pos_top)
