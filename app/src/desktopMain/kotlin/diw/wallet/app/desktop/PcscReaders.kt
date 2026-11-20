@@ -81,11 +81,29 @@ object PcscReaders {
         // The ISO/IEC 18013-5 NFC transfer handles 61XX itself with GET RESPONSE; the JDK must not do it first.
         System.setProperty("sun.security.smartcardio.t0GetResponse", "false")
         System.setProperty("sun.security.smartcardio.t1GetResponse", "false")
+        if (SelfCheck.nativeImage) loadBundledJni()
         // Debian, Ubuntu and Fedora keep libpcsclite where the JDK does not look.
         if (System.getProperty("os.name").orEmpty().lowercase().contains("linux") && System.getProperty(LIBRARY) == null) {
             LINUX_LIBRARIES.firstOrNull { File(it).exists() }?.let { System.setProperty(LIBRARY, it) }
         }
         configured = true
+    }
+
+    /**
+     * native-image counts j2pcsc among the JDK libraries it links itself, so PlatformPCSC's System.loadLibrary returns
+     * without opening anything and the first PC/SC call fails with UnsatisfiedLinkError. tools/desktop-native.sh puts
+     * the library beside the executable; loading it by path before javax.smartcardio starts makes its JNI functions
+     * known (and lets PlatformPCSC on Linux open libpcsclite).
+     */
+    private fun loadBundledJni() {
+        val name = System.mapLibraryName("j2pcsc")
+        val dirs = listOfNotNull(
+            System.getProperty("java.home"),
+            ProcessHandle.current().info().command().orElse(null)?.let { File(it).parent },
+        )
+        val file = dirs.map { File(it, name) }.firstOrNull { it.isFile } ?: return
+        runCatching { System.load(file.absolutePath) }
+            .onFailure { lastDetail = "loading $file: ${it::class.java.name}: ${it.message}" }
     }
 
     private fun reason(e: Throwable): String {

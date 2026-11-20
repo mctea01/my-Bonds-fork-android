@@ -171,8 +171,8 @@ case $os in
     linux) mkdir -p "$out/lib" && cp "$graal/lib/libjawt.so" "$out/lib/" ;;
     windows) mkdir -p "$out/bin" && cp "$graal/bin/jawt.dll" "$out/bin/" && cp "$graal/bin/jawt.dll" "$out/" ;;
 esac
-# javax.smartcardio loads its JNI library with System.loadLibrary, which native-image does not bundle; the executable
-# finds it in its own folder (Windows, where it calls winscard.dll) or beside it on Linux (it opens libpcsclite).
+# javax.smartcardio's JNI library: native-image treats j2pcsc as a JDK library it links itself, so loadLibrary opens
+# nothing; PcscReaders loads this copy beside the executable by path (it calls winscard.dll or opens libpcsclite).
 case $os in
     linux) cp "$graal/lib/libj2pcsc.so" "$out/" ;;
     windows) cp "$graal/bin/j2pcsc.dll" "$out/" ;;
