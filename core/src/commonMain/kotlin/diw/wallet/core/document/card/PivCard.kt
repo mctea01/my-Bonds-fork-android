@@ -89,11 +89,29 @@ class PivCard(private val channel: CardChannel) {
      */
     suspend fun sign(pin: String, key: KeyInfo, sha256: ByteArray): ByteArray {
         require(sha256.size == 32)
-        verifyPin(pin)
         // The algorithm identifier and the PKCS#1 block length follow the key's length, so any supported RSA size signs.
-        val (alg, payload) = when (key.keyType) {
-            SignerKeyType.RSA -> rsaAlgId(key.rsaBytes * 8) to pkcs1Block(GpkiCard.SHA256_DIGEST_INFO + sha256, key.rsaBytes)
-            SignerKeyType.EC_P256 -> 0x11 to sha256
+        val payload = when (key.keyType) {
+            SignerKeyType.RSA -> pkcs1Block(GpkiCard.SHA256_DIGEST_INFO + sha256, key.rsaBytes)
+            SignerKeyType.EC_P256 -> sha256
+            SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
+        }
+        return authenticate(pin, key, payload)
+    }
+
+    /**
+     * RSASSA-PSS (PS256) with an RSA key: the card applies its key to the EMSA-PSS block of [data] built on the host
+     * ([diw.wallet.core.document.sign.RsaPss]), as it does to the PKCS#1 block of [sign].
+     */
+    suspend fun signPss(pin: String, key: KeyInfo, data: ByteArray): ByteArray {
+        if (key.keyType != SignerKeyType.RSA) throw SigningException(ct("core_card_not_rsa"))
+        return authenticate(pin, key, diw.wallet.core.document.sign.RsaPss.encode(data, key.rsaBytes * 8))
+    }
+
+    private suspend fun authenticate(pin: String, key: KeyInfo, payload: ByteArray): ByteArray {
+        verifyPin(pin)
+        val alg = when (key.keyType) {
+            SignerKeyType.RSA -> rsaAlgId(key.rsaBytes * 8)
+            SignerKeyType.EC_P256 -> 0x11
             SignerKeyType.SM2 -> throw SigningException(ct("core_key_sm2_unsupported"))
         }
         // Dynamic authentication template: 7C { 82 (empty response) 81 (data to sign) }.
@@ -305,6 +323,19 @@ class PivTapSigner(
             card.sign(pin, k, digest)
         })
         verify(k, data, signature)
+        return signature
+    }
+
+    override suspend fun signRsaPss(data: ByteArray): ByteArray? {
+        val k = key ?: throw SigningException(ct("core_card_not_read"))
+        if (k.keyType != SignerKeyType.RSA) return null
+        val signature = reader.scan(ct("core_piv_hold_again"), tagInteractionFunc = { tag ->
+            val card = PivCard(NfcCardChannel(tag))
+            card.connect()
+            card.signPss(pin, k, data)
+        })
+        val rsa = PlatformCrypto.rsaPublicKeyFromCertificate(k.certificate) ?: throw SigningException(ct("core_card_not_rsa"))
+        if (!PlatformCrypto.verifyRsa("PS256", rsa, data, signature)) throw SigningException(ct("core_card_pss_refused"))
         return signature
     }
 

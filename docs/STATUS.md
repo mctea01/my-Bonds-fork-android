@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-20（main 到 PR #146：電腦版原生 Windows 版輸入修正與寬窄視窗版面；一般使用者的使用教程（PR #156）；zkPassport 憑證包的 UIDAI 憑證與 CSCA 鏈結憑證的信任鏈（PR #153）；版本線 0.5 與穩定版發佈（PR #155））。
+最後更新：2026-11-20（C2PA 與 CAWG 身分簽署、CAWG 1.3 驗證、AI 來源宣告與 SynthID 官方查驗連結；版本線 0.5；main 到 PR #157）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -82,8 +82,10 @@ P4 之後合併的工作：
 
 | 功能 | 狀態 | 備註 |
 |---|---|---|
-| 檢查：PAdES、CAdES、XAdES、ASiC、.si、OFD 與 SES、RFC 3161、OpenCerts、SM2、OpenPGP、C2PA | 可用 | C2PA 不含 BMFF（影片、HEIC）、PDF 內嵌與 `c2pa.hash.boxes` |
-| 簽署：自然人憑證卡、PIV、OpenPGP 卡、PKCS#11、PKCS#12、系統金鑰、錢包金鑰、CSC、行動自然人憑證 | 可用 | CSC 的 `authorization_details`（RFC 9396）未做 |
+| 檢查：PAdES、CAdES、XAdES、ASiC、.si、OFD 與 SES、RFC 3161、OpenCerts、SM2、OpenPGP、C2PA | 可用 | C2PA 不含 BMFF（影片、HEIC）、PDF 內嵌與 `c2pa.hash.boxes`；CAWG 1.3 身分（X.509 與身分彙整憑證）依規格驗證 |
+| C2PA 內容憑證簽署與 CAWG 身分聲明 | 可用 | JPEG、PNG、WebP 內嵌，其他檔案為外部清單；RSA 金鑰改用 PS256。身分聲明預設以標準的決定性編碼簽署，c2pa-rs（含 contentcredentials.org）目前只接受它自己的欄位順序，可在簽署選項改用；見 [c2pa-cawg.md](design/c2pa-cawg.md) |
+| AI 生成與浮水印宣告（IPTC 來源類型、軟綁定、SynthID） | 可用 | 只讀宣告、不偵測浮水印；SynthID 沒有公開偵測器，提供 Google 官方查驗頁連結（需登入、有每日次數） |
+| 簽署：自然人憑證卡、PIV、OpenPGP 卡、PKCS#11、PKCS#12、系統金鑰、錢包金鑰、CSC、行動自然人憑證 | 可用 | CSC 的 `authorization_details`（RFC 9396）未做；RSA-PSS 供 C2PA 使用（卡片以原始 RSA 加錢包端 PSS 編碼） |
 | 保證層級 B-B 到 B-LTA、PDF 認證簽章、可見簽章、延長保存 | 可用 | |
 | OFD 預覽、發票欄位、數位簽章與電子印章 | 可用 | SM2 金鑰只用於 OFD；名稱寫錯的頁面與資源檔會還原並加註，頁面清單以外的結構檔（Document.xml 等）寫錯則不處理 |
 | 電子公文容器、線上簽核點、交換檔（.en、.esw）讀取 | 可用 | .esw 不解密；交換檔尚無真實樣本比對 |
@@ -128,7 +130,8 @@ P4 之後合併的工作：
 | zkPassport 離線註冊表模式 | 離線時無法查驗 | 排程 |
 | 加密 request object 的解密金鑰登錄 | 程式路徑已有，App 沒有登錄金鑰 | 排程 |
 | CSC `authorization_details` | RFC 9396 | 可測的服務 |
-| C2PA 其他容器與寫入 | BMFF、PDF 內嵌、`c2pa.hash.boxes`、身分彙整服務的簽章 | 排程 |
+| C2PA 其他容器 | BMFF、PDF 內嵌、`c2pa.hash.boxes` 的讀取與寫入；錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation` | 排程 |
+| CAWG 身分聲明的預設編碼 | 規格要求決定性編碼，c2pa-rs 0.92 以自己的欄位順序驗證；預設照規格，互通選項可改 | c2pa-rs 修正或使用者決定 |
 | France Identité 互通 | 協定已具備，缺合作夥伴登錄 | 使用者決定是否申請 |
 | 關於頁的第三方元件清單 | 只列主要元件，完整清單在 [NOTICE](../NOTICE) | 視需要補 |
 | 台灣 G2C | 尚無公開標準，只留接口 | 外部 |
@@ -146,7 +149,7 @@ P4 之後合併的工作：
 | 發證與出示 | 公開發證端（EUDI）以錢包證明或公開用戶端領卡、mdoc transaction_data、付款交易、VICAL 與 RICAL |
 | TWDIW | 新版夥伴卡領卡、平台改版後的出示重測 |
 | 簽章 | 自然人憑證卡與 CSC 的 B-LTA、延長保存、PDF 可見簽章（以 Acrobat 檢查）、PIV、OpenPGP 卡（YubiKey NFC 與 USB） |
-| 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、分享到常用 App 的檔名 |
+| 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔在 contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |
 | 查驗方（P5） | 兩機線上查驗（服務端轉送與區網直連）、近距離 QR + 藍牙查驗與聲明、X.509 與 OpenPGP 卡證據、Bonds 藍牙加密與對原版 Bonds 的未加密傳輸 |
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
 | 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw`）、人臉比對的相機與轉頭檢查、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |

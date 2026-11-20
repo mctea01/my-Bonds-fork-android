@@ -48,6 +48,7 @@
 | [design/p5-verifier.md](design/p5-verifier.md) | 規格 | 驗證者透明與主動查驗：查驗方身分與證據、查驗方聲明與 WRPRC、授權書、線上與近距離查驗、Bonds 藍牙加密、衍生憑證與 ZK 查驗政策 |
 | [design/zkpassport.md](design/zkpassport.md) | 規格 | 電子護照與 zkPassport：請求與 bridge 協定、查驗與信任、Z1 到 Z4、自己的證明器、OPRF、法律聲明 |
 | [design/bbs-2023.md](design/bbs-2023.md) | 規格 | bbs-2023：原生 BBS、JSON-LD 與 RDFC-1.0、可選功能的 DIW 發證擴充、出示與查驗 |
+| [design/c2pa-cawg.md](design/c2pa-cawg.md) | 規格 | C2PA 簽署、CAWG 身分聲明的簽署與驗證、AI 來源宣告與 SynthID、RSA-PSS 與 c2pa-rs 互通 |
 | [design/openpgp.md](design/openpgp.md) | 規格 | OpenPGP 與 OpenPGP 卡：APDU、簽署與解密、公開金鑰清單與信任等級 |
 | [design/i18n.md](design/i18n.md) | 規格 | 多語系：字串資源機制、語言切換、core 訊息代碼化、術語表 |
 | [design/review-followups.md](design/review-followups.md) | 紀錄 | 2026-10-29 全專案 Review 的查證結果與各項的處理 |

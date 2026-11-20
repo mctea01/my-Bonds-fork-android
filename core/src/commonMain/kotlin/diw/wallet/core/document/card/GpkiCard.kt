@@ -128,7 +128,15 @@ class GpkiCard(private val channel: CardChannel) {
      */
     suspend fun signSha256(pin: String, keyRef: Int, digest: ByteArray): ByteArray {
         require(digest.size == 32)
-        val block = pkcs1Block(SHA256_DIGEST_INFO + digest)
+        return signBlock(pin, keyRef, pkcs1Block(SHA256_DIGEST_INFO + digest))
+    }
+
+    /**
+     * Applies the private key to a host-encoded [block] of the modulus length: the EMSA-PKCS1-v1_5 block of
+     * [signSha256], or an EMSA-PSS block ([diw.wallet.core.document.sign.RsaPss]) for an RSASSA-PSS signature.
+     */
+    suspend fun signBlock(pin: String, keyRef: Int, block: ByteArray): ByteArray {
+        require(block.size == RSA_LEN)
         return when (generation) {
             Generation.GEN2 -> {
                 openScp03()
@@ -303,7 +311,7 @@ class GpkiCard(private val channel: CardChannel) {
         const val PIN_MIN = 6
         const val PIN_MAX = 10
         private const val CHUNK = 0xC8
-        private const val RSA_LEN = 256
+        const val RSA_LEN = 256
         private const val CARD_DF = 0x5030
         private const val KEY_EF = 0x0810
         private const val PRKDF = 0x4100
@@ -431,6 +439,9 @@ class GpkiCardSigner(
     override val source = SignerSource.SMART_CARD
 
     override suspend fun sign(data: ByteArray): ByteArray = card.signSha256(pin, key.keyRef, DocCrypto.digest("SHA-256", data))
+
+    override suspend fun signRsaPss(data: ByteArray): ByteArray? =
+        card.signBlock(pin, key.keyRef, diw.wallet.core.document.sign.RsaPss.encode(data, GpkiCard.RSA_LEN * 8))
 }
 
 /** Minimal DER reading for PKCS#15 directory files. */
