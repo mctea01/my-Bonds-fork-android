@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -150,6 +151,7 @@ private fun PageColumn(page: Any? = null, content: @Composable () -> Unit) {
             Modifier.widthIn(max = 720.dp).fillMaxSize().verticalScroll(scroll).padding(horizontal = 20.dp, vertical = 24.dp),
             verticalArrangement = Arrangement.spacedBy(14.dp),
         ) { content() }
+        VerticalScrollIndicator(scroll, Modifier.align(Alignment.CenterEnd).fillMaxHeight())
     }
 }
 

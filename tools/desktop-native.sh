@@ -7,12 +7,16 @@
 #      up to 25 moved to the root (native-image does not read them from the class path);
 #   2. GraalVM's tracing agent records reflection, JNI, proxies and resources into one directory from the desktop tests
 #      (AGENT_TESTS=0 skips them), the self-check (--self-check) and the app itself for AGENT_SECONDS (under Xvfb on
-#      Linux); tools/native-metadata-filter.py then drops what only the tests use;
+#      Linux), while java.awt.Robot types, pastes and right-clicks in it (DIW_EXERCISE_INPUT, InputExercise.kt);
+#      tools/native-metadata-filter.py then drops what only the tests use. tools/NativeAwtJni.java adds JNI metadata
+#      for every callback AWT's native libraries can make (key, mouse and input method events, the clipboard), since a
+#      run only records the ones it happened to use and GraalVM registers none of them;
 #   3. native-image with GraalVM 25. No heap limit is given: the executable may use up to 80 % of the machine's memory
 #      (GraalVM's default MaximumHeapSizePercent), and the proving libraries run outside the heap anyway;
 #   4. build/desktop-native/<os>/ holds the executable, the JDK libraries native-image puts beside it and the JAWT
 #      library where Skiko looks for it (the app points java.home at the executable's folder);
-#   5. the executable must pass its self-check and show its first screen (DIW_EXIT_AFTER_SECONDS).
+#   5. the executable must pass its self-check, show its first screen (DIW_EXIT_AFTER_SECONDS) and take the same
+#      typing, pasting and right-clicks as the JVM did (skipped with a warning when Robot did not work under the JVM).
 # Needs GRAALVM_HOME (GraalVM 25), ANDROID_HOME and Python 3; on Linux xvfb-run, on Windows Visual Studio's C++ tools
 # (found with vswhere when cl.exe is not on the PATH). NATIVE_IMAGE_XMX caps native-image's own memory (about 11 GB
 # are needed). Usage: tools/desktop-native.sh
@@ -76,30 +80,66 @@ fi
 agent=(-agentlib:native-image-agent=config-merge-dir="$meta" --add-modules=java.smartcardio
     --add-opens=java.smartcardio/sun.security.smartcardio=ALL-UNNAMED -Dfile.encoding=UTF-8 -jar "$work/app.jar")
 with_display "$java" "${agent[@]}" --self-check "$work/self-check-jvm.txt" || { cat "$work/self-check-jvm.txt" || true; exit 1; }
-# The app closes itself after AGENT_SECONDS through a normal exit, so the agent writes what it saw.
-DIW_WALLET_HOME="$work/home" DIW_EXIT_AFTER_SECONDS="${AGENT_SECONDS:-60}" with_display "$java" "${agent[@]}"
+# The app closes itself after AGENT_SECONDS through a normal exit, so the agent writes what it saw. Exit code 3 or 4:
+# the input exercise failed under the JVM too (Robot cannot drive this desktop), so the native run does not repeat it.
+exercise=1
+code=0
+DIW_WALLET_HOME="$work/home" DIW_EXIT_AFTER_SECONDS="${AGENT_SECONDS:-60}" DIW_EXERCISE_INPUT=1 \
+    with_display "$java" "${agent[@]}" || code=$?
+case $code in
+    0) ;;
+    3|4) exercise=0; echo "::warning::the input exercise failed under the JVM (exit $code); the native executable is not checked for input" ;;
+    *) echo "The app failed under the tracing agent (exit $code)" >&2; exit 1 ;;
+esac
+
+# JNI callbacks of AWT's native libraries (tools/NativeAwtJni.java), from the libraries and classes of this GraalVM.
+awt=$work/awt-jni
+mkdir -p "$awt"
+libs=()
+for name in awt awt_xawt fontmanager jawt lcms mlib_image javajpeg j2pcsc; do
+    for f in "$graal/bin/$name.dll" "$graal/lib/lib$name.so"; do
+        [ -f "$f" ] && libs+=("$([ "$os" = windows ] && cygpath -w "$f" || echo "$f")")
+    done
+done
+[ ${#libs[@]} -gt 0 ] || { echo "No AWT libraries found in $GRAALVM_HOME" >&2; exit 1; }
+"$java" tools/NativeAwtJni.java "$awt/reachability-metadata.json" "${libs[@]}"
 
 # What the agent sees only by chance: AWT's toolkit thread looks up Thread.yield through JNI only when its event loop
-# has to wait, so a run may or may not record it, and without it the window's toolkit thread dies.
+# has to wait, so a run may or may not record it, and without it the window's toolkit thread dies. The PC/SC provider
+# (javax.smartcardio) is created reflectively and only when a run reaches it with a working PC/SC service, and
+# PcscReaders resets its cached context through a private field. Reading the clipboard sorts its flavors through
+# java.rmi.MarshalledObject, looked up reflectively; without its constructor every paste throws an AssertionError.
 extra=$work/extra
 mkdir -p "$extra"
 cat > "$extra/reachability-metadata.json" <<'JSON'
 {
   "reflection": [
     { "type": "java.lang.Thread", "jniAccessible": true,
-      "methods": [ { "name": "yield", "parameterTypes": [] }, { "name": "currentThread", "parameterTypes": [] } ] }
+      "methods": [ { "name": "yield", "parameterTypes": [] }, { "name": "currentThread", "parameterTypes": [] } ] },
+    { "type": "sun.security.smartcardio.SunPCSC", "methods": [ { "name": "<init>", "parameterTypes": [] } ] },
+    { "type": "sun.security.smartcardio.SunPCSC$Factory",
+      "methods": [ { "name": "<init>", "parameterTypes": [ "java.lang.Object" ] } ] },
+    { "type": "sun.security.smartcardio.PCSCTerminals", "fields": [ { "name": "contextId" } ] },
+    { "type": "java.rmi.Remote" },
+    { "type": "java.rmi.MarshalledObject",
+      "methods": [ { "name": "<init>", "parameterTypes": [ "java.lang.Object" ] }, { "name": "get", "parameterTypes": [] } ] },
+    { "type": "sun.security.smartcardio.PCSCException", "jniAccessible": true,
+      "methods": [ { "name": "<init>", "parameterTypes": [ "int" ] } ] }
   ]
 }
 JSON
 
 echo "== native-image"
-args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra" --no-fallback -march=compatibility
+args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra,$awt" --no-fallback -march=compatibility
     -H:+UnlockExperimentalVMOptions -H:+ReportExceptionStackTraces --enable-url-protocols=http,https
     -Dfile.encoding=UTF-8 --add-modules=java.smartcardio
     # Every charset (GBK, Big5 and the Windows code pages in documents and native.encoding) and every locale.
     -H:+AddAllCharsets -H:+IncludeAllLocales
     # Every resource but classes: images, fonts and strings of screens the agent never opened are still there.
     "-H:IncludeResources=.*" "-H:ExcludeResources=.*\\.class\$"
+    # A reflection, JNI or resource lookup that the metadata lacks is printed to stderr (with its stack) and then
+    # fails as it would without this option, so what is missing shows in the smoke run below and in a user's console.
+    --exact-reachability-metadata -R:MissingRegistrationReportingMode=Warn
     -o "$out/diw-desktop")
 [ -n "${NATIVE_IMAGE_XMX:-}" ] && args+=("-J-Xmx$NATIVE_IMAGE_XMX")
 # A window application on Windows, without a console beside it.
@@ -131,15 +171,46 @@ case $os in
     linux) mkdir -p "$out/lib" && cp "$graal/lib/libjawt.so" "$out/lib/" ;;
     windows) mkdir -p "$out/bin" && cp "$graal/bin/jawt.dll" "$out/bin/" && cp "$graal/bin/jawt.dll" "$out/" ;;
 esac
+# javax.smartcardio's JNI library: native-image treats j2pcsc as a JDK library it links itself, so loadLibrary opens
+# nothing; PcscReaders loads this copy beside the executable by path (it calls winscard.dll or opens libpcsclite).
+case $os in
+    linux) cp "$graal/lib/libj2pcsc.so" "$out/" ;;
+    windows) cp "$graal/bin/j2pcsc.dll" "$out/" ;;
+esac
 
 echo "== native executable"
 code=0
 with_display "$out/$exe" --self-check "$work/self-check-native.txt" || code=$?
 cat "$work/self-check-native.txt" || true
 [ "$code" = 0 ] || { echo "The native self-check failed (exit $code)" >&2; exit 1; }
+# PC/SC never fails the self-check (a runner may have no service), but the native executable must reach it exactly as
+# the JVM did on the same machine: a different result means a library or registration the image lacks.
+jvm_pcsc=$(grep "^self-check pcsc ok" "$work/self-check-jvm.txt" | tr -d '\r' || true)
+native_pcsc=$(grep "^self-check pcsc ok" "$work/self-check-native.txt" | tr -d '\r' || true)
+if [ "$jvm_pcsc" != "$native_pcsc" ]; then
+    echo "PC/SC differs from the JVM: JVM \"$jvm_pcsc\", native \"$native_pcsc\"" >&2
+    exit 1
+fi
 code=0
-DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-20}" with_display "$out/$exe" || code=$?
-[ "$code" = 0 ] || { echo "The native executable did not show its first screen (exit $code)" >&2; exit 1; }
+DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-30}" DIW_EXERCISE_INPUT=$exercise \
+    with_display "$out/$exe" 2> "$work/smoke-stderr.txt" || code=$?
+# Missing registrations the run hit, once each, then the rest of stderr; the whole file goes into the artifact.
+cp "$work/smoke-stderr.txt" "$out/smoke-stderr.txt"
+missing=$(grep -E "Missing[A-Za-z]*RegistrationError|MissingRegistration" "$work/smoke-stderr.txt" | sort | uniq -c | sort -rn || true)
+if [ -n "$missing" ]; then
+    echo "::warning::the native executable hit missing registrations (see smoke-stderr.txt in the artifact)"
+    echo "$missing" | head -200
+fi
+head -c 200000 "$work/smoke-stderr.txt"
+case $code in
+    0) ;;
+    3) echo "The native executable did not take keyboard, clipboard or right-click input (exit 3)" >&2; exit 1 ;;
+    # Robot's input did not reach the window, but a click and keys posted through AWT's event queue reached the PIN
+    # field: AWT and Compose handle input, and the CI desktop kept the window from the foreground. Checked on a real
+    # desktop instead; the executable is still uploaded.
+    4) echo "::warning::Robot input did not reach the native window on this desktop; input posted through AWT worked (exit 4)" ;;
+    *) echo "The native executable did not show its first screen (exit $code)" >&2; exit 1 ;;
+esac
 cp "$work/self-check-native.txt" "$out/self-check.txt"
 ls -l "$out"
 echo "Built $out/$exe"

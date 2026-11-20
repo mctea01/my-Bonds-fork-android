@@ -19,7 +19,7 @@ import java.security.spec.ECGenParameterSpec
 
 /**
  * `--self-check [file]`: exercises what a native executable most often loses (the ZK library through JNA, SQLite,
- * Bouncy Castle, Skia, string resources, PC/SC and the wallet's own start-up) without a window, prints one line per
+ * Bouncy Castle, Skia, string resources, the clipboard, PC/SC and the wallet's own start-up) without a window, prints one line per
  * check and, with [file], writes the same lines there (a Windows GUI executable has no console). Returns the exit
  * code: 0 when every required check passed. tools/desktop-native.sh runs it under the tracing agent and against the
  * native executable.
@@ -65,6 +65,22 @@ object SelfCheck {
                     surface.makeImageSnapshot().use { "raster ${it.width}x${it.height}" }
                 }
             }
+            // Pasting builds a ClipboardTransferable, which sorts the flavors through reflection on java.rmi.
+            if (!java.awt.GraphicsEnvironment.isHeadless()) check("clipboard") {
+                val clipboard = java.awt.Toolkit.getDefaultToolkit().systemClipboard
+                val previous = runCatching { clipboard.getContents(null) }.getOrNull()
+                val text = "DIW 數位憑證 ${System.nanoTime()}"
+                try {
+                    clipboard.setContents(java.awt.datatransfer.StringSelection(text), null)
+                    val contents = requireNotNull(clipboard.getContents(null)) { "no contents" }
+                    val flavors = contents.transferDataFlavors.size
+                    val back = contents.getTransferData(java.awt.datatransfer.DataFlavor.stringFlavor) as String
+                    require(back == text) { "read back \"$back\"" }
+                    "text round trip, $flavors flavors"
+                } finally {
+                    previous?.let { runCatching { clipboard.setContents(it, null) } }
+                }
+            }
             check("zk") {
                 if (!ZkNative.bundled("diw_zk")) return@check "not bundled in this build"
                 when (val r = ZkNative.load(work)) {
@@ -95,6 +111,7 @@ object SelfCheck {
             // Optional: a CI runner has no PC/SC service or reader; the call itself must not crash.
             val readers = runCatching { PcscReaders.list() }
             report("pcsc", true, readers.fold({ r -> "${r.readers.size} readers" + (r.problem?.let { ", $it" } ?: "") }, { "unavailable: ${it::class.java.name}: ${it.message}" }))
+            PcscReaders.lastDetail?.let { report("pcsc-detail", true, it) }
         } catch (e: Throwable) {
             report("self-check", false, "${e::class.java.name}: ${e.message}")
         } finally {

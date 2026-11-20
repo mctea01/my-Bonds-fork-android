@@ -94,7 +94,7 @@ internal fun BondsAgeChooseView(model: WalletModel, s: OfflineUi.AgeChoose) {
     var stage by remember(s) { mutableStateOf(0) }
     val card = s.cards[index.coerceAtMost(s.cards.lastIndex)]
     val left = requestSecondsLeft(s.request)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         AgeRequestCard(s.request, s.known)
         Text(stringResource(Res.string.age_only_proof, s.request.cutoff),
             style = MaterialTheme.typography.bodyMedium)
@@ -115,7 +115,7 @@ internal fun BondsAgeChooseView(model: WalletModel, s: OfflineUi.AgeChoose) {
                 }
             }
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { stage = if (s.known) 2 else 1 }, enabled = left > 0) { Text(stringResource(Res.string.age_make_send)) }
             OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
         }
@@ -151,7 +151,7 @@ internal fun BondsAgeWorkingView(model: WalletModel, s: OfflineUi.AgeWorking) {
     val left = requestSecondsLeft(s.request)
     val qr = s.qr
     if (qr != null) {
-        Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+        ScreenColumn(spacing = 10.dp,
             horizontalAlignment = Alignment.CenterHorizontally) {
             Text(stringResource(Res.string.age_show_frames), style = MaterialTheme.typography.titleMedium)
             AnimatedQr(qr, Modifier.fillMaxWidth().widthIn(max = 420.dp))
@@ -164,7 +164,7 @@ internal fun BondsAgeWorkingView(model: WalletModel, s: OfflineUi.AgeWorking) {
         }
         return
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         AgeRequestCard(s.request)
         Text(
             when {
@@ -203,9 +203,9 @@ private const val QR_FRAME_MS = 150L
 
 @Composable
 internal fun BondsAgeResultView(model: WalletModel, s: OfflineUi.AgeResult) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         VerdictCard(if (s.accepted) Verdict.PASS else Verdict.FAIL, s.title, s.lines)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             if (s.retry && s.request.isFresh(Clock.System.now())) {
                 Button(onClick = { model.taiwan.age.prove(s.request, s.card, false) }) { Text(stringResource(Res.string.action_retry)) }
             }
@@ -229,7 +229,7 @@ internal fun BondsAgeVerifierWaitingView(
         }
     }
     val qrOnly = s.host == BondsAgeVerifierFlow.ANIMATED_QR
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+    ScreenColumn(spacing = 10.dp,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(if (s.request.nearby && !qrOnly) stringResource(Res.string.age_scan_with_bonds) else stringResource(Res.string.age_scan_with_wallet), style = MaterialTheme.typography.titleMedium)
         QrImage(s.request.encode(), Modifier.fillMaxWidth().widthIn(max = 360.dp))
@@ -270,7 +270,7 @@ internal fun BondsAgeVerifierWaitingView(
 internal fun BondsAgeVerifierResultView(model: WalletModel, s: OfflineUi.AgeVerifierResult) {
     val v = s.verification
     val age = s.request.minimumAge
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         when {
             v != null && !v.proofValid -> VerdictCard(Verdict.FAIL, stringResource(Res.string.age_failed), listOfNotNull(v.reason))
             v != null && v.selfIssued -> VerdictCard(Verdict.CAUTION, stringResource(Res.string.age_valid_self, age),
@@ -330,7 +330,7 @@ internal fun BondsAgeVerifierSetup(model: WalletModel, canScanFrames: Boolean) {
         Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
             Text(stringResource(Res.string.age_verify_title), style = MaterialTheme.typography.titleMedium)
             Text(stringResource(Res.string.age_verify_text), style = MaterialTheme.typography.bodySmall)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 AgeRoute.entries.forEach { r ->
                     FilterChip(selected = route == r, onClick = { route = r }, enabled = r == AgeRoute.HOST || available[r] == true,
                         label = { Text(stringResource(r.label)) })
@@ -349,7 +349,7 @@ internal fun BondsAgeVerifierSetup(model: WalletModel, canScanFrames: Boolean) {
             if (route == AgeRoute.HOST) PeerServerButton(model)
             OutlinedTextField(value = ageText, onValueChange = { t -> ageText = t.filter { it.isDigit() }.take(3) },
                 label = { Text(stringResource(Res.string.age_minimum)) }, singleLine = true, modifier = Modifier.width(140.dp), isError = age == null)
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.SELF_ISSUED).forEach { s ->
                     FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
                 }

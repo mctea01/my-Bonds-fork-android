@@ -75,7 +75,7 @@ private fun ReviewView(model: WalletModel, request: MsIssuanceRequest) {
     LaunchedEffect(request) {
         candidates = request.presentationRequirements.associate { it.credentialType to model.ms.candidates(it) }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         TrustCard(stringResource(Res.string.role_issuer), request.issuedBy ?: request.clientName ?: request.issuerDid, request.trust,
             listOf(stringResource(Res.string.flow_verifier_did, request.issuerDid), stringResource(Res.string.ms_endpoint, request.credentialIssuer)))
         Text(request.cardTitle ?: stringResource(Res.string.ms_credential), style = MaterialTheme.typography.titleLarge)
@@ -126,7 +126,7 @@ private fun ReviewView(model: WalletModel, request: MsIssuanceRequest) {
             request.presentationRequirements.all { !it.required || chosen[it.credentialType] != null } &&
             (request.pinRequirement == null || pin.length == request.pinRequirement!!.length)
         val ok = riskAcknowledgement(request.trust)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.ms.complete(request, selfIssued.toMap(), pin, chosen.toMap()) }, enabled = ready && ok) { Text(stringResource(Res.string.action_add)) }
             OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
         }

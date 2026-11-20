@@ -67,7 +67,7 @@ internal fun Busy(text: String) {
 
 @Composable
 internal fun Failure(text: String, onClose: () -> Unit) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_failed), listOf(text))
         Button(onClick = onClose) { Text(stringResource(Res.string.action_home)) }
     }
@@ -112,7 +112,7 @@ fun IssuanceScreen(model: WalletModel) {
             // Offers start with everything selected; a wallet-initiated list starts empty.
             var selected by remember(s) { mutableStateOf(if (s.walletInitiated) emptySet() else s.configurations.map { it.id }.toSet()) }
             val tx = s.session.txCode
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ScreenColumn(spacing = 12.dp) {
                 TrustCard(stringResource(Res.string.role_issuer), s.issuerName, s.trust, listOf(s.session.issuer.credentialIssuer))
                 s.requestedBy?.let { Text(stringResource(Res.string.flow_dc_requested_by, it), style = MaterialTheme.typography.bodySmall) }
                 Text(if (s.walletInitiated) stringResource(Res.string.flow_pick_offers) else stringResource(Res.string.flow_will_add), style = MaterialTheme.typography.titleSmall)
@@ -151,7 +151,7 @@ fun IssuanceScreen(model: WalletModel) {
                 }
                 val ok = riskAcknowledgement(s.trust)
                 val txOk = tx == null || (tx.length == null && txCode.isNotEmpty()) || txCode.length == tx.length
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WrapRow() {
                     Button(onClick = { model.acceptOffer(s, txCode.ifEmpty { null }, selected.toList()) }, enabled = ok && txOk && selected.isNotEmpty()) {
                         Text(if (s.preAuthorized) stringResource(Res.string.action_add) else stringResource(Res.string.flow_go_login))
                     }
@@ -159,7 +159,7 @@ fun IssuanceScreen(model: WalletModel) {
                 }
             }
         }
-        is IssuanceUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is IssuanceUi.Done -> ScreenColumn(spacing = 12.dp) {
             val issued = s.results.count { it is IssuanceResult.Issued }
             when {
                 s.failures.isEmpty() && issued == s.results.size -> VerdictCard(Verdict.PASS, stringResource(Res.string.flow_added_count, issued))
@@ -212,7 +212,7 @@ fun PresentationScreen(model: WalletModel) {
         is PresentationUi.Consent -> {
             val req = s.request
             val v = req.verifier
-            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+            ScreenColumn(spacing = 12.dp) {
                 val extra = buildList {
                     add(stringResource(Res.string.flow_verifier_id_scheme, v.clientId.prefix.wire.toString()))
                     if (v.dnsNames.isNotEmpty()) add(stringResource(Res.string.flow_verifier_domain, v.dnsNames.joinToString()))
@@ -267,7 +267,7 @@ fun PresentationScreen(model: WalletModel) {
                 if (s.terms?.termsUri != null) {
                     Text(stringResource(Res.string.flow_terms_agree_note), style = MaterialTheme.typography.bodySmall)
                 }
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WrapRow() {
                     Button(onClick = { model.approve(s, values.toMap()) }, enabled = ok && fieldsOk && statusOk && attestationsOk) { Text(stringResource(Res.string.flow_agree_share)) }
                     OutlinedButton(onClick = { model.decline(s) }) { Text(stringResource(Res.string.action_decline)) }
                 }

@@ -30,7 +30,7 @@ class ScanActions(val camera: (() -> Unit)?, val image: () -> Unit) {
 /** The camera button with "from a picture" beside it; only the picture button where there is no camera. */
 @Composable
 fun ScanButtons(scan: ScanActions, enabled: Boolean = true) {
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         Button(onClick = scan.primary, enabled = enabled) {
             Icon(if (scan.camera != null) WalletIcons.Scan else WalletIcons.Image, contentDescription = null, modifier = Modifier.size(18.dp))
             Spacer(Modifier.width(6.dp))

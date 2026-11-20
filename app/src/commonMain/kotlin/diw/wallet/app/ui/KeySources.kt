@@ -180,7 +180,7 @@ internal fun CardPicker(model: WalletModel, onChange: (SignerChoice.Card?) -> Un
             Text(list.problem ?: stringResource(Res.string.files_no_reader), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); update() } }) { Text(stringResource(Res.string.action_find_again)) }
         }
-        else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        else -> WrapRow() {
             list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; update() }, label = { Text(r.name) }) }
         }
     }
@@ -225,7 +225,7 @@ private fun PivKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) 
             Text(list.problem ?: stringResource(Res.string.files_no_reader), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
             OutlinedButton(onClick = { scope.launch { readers = runCatching { model.platform.nfcReaders() }.getOrNull(); reader = readers?.readers?.firstOrNull(); certs = null; slot = null; update() } }) { Text(stringResource(Res.string.action_find_again)) }
         }
-        else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        else -> WrapRow() {
             list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r; certs = null; slot = null; update() }, label = { Text(r.name) }) }
         }
     }
@@ -290,12 +290,12 @@ internal fun SignerPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit)
             SignerKind.HARDWARE, SignerKind.SYSTEM, SignerKind.MOBILE, SignerKind.CSC -> other
         }
     )
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         SignerKind.entries.forEach { k -> FilterChip(selected = k == kind, onClick = { kind = k; other = null; update() }, label = { Text(stringResource(k.title)) }) }
     }
     when (kind) {
         SignerKind.HARDWARE -> {
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 HardwareKind.entries.forEach { h -> FilterChip(selected = h == hardware, onClick = { hardware = h; other = null; update() }, label = { Text(stringResource(h.title)) }) }
             }
             when (hardware) {
@@ -372,7 +372,7 @@ private fun TokenKeyPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit
     var busy by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     if (found.isNotEmpty()) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             found.forEach { path -> FilterChip(selected = path == library, onClick = { library = path; list = null; onChange(null) },
                 label = { Text(path.substringAfterLast('/').substringAfterLast('\\')) }) }
         }
@@ -583,7 +583,7 @@ private fun CscPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
 @Composable
 private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     var byProfile by remember { mutableStateOf(false) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         FilterChip(selected = !byProfile, onClick = { byProfile = false }, label = { Text(stringResource(Res.string.csc_add_fields)) })
         FilterChip(selected = byProfile, onClick = { byProfile = true }, label = { Text(stringResource(Res.string.csc_import_profile)) })
     }
@@ -612,7 +612,7 @@ private fun CscServiceForm(model: WalletModel, onDone: () -> Unit) {
     Text(stringResource(Res.string.csc_redirect_text, CscServices.WALLET_REDIRECT),
         style = MaterialTheme.typography.bodySmall)
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         Button(onClick = { model.csc.add(name, baseUrl, clientId, secret, redirect, env); onDone() }, enabled = problem == null) { Text(stringResource(Res.string.action_add)) }
         OutlinedButton(onClick = onDone) { Text(stringResource(Res.string.action_cancel)) }
     }
@@ -633,7 +633,7 @@ private fun CscProfileForm(model: WalletModel, onDone: () -> Unit) {
     Text(stringResource(Res.string.csc_profile_text, CscServices.WALLET_REDIRECT),
         style = MaterialTheme.typography.bodySmall)
     problem?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         Button(onClick = {
             runCatching { model.csc.addProfile(text) }
                 .onSuccess { model.message.value = addedPattern.replace("{n}", it.toString()); onDone() }
@@ -660,7 +660,7 @@ internal fun CscPromptPanel(model: WalletModel) {
                 keyboardOptions = KeyboardOptions(keyboardType = if (prompt.numeric) KeyboardType.NumberPassword else KeyboardType.Password),
                 modifier = Modifier.fillMaxWidth(),
             )
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { prompt.answer.complete(value) }, enabled = value.isNotEmpty()) { Text(stringResource(Res.string.action_send)) }
                 OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text(stringResource(Res.string.action_cancel)) }
             }
@@ -671,7 +671,7 @@ internal fun CscPromptPanel(model: WalletModel) {
                 style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value = pasted, onValueChange = { pasted = it.trim() }, label = { Text(stringResource(Res.string.csc_last_url)) }, singleLine = true,
                 modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { prompt.answer.complete(pasted) }, enabled = pasted.startsWith(prompt.redirectUri)) { Text(stringResource(Res.string.action_continue)) }
                 OutlinedButton(onClick = { prompt.answer.complete(null) }) { Text(stringResource(Res.string.action_cancel)) }
             }

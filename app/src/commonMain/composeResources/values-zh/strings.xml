@@ -1837,6 +1837,8 @@
     <string name="derive_zk_claim">zkPDF 零知識證明（出示文件欄位時一併勾選）</string>
     <string name="derive_zk_opening">「%1$s」的零知識開啟資料</string>
     <string name="derive_zk_suffix">（zkPDF）</string>
+    <string name="desktop_error_log">App 因錯誤而停止：%1$s\n\n詳細紀錄已存到 %2$s</string>
+    <string name="desktop_error_title">DIW MY WALLET 錯誤</string>
     <string name="did_hint">DID（did:web、did:key、did:ion…）</string>
     <string name="did_trust">信任這個 DID</string>
     <string name="dids_none">尚未加入。信任清單以外的組織（例如企業自建發行端）可在這裡加入。</string>
