@@ -80,3 +80,24 @@ extern "C" int diw_bb5_bridge_vk(const uint8_t* acir, size_t acir_size, uint8_t*
     } catch (...) { return 1; }
 }
 #endif
+
+#ifdef DIW_GLIBC_FLOOR
+// Barretenberg's memory profile calls mallinfo2, which glibc has only from 2.33. A Linux library built for an older
+// floor (native/build.sh, DIW_ZK_LINUX_LIBCXX=1) answers it here from mallinfo, inside the library only.
+#include <malloc.h>
+extern "C" __attribute__((visibility("hidden"))) struct mallinfo2 mallinfo2() noexcept {
+    struct mallinfo old = mallinfo();
+    struct mallinfo2 info {};
+    info.arena = static_cast<unsigned>(old.arena);
+    info.ordblks = static_cast<unsigned>(old.ordblks);
+    info.smblks = static_cast<unsigned>(old.smblks);
+    info.hblks = static_cast<unsigned>(old.hblks);
+    info.hblkhd = static_cast<unsigned>(old.hblkhd);
+    info.usmblks = static_cast<unsigned>(old.usmblks);
+    info.fsmblks = static_cast<unsigned>(old.fsmblks);
+    info.uordblks = static_cast<unsigned>(old.uordblks);
+    info.fordblks = static_cast<unsigned>(old.fordblks);
+    info.keepcost = static_cast<unsigned>(old.keepcost);
+    return info;
+}
+#endif

@@ -6,6 +6,7 @@ fn main() {
         "ZKPDF_BB_BUILD",
         "ZKPDF_CXX",
         "ZKPDF_AR",
+        "ZKPDF_LIBCXX",
         "CXX",
         "AR",
     ] {
@@ -71,6 +72,10 @@ fn main() {
         .arg(build.join("_deps/tracy-src/public"))
         .args(["-c", "cpp/bridge.cpp", "-o"])
         .arg(out.join("bridge.o"));
+    // Zig's Linux build targets an older glibc than Barretenberg assumes (see cpp/bridge.cpp).
+    if env::var_os("ZKPDF_LIBCXX").is_some() && target.contains("linux-gnu") {
+        compiler.arg("-DDIW_GLIBC_FLOOR");
+    }
     assert!(
         compiler.status().expect("bb_bridge_compiler").success(),
         "bb_bridge_compile"
@@ -113,7 +118,8 @@ fn main() {
         "cargo:rustc-link-lib={}",
         if target.contains("android") {
             "c++_static"
-        } else if target.contains("apple") {
+        } else if target.contains("apple") || env::var_os("ZKPDF_LIBCXX").is_some() {
+            // ZKPDF_LIBCXX: a Linux build with Zig, which links its own libc++ statically for -lc++.
             "c++"
         } else {
             "stdc++"

@@ -60,6 +60,40 @@ sets the linker and compilers for them:
   nothing built by GCC is in them, so they carry no libstdc++ or libgcc. A
   Windows host still builds its own MSVC library without zkPDF.
 
+Linux hosts and older distributions or processors:
+
+- The full Linux library is linked on the build host, so it needs that host's
+  glibc and libstdc++ (built on Ubuntu 24.04: glibc 2.38, GLIBCXX 3.4.31), and
+  its Barretenberg is compiled for x86-64-v2 (SSE4.2, POPCNT).
+- `host` on Linux also builds `<triple>-compat`
+  (`dist/resources/zk/native/linux-x86_64-compat`; `DIW_ZK_COMPAT=0` leaves it
+  out): the same exports without Barretenberg (no zkPDF, zkPassport or bb5;
+  `tlsn`, `oprf` and `openac` stay), the baseline instruction set, and linked
+  by Zig (`cargo-zigbuild` 0.20.1, Zig fetched and pinned by
+  `zkpdf-prover/tools/zig.py`; `ZIG_ROOT` names an existing copy) against
+  glibc 2.28 with no C++ runtime. The script fails if the result needs
+  libstdc++, libc++ or a newer glibc symbol.
+- `DIW_ZK_LINUX_LIBCXX=1` builds the full Linux library with Zig as well:
+  Barretenberg and the bridges compile with `zig c++` against Zig's libc++,
+  linked statically (Apache-2.0 with LLVM exceptions), for glibc 2.28; the
+  instruction set stays x86-64-v2. Barretenberg goes to
+  `target/bb-<triple>-libcxx`, Cargo to `target/libcxx`. Barretenberg's memory
+  profile calls `mallinfo2` (glibc 2.33); the bridges then define it from
+  `mallinfo` (`DIW_GLIBC_FLOOR`), and the floor check also fails on any strong
+  undefined symbol without a glibc version. Checked on 2026-11-19 (x86_64):
+  `zkpdf-vk` built this way derives the published keys of `pdf_claim_v1`,
+  `pdf_pred_v1` and `pdf_sha_opaque_v1` and the `circuits.json` hashes of two
+  FaceMatch P-256 key attestation circuits, the bb5 tests pass, and both
+  libraries open on Debian 10 and Ubuntu 22.04. The option is still off by
+  default.
+- `ZkNative` on Linux tries the full library first and then `-compat`. It
+  reads `/proc/cpuinfo` and never opens the full x86_64 library on a CPU
+  without x86-64-v2 (its code would stop the process with SIGILL); a library
+  the C library cannot satisfy fails to open and the next one is tried.
+  `ZkNative.variant` names the one loaded and `ZkNative.loadFailure` why the
+  others were not. `diw.zk.native.library` (or `DIW_ZK_NATIVE_LIBRARY`) names
+  a library file built separately for the host instead; bb5 is then not used.
+
 CI (`.github/workflows/github-actions-ci.yml`) builds the libraries in their
 own jobs: `native-android` runs `android` on Linux once per ABI
 (`DIW_ZK_ANDROID_ABIS`), `native-linux` runs `host` on Linux x86_64,

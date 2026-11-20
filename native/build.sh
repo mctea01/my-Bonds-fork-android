@@ -9,7 +9,13 @@ CARGO_NDK_VERSION=4.1.2
 host=$(rustc -vV | sed -n 's/^host: //p')
 targets=${1:-all}
 if [[ "$targets" == all ]]; then
-    targets=x86_64-unknown-linux-gnu,x86_64-pc-windows-gnullvm,aarch64-apple-darwin,android
+    targets=x86_64-unknown-linux-gnu,x86_64-unknown-linux-gnu-compat,x86_64-pc-windows-gnullvm,aarch64-apple-darwin,android
+fi
+# A Linux host build also makes the compatibility library ("<host>-compat", DIW_ZK_COMPAT=0 leaves it out): the same
+# exports without Barretenberg (so no zkPDF or zkPassport), the baseline instruction set and glibc 2.28 as the floor,
+# for hosts whose CPU or C library the full library needs too new. The loader (ZkNative) falls back to it.
+if [[ ",$targets," == *,host,* && "${DIW_ZK_COMPAT:-1}" != 0 ]]; then
+    case "$host" in x86_64-unknown-linux-gnu|aarch64-unknown-linux-gnu) targets="$targets,$host-compat" ;; esac
 fi
 targets=${targets//host/$host}
 # Optional proof backends (DIW_ZK_FEATURES, set by Gradle's diw.zkFeatures). The exports exist in every build;
@@ -53,26 +59,128 @@ bb_build_override=${ZKPDF_BB_BUILD:-}
 bridge_cxx_override=${ZKPDF_CXX:-}
 bridge_ar_override=${ZKPDF_AR:-}
 build_zkpdf() {
-    local bb_target=$1
+    local bb_target=$1 suffix=${2:-}
     [[ ",$features," == *,zkpdf,* ]] || return 0
     export ZKPDF_BB_SOURCE=${ZKPDF_BB_SOURCE:-"$PWD/target/bb-source"}
-    export ZKPDF_BB_BUILD=${bb_build_override:-"$PWD/target/bb-$bb_target"}
+    export ZKPDF_BB_BUILD=${bb_build_override:-"$PWD/target/bb-$bb_target$suffix"}
     if [[ ! -f "$ZKPDF_BB_BUILD/lib/libbarretenberg.a" || ! -f "$ZKPDF_BB_BUILD/_deps/libdeflate-build/libdeflate.a" ]]; then
         python3 -I zkpdf-prover/tools/build_bb.py --source "$ZKPDF_BB_SOURCE" --build "$ZKPDF_BB_BUILD" --target "$bb_target"
     fi
 }
 # Barretenberg 5 for the zkpassport-bb5 library, built the same way from its own pinned source.
 build_bb5() {
-    local bb_target=$1
+    local bb_target=$1 suffix=${2:-}
     "$with_bb5" || return 0
     export DIW_BB5_SOURCE=${DIW_BB5_SOURCE:-"$PWD/target/bb-v5"}
-    export DIW_BB5_BUILD="$PWD/target/bb5-$bb_target"
+    export DIW_BB5_BUILD="$PWD/target/bb5-$bb_target$suffix"
     if [[ ! -f "$DIW_BB5_BUILD/lib/libbarretenberg.a" || ! -f "$DIW_BB5_BUILD/_deps/libdeflate-build/libdeflate.a" ]]; then
         python3 -I zkpdf-prover/tools/build_bb.py --version v5 --source "$DIW_BB5_SOURCE" --build "$DIW_BB5_BUILD" --target "$bb_target"
     fi
 }
+# The compatibility library's backends: the requested ones minus Barretenberg (zkpdf, bb5); zkpdf brings oprf.
+compat_features=$(printf '%s' ",$features," | sed 's/,zkpdf,/,/g; s/,bb5,/,/g; s/^,//; s/,$//')
+if [[ ",$features," == *,zkpdf,* && ",$compat_features," != *,oprf,* ]]; then
+    compat_features=${compat_features:+$compat_features,}oprf
+fi
+# Builds <triple>-compat with cargo-zigbuild against glibc 2.28, in its own target directory so the full build's
+# artifacts are not rebuilt each time. Rust's code for the baseline target (x86-64, armv8-a) only uses newer
+# instructions behind runtime detection; nothing here is compiled for a higher CPU level.
+# The glibc every Zig-linked Linux library is built against (Debian 10, Ubuntu 20.04, RHEL 8 and later).
+glibc_floor=2.28
+zigbuild="$PWD/target/tools/bin/cargo-zigbuild"
+# Puts the pinned Zig on PATH and installs the pinned cargo-zigbuild under target/tools.
+# $1 is the Rust triple. bindgen (OpenAC's witness header) runs the host libclang with cargo-zigbuild's -nostdinc;
+# newer libclang (21 on Ubuntu 26.04) then finds no stddef.h through the options cargo-zigbuild adds, so Zig's own
+# builtin and glibc headers for the target are named with plain -isystem in zig_bindgen_args, ahead of them. They go
+# in the plain BINDGEN_EXTRA_CLANG_ARGS of the zigbuild command only: cargo-zigbuild copies it into both per-target
+# names it sets, and bindgen reads the dashed one first.
+setup_zig() {
+    local triple=$1 zig_root arch libc
+    zig_root=$(python3 -I zkpdf-prover/tools/zig.py)
+    export PATH="$zig_root:$PATH"
+    if [[ "$("$zigbuild" --version 2>/dev/null)" != "cargo-zigbuild 0.20.1" ]]; then
+        cargo install --locked --root "$PWD/target/tools" cargo-zigbuild@0.20.1
+    fi
+    arch=${triple%%-*}
+    libc="$zig_root/lib/libc/include"
+    local family=$arch
+    [[ "$arch" == x86_64 ]] && family=x86
+    zig_bindgen_args="-isystem $zig_root/lib/include -isystem $libc/$arch-linux-gnu -isystem $libc/$family-linux-any"
+    zig_bindgen_args="$zig_bindgen_args -isystem $libc/generic-glibc -isystem $libc/any-linux-any"
+}
+# Fails unless the Linux library at $1 needs no C++ runtime and no glibc symbol newer than the floor. A strong
+# undefined symbol without a version is one the floor's glibc lacks (the link against its stubs left it open), and
+# the loader would refuse the library on such a host.
+check_linux_floor() {
+    local path=$1 needed newest unversioned
+    needed=$(readelf -d "$path" | sed -n 's/.*(NEEDED).*\[\(.*\)\]/\1/p' | sort -u | tr '\n' ' ')
+    case " $needed" in *" libstdc++"*|*" libc++"*) echo "$path needs a C++ runtime: $needed" >&2; exit 1 ;; esac
+    unversioned=$(readelf --dyn-syms -W "$path" | awk '$7 == "UND" && $5 == "GLOBAL" && $8 != "" && $8 !~ /@/ { print $8 }' | sort -u | tr '\n' ' ')
+    if [[ -n "$unversioned" ]]; then echo "$path leaves symbols unresolved: $unversioned" >&2; exit 1; fi
+    newest=$(readelf --dyn-syms -W "$path" | grep -o 'GLIBC_[0-9.]*' | sort -uV | tail -1)
+    if [[ -n "$newest" && "$(printf '%s\n' "$newest" "GLIBC_$glibc_floor" | sort -V | tail -1)" != "GLIBC_$glibc_floor" ]]; then
+        echo "$path needs $newest" >&2; exit 1
+    fi
+    printf 'linux_floor library=%s bytes=%s needed=%s newest=%s\n' "${path##*/}" "$(wc -c < "$path")" "$needed" "${newest:-none}"
+}
+build_compat() {
+    local triple=$1 platform=$2
+    setup_zig "$triple"
+    rustup target add "$triple"
+    local args=()
+    [[ -z "$compat_features" ]] || args=(--features "$compat_features")
+    # zig cc compiles the C parts (OpenAC's witness runtime) for the same glibc; bindgen reads its header with the
+    # host libclang as for the full build.
+    CARGO_TARGET_DIR="$PWD/target/compat" BINDGEN_EXTRA_CLANG_ARGS="$zig_bindgen_args" "$zigbuild" zigbuild --release --locked -p diw-zk-ffi \
+        ${args[@]+"${args[@]}"} --target "$triple.$glibc_floor"
+    local out="dist/resources/zk/native/$platform-compat"
+    mkdir -p "$out"
+    cp "target/compat/$triple/release/libdiw_zk.so" "$out/libdiw_zk.so"
+    # The floor is checked, not assumed.
+    check_linux_floor "$out/libdiw_zk.so"
+    if command -v sha256sum > /dev/null; then digest=$(sha256sum "$out/libdiw_zk.so"); else digest=$(shasum -a 256 "$out/libdiw_zk.so"); fi
+    printf '%s\n' "${digest%% *}" > "$out/libdiw_zk.so.sha256"
+    printf 'compat_library platform=%s features=%s\n' "$platform" "${compat_features:-none}"
+}
+# DIW_ZK_LINUX_LIBCXX=1 builds the full Linux library (Barretenberg included) with Zig too: zig cc and zig c++
+# target the glibc floor and compile Barretenberg and the bridges against Zig's libc++, which is linked statically
+# (Apache-2.0 with LLVM exceptions), so neither a new glibc nor libstdc++ is needed on the host. The instruction set
+# stays x86-64-v2 on x86_64. Barretenberg goes to its own build directory (bb-<triple>-libcxx).
+linux_libcxx=false
+zig_linux() {
+    local triple=$1
+    setup_zig "$triple"
+    local arch=${triple%%-*} wrap="$PWD/target/zig-wrap/$triple"
+    mkdir -p "$wrap"
+    local tool
+    # zig cc reads -march=x86-64-v2 (the Barretenberg baseline) as CPU "x86"; its own name is x86_64_v2.
+    for tool in cc c++; do
+        {
+            printf '#!/bin/sh\n'
+            printf 'for a in "$@"; do\n    shift\n'
+            printf '    case "$a" in -march=x86-64-v2) a=-mcpu=x86_64_v2 ;; esac\n'
+            printf '    set -- "$@" "$a"\ndone\n'
+            printf 'exec zig %s -target %s-linux-gnu.%s "$@"\n' "$tool" "$arch" "$glibc_floor"
+        } > "$wrap/$tool"
+    done
+    for tool in ar ranlib; do printf '#!/bin/sh\nexec zig %s "$@"\n' "$tool" > "$wrap/$tool"; done
+    chmod +x "$wrap"/*
+    export ZKPDF_ZIG_CC="$wrap/cc" ZKPDF_ZIG_CXX="$wrap/c++" ZKPDF_ZIG_AR="$wrap/ar" ZKPDF_ZIG_RANLIB="$wrap/ranlib"
+    export ZKPDF_CXX=${bridge_cxx_override:-$wrap/c++} ZKPDF_AR=${bridge_ar_override:-$wrap/ar} ZKPDF_LIBCXX=1
+    linux_libcxx=true
+}
 IFS=',' read -ra selected <<< "$targets"
 for target in "${selected[@]}"; do
+    if [[ "$target" == *-unknown-linux-gnu-compat ]]; then
+        [[ "$(uname -s)" == Linux ]] || { echo "The compatibility library is built on Linux" >&2; exit 1; }
+        triple=${target%-compat}
+        case "$triple" in
+            x86_64-unknown-linux-gnu) build_compat "$triple" linux-x86_64 ;;
+            aarch64-unknown-linux-gnu) build_compat "$triple" linux-aarch64 ;;
+            *) echo "Unsupported compatibility target" >&2; exit 1 ;;
+        esac
+        continue
+    fi
     if [[ "$target" == android ]]; then
         : "${ANDROID_HOME:?Set ANDROID_HOME to an installed Android SDK}"
         export ANDROID_NDK_HOME="$ANDROID_HOME/ndk/$NDK_VERSION"
@@ -166,18 +274,31 @@ for target in "${selected[@]}"; do
             aarch64-apple-darwin) platform=macos-aarch64; library=libdiw_zk.dylib; export MACOSX_DEPLOYMENT_TARGET=${MACOSX_DEPLOYMENT_TARGET:-14.0} ;;
             *) echo "Unsupported desktop target" >&2; exit 1 ;;
         esac
-        build_zkpdf "$target"
+        linux_libcxx=false
+        unset ZKPDF_ZIG_CC ZKPDF_ZIG_CXX ZKPDF_ZIG_AR ZKPDF_ZIG_RANLIB ZKPDF_LIBCXX
+        if [[ "${DIW_ZK_LINUX_LIBCXX:-0}" == 1 && "$target" == *-unknown-linux-gnu ]]; then zig_linux "$target"; fi
         rustup target add "$target"
-        cargo build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"} --target "$target"
+        if "$linux_libcxx"; then
+            cargo_target="$PWD/target/libcxx"
+            build_desktop() { CARGO_TARGET_DIR="$cargo_target" BINDGEN_EXTRA_CLANG_ARGS="$zig_bindgen_args" "$zigbuild" zigbuild --release --locked "$@" --target "$target.$glibc_floor"; }
+            bb_suffix=-libcxx
+        else
+            cargo_target="$PWD/target"
+            build_desktop() { cargo build --release --locked "$@" --target "$target"; }
+            bb_suffix=
+        fi
+        build_zkpdf "$target" "$bb_suffix"
+        build_desktop -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
         libraries=("$library")
         if "$with_bb5"; then
-            build_bb5 "$target"
-            cargo build --release --locked -p zkpassport-bb5 --features bb --target "$target"
+            build_bb5 "$target" "$bb_suffix"
+            build_desktop -p zkpassport-bb5 --features bb
             libraries+=("${library/diw_zk/diw_bb5}")
         fi
         mkdir -p "dist/resources/zk/native/$platform"
         for name in "${libraries[@]}"; do
-            cp "target/$target/release/$name" "dist/resources/zk/native/$platform/$name"
+            cp "$cargo_target/$target/release/$name" "dist/resources/zk/native/$platform/$name"
+            if "$linux_libcxx"; then check_linux_floor "dist/resources/zk/native/$platform/$name"; fi
             # sha256sum on Linux and Git for Windows, shasum on macOS.
             path="dist/resources/zk/native/$platform/$name"
             if command -v sha256sum > /dev/null; then digest=$(sha256sum "$path"); else digest=$(shasum -a 256 "$path"); fi
