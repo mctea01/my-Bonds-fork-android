@@ -673,6 +673,7 @@
     <string name="core_cawg_revocation_unsupported">The credential's credentialStatus is not a revocation list the wallet reads</string>
     <string name="core_cawg_sig_type_unknown">The wallet does not know the identity signature type %1$s</string>
     <string name="core_cawg_signature_mismatch">The identity signature does not verify</string>
+    <string name="core_cawg_status_unverified">The revocation list could not be verified as signed by the credential issuer, so it shows nothing about revocation</string>
     <string name="core_cawg_v1_timestamp">A v1 time stamp (sigTst) is not accepted for identity assertions and was ignored</string>
     <string name="core_cawg_valid_from_missing">The credential has no validFrom or issuanceDate</string>
     <string name="core_cawg_vc_invalid">The identity claims aggregation credential is not a readable W3C verifiable credential</string>

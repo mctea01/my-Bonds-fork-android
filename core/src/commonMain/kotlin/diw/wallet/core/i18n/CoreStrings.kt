@@ -128,6 +128,7 @@ object CoreStrings {
         "core_cawg_revocation_unsupported" to "憑證的 credentialStatus 不是錢包可讀取的撤銷清單",
         "core_cawg_sig_type_unknown" to "錢包不認得身分簽章類型 %1\$s",
         "core_cawg_signature_mismatch" to "身分簽章驗證失敗",
+        "core_cawg_status_unverified" to "撤銷清單無法確認由憑證發行者簽署，不能作為是否撤銷的依據",
         "core_cawg_v1_timestamp" to "身分宣告不接受 v1 時戳（sigTst），已略過",
         "core_cawg_valid_from_missing" to "憑證沒有 validFrom 或 issuanceDate",
         "core_cawg_vc_invalid" to "身分彙整憑證不是可讀取的 W3C 可驗證憑證",

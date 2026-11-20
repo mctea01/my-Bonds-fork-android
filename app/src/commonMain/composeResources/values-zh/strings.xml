@@ -673,6 +673,7 @@
     <string name="core_cawg_revocation_unsupported">憑證的 credentialStatus 不是錢包可讀取的撤銷清單</string>
     <string name="core_cawg_sig_type_unknown">錢包不認得身分簽章類型 %1$s</string>
     <string name="core_cawg_signature_mismatch">身分簽章驗證失敗</string>
+    <string name="core_cawg_status_unverified">撤銷清單無法確認由憑證發行者簽署，不能作為是否撤銷的依據</string>
     <string name="core_cawg_v1_timestamp">身分宣告不接受 v1 時戳（sigTst），已略過</string>
     <string name="core_cawg_valid_from_missing">憑證沒有 validFrom 或 issuanceDate</string>
     <string name="core_cawg_vc_invalid">身分彙整憑證不是可讀取的 W3C 可驗證憑證</string>

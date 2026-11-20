@@ -6,6 +6,7 @@ import diw.wallet.core.document.Check
 import diw.wallet.core.document.DocumentInspector
 import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentTrustSource
+import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.c2pa.C2paAuthoring
 import diw.wallet.core.document.c2pa.C2paIdentity
 import diw.wallet.core.document.c2pa.C2paManifests
@@ -16,6 +17,7 @@ import diw.wallet.core.document.c2pa.SignerPayloadOrder
 import diw.wallet.core.document.c2pa.SoftBindingAlgorithms
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.JcaDocumentSigner
+import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.document.sign.Timestamper
 import diw.wallet.core.env.EnvironmentPolicy
@@ -311,6 +313,26 @@ class C2paSigningTest {
         assertEquals(Check.FAIL, r.signatures.single().integrity)
         // The identity assertion covers the data hash assertion, which is unchanged.
         assertTrue("cawg.x509.signature.validated" in r.active().identities.single().codes())
+    }
+
+    @Test
+    fun algorithmThatDoesNotFitTheCertificateIsAMismatch() = runBlocking<Unit> {
+        trustRoot()
+        // ES256 signatures under an RSA certificate: the report must say the signature does not match, not drop it.
+        val mislabeled = object : DocumentSigner {
+            override val certificateChain = listOf(rsaCert.encoded)
+            override val keyType = SignerKeyType.EC_P256
+            override val source = SignerSource.PKCS12
+            override suspend fun sign(data: ByteArray): ByteArray = java.security.Signature.getInstance("SHA256withECDSA").run {
+                initSign(ecKey.private); update(data); sign()
+            }
+        }
+        val signed = sign(picture("jpg"), request("mislabeled.jpg"), claim = mislabeled, ts = null)
+        val r = inspect(signed.bytes, "mislabeled.jpg")
+        assertTrue("claimSignature.mismatch" in r.codes(), r.codes().toString())
+        assertEquals(Check.FAIL, r.signatures.single().integrity)
+        assertEquals(DocumentVerdict.INVALID, r.verdict)
+        assertTrue("cawg.x509.signature.mismatch" in r.active().identities.single().codes())
     }
 
     @Test

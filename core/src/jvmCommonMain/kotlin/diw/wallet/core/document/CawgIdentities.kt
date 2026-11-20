@@ -50,8 +50,14 @@ internal object CoseCrypto {
     /** Algorithms C2PA 13.2 allows: ES256/384/512, PS256/384/512, Ed25519. */
     val ALLOWED = setOf(-7, -35, -36, -37, -38, -39, -8)
 
-    /** Verifies a COSE signature (ECDSA raw r||s, RSASSA-PSS or Ed25519) with the key of [signer]. */
-    fun verify(algorithm: Int?, signature: ByteArray, toBeSigned: ByteArray, signer: X509CertificateHolder): Boolean {
+    /**
+     * Verifies a COSE signature (ECDSA raw r||s, RSASSA-PSS or Ed25519) with the key of [signer]; false, never an
+     * exception, when the key does not fit the algorithm (ES256 with an RSA certificate) or cannot be read.
+     */
+    fun verify(algorithm: Int?, signature: ByteArray, toBeSigned: ByteArray, signer: X509CertificateHolder): Boolean =
+        runCatching { check(algorithm, signature, toBeSigned, signer) }.getOrDefault(false)
+
+    private fun check(algorithm: Int?, signature: ByteArray, toBeSigned: ByteArray, signer: X509CertificateHolder): Boolean {
         val key = JcaX509CertificateConverter().setProvider(Bc.provider).getCertificate(signer).publicKey
         val (name, sig) = when (algorithm) {
             -7 -> "SHA256withECDSA" to der(signature)
@@ -69,7 +75,7 @@ internal object CoseCrypto {
         }
         s.initVerify(key)
         s.update(toBeSigned)
-        return runCatching { s.verify(sig) }.getOrDefault(false)
+        return s.verify(sig)
     }
 
     private fun der(raw: ByteArray): ByteArray {
@@ -374,9 +380,11 @@ internal class CawgIdentities(private val pki: PkiSupport, private val checks: C
             if (supported.isEmpty()) r.fail("cawg.ica.revocation.unsupported", ct("core_cawg_revocation_unsupported"))
             else {
                 val status = runCatching { trust.w3cStatus(vc, issuer) }.getOrNull()
-                when (status?.state) {
-                    RevocationCheckState.VALID -> r.ok("cawg.ica.credential.not_revoked")
-                    RevocationCheckState.INVALID -> r.fail("cawg.ica.credential.revoked", status.label ?: status.detail)
+                when {
+                    // A list whose signature or issuer binding did not verify is no evidence either way.
+                    status != null && !status.trusted -> r.fail("cawg.ica.revocation.unavailable", status.detail ?: ct("core_cawg_status_unverified"))
+                    status?.state == RevocationCheckState.VALID -> r.ok("cawg.ica.credential.not_revoked")
+                    status?.state == RevocationCheckState.INVALID -> r.fail("cawg.ica.credential.revoked", status.label ?: status.detail)
                     else -> r.fail("cawg.ica.revocation.unavailable", status?.detail)
                 }
             }
