@@ -67,6 +67,33 @@ versionCode 由版本算出，換新版本線時一定變大（0.5 起為 50000 
 - `minor`、`major` 與指定版本要直接推 commit 到 main，main 的 `MUST CI` 規則集只允許 bypass 對象推送。請建立 secret `RELEASE_TOKEN`：repo 管理員的 fine-grained personal access token，只選這個 repo，權限 Contents 讀寫。有這個 secret 時推送由它完成，標籤的 push 觸發 CI（main 的 commit 也會觸發一次 nightly）。沒有時推送會被拒絕並提示，什麼都不會改；也可以改用 PR 修改 `version.properties`，合併後再以 `keep` 發佈。
 - 也可以在本機推標籤（`git tag -a v0.5.12 -m ... && git push origin v0.5.12`），CI 一樣會發佈，但標籤必須等於該 commit 算出的版本。
 
+## Windows 程式碼簽章
+
+CI 產生的 Windows 檔案沒有 Authenticode 簽章。程式碼簽章憑證只存在 YubiKey（或其他智慧卡）時，在自己的 Windows 電腦上以 `tools/windows-sign.ps1` 簽署後傳回同一個 Release；私鑰不離開卡片，也不需要放進 CI。
+
+需要：Windows SDK 的 `signtool`（Signing Tools for Desktop Apps）、YubiKey Smart Card Minidriver（插上 YubiKey 時憑證出現在「目前使用者 > 個人」，簽署時 Windows 詢問 PIV PIN）、已 `gh auth login` 的 GitHub CLI；預設模式另需 JDK 21 以上（`jpackage`，設好 `JAVA_HOME`）與 WiX Toolset（JDK 21、22 用 3.14，JDK 23 起用 4 或 5）。執行前 `chcp 65001`，腳本本身以 UTF-8 輸出。只有一張可用的程式碼簽章憑證時自動選用，否則以 `-Thumbprint` 指定。時戳預設 `http://timestamp.digicert.com`（`-TimestampUrl` 可改）。
+
+不用 signtool 時以 `-SignCommand` 改用自己的簽章命令（例如整合好的 jsign 腳本）：第一個元素是程式，其餘是參數，參數中的 `{file}` 換成要簽的檔案，沒有 `{file}` 時把檔案接在最後。命令要就地簽署檔案（時戳由命令自己處理）並以 0 結束；腳本之後以 `Get-AuthenticodeSignature` 確認檔案帶有簽章，`-Thumbprint` 與 `-TimestampUrl` 只用於 signtool。例如：
+
+```powershell
+.\tools\windows-sign.ps1 -Tag v0.5.3 -SignCommand C:\tools\jsign-yubikey.cmd,"{file}"
+.\tools\windows-sign.ps1 -Tag v0.5.3 -SignCommand java,-jar,C:\tools\jsign.jar,--storetype,YUBIKEY,--storepass,$env:PIV_PIN,--tsaurl,http://timestamp.digicert.com,"{file}"
+```
+
+| 模式 | 指令 | 簽署的內容 |
+|---|---|---|
+| `Full`（預設） | `.\tools\windows-sign.ps1 -Tag v0.5.3` | 以系統管理安裝（`msiexec /a`）解開 MSI（並補回 jpackage 不安裝、但 `--app-image` 需要的 `app\.jpackage.xml`），簽署啟動程式與所有尚未簽章的 .exe、.dll，以及 jar 內本專案的零知識原生程式庫（`zk/native/windows-x86_64/` 的 `diw_zk.dll`、`diw_bb5.dll`），再以 `jpackage --app-image` 依 CI 相同的名稱、版本、升級 UUID 與安裝選項重建 MSI 並簽署；Release 的 `DIW-MY-WALLET-windows-x64-<版本>-release.jar` 內的原生程式庫也一併簽署 |
+| `MsiOnly` | `.\tools\windows-sign.ps1 -Tag v0.5.3 -Mode MsiOnly` | 只簽 MSI 本身，裡面的程式不變；只需要 `signtool` |
+| `Native` | `.\tools\windows-sign.ps1 -Mode Native -Path .\desktop-native-windows.zip -Tag v0.5.3` | 實驗的 GraalVM 原生版（Actions 執行頁下載的 `desktop-native-windows` Artifact，.zip 或解開的資料夾）：簽署 `diw-desktop.exe` 與旁邊所有尚未簽章的 .exe、.dll（native-image 複製的 JDK 程式庫、`jawt.dll`），打包成 `DIW-MY-WALLET-<版本>-windows-x64-native.zip` 上傳到該 Release |
+
+說明：
+
+- 原生程式庫在 jar 內有對應的 `.sha256`，`ZkNative` 解出時核對它；簽章會改變檔案，所以腳本同時改寫 `.sha256`。
+- 原生版的零知識程式庫是編進執行檔的資源，事後無法個別簽章；執行檔只在檔案的 SHA-256 與執行檔內釘選的值相同時才解出載入，而這個值在已簽章的執行檔內。要讓解出的 DLL 本身也帶簽章，須在 native-image 建置前就簽好 DLL，目前 CI 不這樣做。
+- jar 在執行時解出的第三方程式庫（Skiko、SQLite、JNA）不簽署：不是本專案的程式，載入器各自核對內容。
+- 上傳以 `--clobber` 取代同名檔案，GitHub 的檔案清單隨即顯示新的 SHA-256；腳本在 Release 內文的下載指引之後加一行說明已簽署的內容與簽署者（`-NoNotes` 不加，同模式再執行時取代該行）。`-NoUpload` 只在本機產生檔案，`-Msi` 可簽本機的 MSI。
+- nightly 每次 push 到 main 都會重建並取代，簽好的檔案只保留到下一次；正式散布請簽穩定版。
+
 ## Android 選用元件與 APK
 
 少數人需要、體積又大的原生元件放在隨選動態功能模組（`features/`），目前只有 `features/bb5`：Barretenberg 5（`native/zkpassport-bb5`），用來驗證 zkPassport 0.22.0 以前電路的證明。Google Play 版在用到時由 App 向 Play 要求安裝（設定的 zkPassport 區段或查驗結果頁的按鈕）；Play 政策不允許從 Play 以外下載可執行程式碼，所以不另外提供下載。

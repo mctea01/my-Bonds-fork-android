@@ -28,7 +28,7 @@
 | 文件 | 性質 | 內容 |
 |---|---|---|
 | [STATUS.md](STATUS.md) | 現行 | 階段、功能狀態、平台、未完成項目、待實機驗證、外部條件、相依版本 |
-| [release.md](release.md) | 現行 | CI 發佈的檔案、版本號規則、Android 選用元件、簽章 secrets、TWDIW 應用金鑰、縮減規則 |
+| [release.md](release.md) | 現行 | CI 發佈的檔案、版本號規則、穩定版發佈、Windows 程式碼簽章、Android 選用元件、簽章 secrets、TWDIW 應用金鑰、縮減規則 |
 | [google-play.md](google-play.md) | 現行 | Google Play 上架：上架前檢查、簽署金鑰、自動提交 workflow、商店資訊、資料安全與內容分級答案 |
 | [legal/README.md](legal/README.md) | 現行 | 隱私權政策、用戶協議與專門聲明的網頁版（由 App 內文字產生，中文與英文） |
 | [guides/user-guide.md](guides/user-guide.md) | 現行 | 一般使用者的使用教程：安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版、常見問題；App 的設定清單、關於頁與首次啟動完成頁連到這裡 |
