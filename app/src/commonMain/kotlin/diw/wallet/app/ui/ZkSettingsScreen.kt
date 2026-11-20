@@ -99,7 +99,7 @@ fun ZkSettingsScreen(model: WalletModel) {
     var confirmDelete by remember { mutableStateOf<List<ZkAsset>?>(null) }
     LaunchedEffect(Unit) { zk.refresh() }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(14.dp)) {
+    ScreenColumn(spacing = 14.dp) {
         Text(
             stringResource(Res.string.zk_intro_1) +
                 stringResource(Res.string.zk_intro_2),
@@ -165,7 +165,7 @@ fun ZkSettingsScreen(model: WalletModel) {
                 )
             }
             assets.mapNotNull { downloads[it.id]?.error }.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+            WrapRow() {
                 if (busy) OutlinedButton(onClick = { zk.cancelDownload() }) { Text(stringResource(Res.string.zk_stop_download)) }
                 else if (missing.isNotEmpty()) OutlinedButton(onClick = { confirmDownload = missing }) { Text(stringResource(Res.string.action_download)) }
                 if (installed.isNotEmpty() && !busy) OutlinedButton(onClick = { confirmDelete = installed }) { Text(stringResource(Res.string.action_delete)) }
@@ -257,7 +257,7 @@ private fun ZkTemplatesSection(model: WalletModel) {
         st.error?.let { add(stringResource(Res.string.zk_templates_failed, it) + if (st.version != null) stringResource(Res.string.zk_templates_still) else "") }
     }
     lines.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(enabled = st.keyConfigured && !st.running, onClick = { model.zkTemplates.refresh() }) { Text(stringResource(Res.string.zk_update_now)) }
         OutlinedButton(enabled = !st.running, onClick = { model.zkTemplates.importFiles() }) { Text(stringResource(Res.string.zk_import_file)) }
     }
@@ -322,7 +322,7 @@ private fun ServerSection(model: WalletModel) {
         label = { Text(stringResource(Res.string.zk_server_token)) }, visualTransformation = PasswordVisualTransformation(),
     )
     Text(stringResource(Res.string.zk_server_token_note), style = MaterialTheme.typography.bodySmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(
             onClick = {
                 val changedUrl = url.trimEnd('/') != settings.zkVerifierUrl
@@ -422,7 +422,7 @@ private fun ProverSection(model: WalletModel) {
         supportingText = tokenProblem?.let { { Text(it) } },
     )
     Text(stringResource(Res.string.zk_prover_token_note), style = MaterialTheme.typography.bodySmall)
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(
             onClick = { model.updateSettings { it.copy(zkProverUrl = url.trimEnd('/'), zkProverToken = if (url.isEmpty()) "" else token) } },
             enabled = urlProblem == null && tokenProblem == null && (url.trimEnd('/') != settings.zkProverUrl || token != settings.zkProverToken),
@@ -469,7 +469,7 @@ private fun PhoneRequestSection(model: WalletModel) {
             stringResource(Res.string.zk_phone_text_2, diw.wallet.core.zk.ZkPdfRemote.RESPONSE_EXTENSION),
         style = MaterialTheme.typography.bodySmall,
     )
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalAlignment = Alignment.CenterVertically) {
+    WrapRow() {
         OutlinedButton(onClick = { model.files.proveForPhone() }, enabled = busy == null) { Text(stringResource(Res.string.zk_open_request)) }
         if (running) TextButton(onClick = { model.zk.cancel(diw.wallet.app.FilesModel.PHONE_JOB) }) { Text(stringResource(Res.string.action_stop)) }
     }

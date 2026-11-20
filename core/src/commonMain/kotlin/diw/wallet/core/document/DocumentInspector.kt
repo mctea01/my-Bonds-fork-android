@@ -1,8 +1,11 @@
 package diw.wallet.core.document
 
+import diw.wallet.core.did.DidDocument
+import diw.wallet.core.status.CredentialStatus
 import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustRole
 import org.multipaz.crypto.X509Cert
+import kotlinx.serialization.json.JsonObject
 import kotlin.time.Clock
 import kotlin.time.Instant
 
@@ -34,6 +37,20 @@ interface DocumentTrustSource {
      * OpenPGP has no X.509 roots, so a signature is checked only against these keys.
      */
     suspend fun openPgpKeys(): List<diw.wallet.core.document.pgp.OpenPgpTrustedKey> = emptyList()
+
+    /**
+     * The DID document of [did], for the issuer of a CAWG identity claims aggregation credential. Throws a
+     * [diw.wallet.core.util.ProtocolException] with code unsupported_did for a method the wallet does not resolve,
+     * any other exception when the document cannot be fetched or read.
+     */
+    suspend fun resolveDid(did: String): DidDocument =
+        throw diw.wallet.core.util.ProtocolException("unsupported_did", "DID resolution is not available here")
+
+    /** Trust of a DID in [role] ([diw.wallet.core.trust.DidTrust]); null when no source knows it. */
+    suspend fun decideDid(did: String, role: TrustRole): TrustDecision? = null
+
+    /** The credentialStatus of a W3C credential issued by [issuer]; null when status is not checked here. */
+    suspend fun w3cStatus(credential: JsonObject, issuer: String): CredentialStatus? = null
 }
 
 /**

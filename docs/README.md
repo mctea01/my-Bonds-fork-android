@@ -33,6 +33,7 @@
 | [legal/README.md](legal/README.md) | 現行 | 隱私權政策、用戶協議與專門聲明的網頁版（由 App 內文字產生，中文與英文） |
 | [guides/user-guide.md](guides/user-guide.md) | 現行 | 一般使用者的使用教程：安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版、常見問題；App 的設定清單、關於頁與首次啟動完成頁連到這裡 |
 | [guides/fork-setup.md](guides/fork-setup.md) | 現行 | 新 Fork 的配置：GitHub 設定、secrets、要改成自己的識別與金鑰、版型與資產來源、與上游同步 |
+| [guides/desktop-usage.md](guides/desktop-usage.md) | 現行 | 電腦版的寬窄版面、捲軸、視窗記憶、鍵盤快捷鍵與原生版錯誤紀錄 |
 | [guides/windows-local-test.md](guides/windows-local-test.md) | 現行 | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
 | [research/device-test-checklist.md](research/device-test-checklist.md) | 現行 | 實機測試清單：步驟與判定 |
 | [../templates/README.md](../templates/README.md) | 現行 | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |
@@ -47,6 +48,7 @@
 | [design/p5-verifier.md](design/p5-verifier.md) | 規格 | 驗證者透明與主動查驗：查驗方身分與證據、查驗方聲明與 WRPRC、授權書、線上與近距離查驗、Bonds 藍牙加密、衍生憑證與 ZK 查驗政策 |
 | [design/zkpassport.md](design/zkpassport.md) | 規格 | 電子護照與 zkPassport：請求與 bridge 協定、查驗與信任、Z1 到 Z4、自己的證明器、OPRF、法律聲明 |
 | [design/bbs-2023.md](design/bbs-2023.md) | 規格 | bbs-2023：原生 BBS、JSON-LD 與 RDFC-1.0、可選功能的 DIW 發證擴充、出示與查驗 |
+| [design/c2pa-cawg.md](design/c2pa-cawg.md) | 規格 | C2PA 簽署、CAWG 身分聲明的簽署與驗證、AI 來源宣告與 SynthID、RSA-PSS 與 c2pa-rs 互通 |
 | [design/openpgp.md](design/openpgp.md) | 規格 | OpenPGP 與 OpenPGP 卡：APDU、簽署與解密、公開金鑰清單與信任等級 |
 | [design/i18n.md](design/i18n.md) | 規格 | 多語系：字串資源機制、語言切換、core 訊息代碼化、術語表 |
 | [design/review-followups.md](design/review-followups.md) | 紀錄 | 2026-10-29 全專案 Review 的查證結果與各項的處理 |

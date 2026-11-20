@@ -13,6 +13,7 @@ import androidx.compose.ui.layout.ContentScale
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -23,6 +24,7 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -49,6 +51,9 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
@@ -148,7 +153,10 @@ private fun WalletAppContent(
                 Scaffold(snackbarHost = { SnackbarHost(snackbar) }) { padding ->
                     Box(Modifier.padding(padding).fillMaxSize()) { OnboardingScreen(model) { onboarding = false } }
                 }
-            } else {
+            } else BoxWithConstraints(Modifier.fillMaxSize()) {
+                // A window wider than it is tall, or simply wide, gets the tabs down the side and the full height.
+                val wide = maxWidth >= 600.dp && maxWidth > maxHeight * 0.9f
+                val rail = wide && ready && screen == Screen.Home
                 Scaffold(
                     topBar = {
                         Column {
@@ -167,51 +175,54 @@ private fun WalletAppContent(
                             if (settings.testEnvironment) TestEnvironmentBanner()
                         }
                     },
-                    bottomBar = { if (ready && screen == Screen.Home) HomeNavigationBar(tab) { model.tab.value = it } },
+                    bottomBar = { if (ready && screen == Screen.Home && !rail) HomeNavigationBar(tab) { model.tab.value = it } },
                     snackbarHost = { SnackbarHost(snackbar) },
                 ) { padding ->
-                    Box(Modifier.padding(padding).fillMaxSize()) {
-                        if (!ready) {
-                            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
-                        } else when (val s = screen) {
-                            Screen.Home -> when (tab) {
-                                HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
-                                HomeTab.FILES -> FilesTab(model)
-                                HomeTab.USE -> UseTab(model, scan)
-                                HomeTab.VERIFY -> VerifyTab(model, canScanFrames = scanQrStream != null)
-                                HomeTab.HISTORY -> HistoryTab(model)
+                    Row(Modifier.padding(padding).fillMaxSize()) {
+                        if (rail) HomeNavigationRail(tab) { model.tab.value = it }
+                        Box(Modifier.weight(1f).fillMaxSize()) {
+                            if (!ready) {
+                                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
+                            } else when (val s = screen) {
+                                Screen.Home -> when (tab) {
+                                    HomeTab.DOCUMENTS -> DocumentsTab(model) { addSheet = true }
+                                    HomeTab.FILES -> FilesTab(model)
+                                    HomeTab.USE -> UseTab(model, scan)
+                                    HomeTab.VERIFY -> VerifyTab(model, canScanFrames = scanQrStream != null)
+                                    HomeTab.HISTORY -> HistoryTab(model)
+                                }
+                                Screen.Settings -> SettingsScreen(model)
+                                is Screen.SettingsPage -> SettingsPageScreen(model, s.section)
+                                Screen.Issuance -> IssuanceScreen(model)
+                                Screen.Presentation -> PresentationScreen(model)
+                                is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
+                                is Screen.Certificate -> CertificateScreen(model, s)
+                                Screen.AddDocument -> AddDocumentScreen(model)
+                                Screen.TrustList -> TrustListScreen(model)
+                                Screen.TrustAnchors -> TrustAnchorsScreen(model)
+                                Screen.CustomTrust -> CustomTrustScreen(model)
+                                Screen.ZkSettings -> ZkSettingsScreen(model)
+                                is Screen.OpenPgpKeys -> OpenPgpKeysScreen(model, s)
+                                Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null, streamQr = scanQrStream)
+                                Screen.MsIssuance -> MsIssuanceScreen(model)
+                                Screen.Proximity -> ProximityScreen(model)
+                                Screen.Reader -> ReaderScreen(model)
+                                Screen.OnlineVerify -> OnlineVerifyScreen(model)
+                                Screen.VerifierProfiles -> VerifierProfilesScreen(model)
+                                Screen.KeyViewer -> KeyViewerScreen(model)
+                                is Screen.FileDetail -> FileDetailScreen(model, s)
+                                is Screen.FileSign -> FileSignScreen(model, s)
+                                is Screen.FileDerive -> FileDeriveScreen(model, s)
+                                is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
+                                is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
+                                is Screen.NationalId -> NationalIdScreen(model, s)
+                                Screen.DocumentSources -> DocumentSourcesScreen(model)
+                                Screen.PassportRead -> PassportReadScreen(model, scanMrz)
+                                is Screen.Portal -> PortalScreen(model, s)
+                                is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
+                                is Screen.LegalText -> LegalTextScreen(model, s)
+                                is Screen.IntegrationStatement -> IntegrationStatementScreen(model, s)
                             }
-                            Screen.Settings -> SettingsScreen(model)
-                            is Screen.SettingsPage -> SettingsPageScreen(model, s.section)
-                            Screen.Issuance -> IssuanceScreen(model)
-                            Screen.Presentation -> PresentationScreen(model)
-                            is Screen.DocumentDetail -> DocumentScreen(model, s, scan)
-                            is Screen.Certificate -> CertificateScreen(model, s)
-                            Screen.AddDocument -> AddDocumentScreen(model)
-                            Screen.TrustList -> TrustListScreen(model)
-                            Screen.TrustAnchors -> TrustAnchorsScreen(model)
-                            Screen.CustomTrust -> CustomTrustScreen(model)
-                            Screen.ZkSettings -> ZkSettingsScreen(model)
-                            is Screen.OpenPgpKeys -> OpenPgpKeysScreen(model, s)
-                            Screen.Offline -> OfflineScreen(model, readQr, hasCamera = scanQr != null, streamQr = scanQrStream)
-                            Screen.MsIssuance -> MsIssuanceScreen(model)
-                            Screen.Proximity -> ProximityScreen(model)
-                            Screen.Reader -> ReaderScreen(model)
-                            Screen.OnlineVerify -> OnlineVerifyScreen(model)
-                            Screen.VerifierProfiles -> VerifierProfilesScreen(model)
-                            Screen.KeyViewer -> KeyViewerScreen(model)
-                            is Screen.FileDetail -> FileDetailScreen(model, s)
-                            is Screen.FileSign -> FileSignScreen(model, s)
-                            is Screen.FileDerive -> FileDeriveScreen(model, s)
-                            is Screen.OpenCertRender -> OpenCertRenderScreen(model, s)
-                            is Screen.NationalIdCreate -> NationalIdCreateScreen(model, s)
-                            is Screen.NationalId -> NationalIdScreen(model, s)
-                            Screen.DocumentSources -> DocumentSourcesScreen(model)
-                            Screen.PassportRead -> PassportReadScreen(model, scanMrz)
-                            is Screen.Portal -> PortalScreen(model, s)
-                            is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
-                            is Screen.LegalText -> LegalTextScreen(model, s)
-                            is Screen.IntegrationStatement -> IntegrationStatementScreen(model, s)
                         }
                     }
                 }
@@ -307,13 +318,17 @@ fun PinDialog(reason: String, onResult: (String?) -> Unit) {
         text = {
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 Text(reason)
+                val focus = remember { FocusRequester() }
                 OutlinedTextField(
                     value = value,
                     onValueChange = { v -> value = v.filter { it.isDigit() }.take(12) },
                     singleLine = true,
                     visualTransformation = PasswordVisualTransformation(),
-                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword),
+                    keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.NumberPassword, imeAction = ImeAction.Done),
+                    keyboardActions = KeyboardActions(onDone = { if (value.length >= 6) onResult(value) }),
+                    modifier = Modifier.focusRequester(focus).onEnterKey { if (value.length >= 6) onResult(value) },
                 )
+                LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
             }
         },
         confirmButton = { Button(onClick = { onResult(value) }, enabled = value.length >= 6) { Text(stringResource(Res.string.action_confirm)) } },
@@ -436,7 +451,7 @@ fun DocumentScreen(model: WalletModel, screen: Screen.DocumentDetail, scan: Scan
             evidence = DerivedEvidence.verify(payload, model.files.trustSource, own = true, disclosed = disclosed, zk = model.zkPdfContext)
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         CredentialCard(model, doc) {}
         assuranceText(record)?.let { LabelValue(stringResource(Res.string.credential_ial), it) }
         storedTrust(doc)?.let { TrustCard(stringResource(Res.string.credential_issuer), doc.typeDisplayName ?: record?.credentialIssuer ?: "", it) }

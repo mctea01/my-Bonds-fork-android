@@ -115,7 +115,7 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
         // An ID number the wallet already knows (a national ID card, the saved MyData details) opens it at once.
         model.files.readNationalIdIfKnown(f)
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.national_id_intro),
             style = MaterialTheme.typography.bodyMedium)
         LabelValue(stringResource(Res.string.label_file), f.name)
@@ -134,7 +134,7 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
             Text(stringResource(Res.string.national_id_number_text), style = MaterialTheme.typography.bodySmall)
             BusyLine(busy, error)
             Button(onClick = { model.files.readNationalId(f, idNumber) }, enabled = busy == null && idNumber.isNotBlank()) { Text(stringResource(Res.string.national_id_open_read)) }
-            return@Column
+            return@ScreenColumn
         }
         SectionTitle(stringResource(Res.string.national_id_confirm))
         val claims = BondsNationalId.claims(d.fields, kotlin.time.Clock.System.now()).toMap()
@@ -152,7 +152,7 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
         CardPicker(model) { card = it }
         ActionRow(WalletIcons.Phone, stringResource(Res.string.national_id_mobile_moica), stringResource(Res.string.national_id_mobile_moica_text), enabled = false) {}
         BusyLine(busy, error)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { card?.let { model.files.issueNationalId(d, it) } }, enabled = busy == null && card != null) { Text(stringResource(Res.string.national_id_sign_make)) }
             OutlinedButton(onClick = { model.files.nationalIdDraft.value = null }, enabled = busy == null) { Text(stringResource(Res.string.national_id_reenter)) }
         }
@@ -181,7 +181,7 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
     }
     var confirmDelete by remember { mutableStateOf(false) }
     val name = cardholder(card)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         NationalIdCardView(name, issuedAt(card)) {}
         BusyLine(busy, error)
         SectionTitle(stringResource(Res.string.label_fields))

@@ -141,19 +141,24 @@ class DidResolver(
 
     /** Verification methods and relationships of a DID document (JSON-LD or plain JSON). */
     fun parseDocument(did: String, doc: JsonObject): DidDocument {
-        val methods = (doc.arr("verificationMethod") ?: emptyList()).mapNotNull { e ->
-            val o = e as? JsonObject ?: return@mapNotNull null
-            val id = o.str("id") ?: return@mapNotNull null
+        fun method(e: kotlinx.serialization.json.JsonElement): DidVerificationMethod? {
+            val o = e as? JsonObject ?: return null
+            val id = o.str("id") ?: return null
             val absolute = if (id.startsWith("#")) did + id else id
-            if (o.str("type") == "EcdsaSecp256k1VerificationKey2019" && o["publicKeyJwk"] == null && o.str("publicKeyMultibase") == null) return@mapNotNull null
+            if (o.str("type") == "EcdsaSecp256k1VerificationKey2019" && o["publicKeyJwk"] == null && o.str("publicKeyMultibase") == null) return null
             val jwk = o["publicKeyJwk"] as? JsonObject
             val key = when {
                 jwk != null -> VerificationKey.fromJwk(jwk)
                 o.str("publicKeyMultibase") != null -> resolveKey("did:key:" + o.str("publicKeyMultibase")).methods.first().key
-                else -> return@mapNotNull null
+                else -> return null
             }
-            DidVerificationMethod(absolute, key, jwk)
+            return DidVerificationMethod(absolute, key, jwk)
         }
+        // Methods listed in verificationMethod, and those embedded in a verification relationship (DID Core 5.3).
+        val relationships = listOf("assertionMethod", "authentication", "keyAgreement", "capabilityInvocation", "capabilityDelegation")
+        val listed = (doc.arr("verificationMethod") ?: emptyList()).mapNotNull { method(it) }
+        val embedded = relationships.flatMap { doc.arr(it) ?: emptyList() }.filterIsInstance<JsonObject>().mapNotNull { runCatching { method(it) }.getOrNull() }
+        val methods = (listed + embedded).distinctBy { it.id }
         fun refs(name: String): Set<String> = (doc.arr(name) ?: emptyList()).mapNotNull {
             val r = (it as? kotlinx.serialization.json.JsonPrimitive)?.content ?: (it as? JsonObject)?.str("id")
             r?.let { x -> if (x.startsWith("#")) did + x else x }

@@ -48,6 +48,13 @@ interface DocumentSigner {
      * keys, SM2 with SM3 (DER encoded, GB/T 32918 and GB/T 35276) for SM2 keys. A smart card may ask for the PIN here; failures surface as exceptions with a user-facing message.
      */
     suspend fun sign(data: ByteArray): ByteArray
+
+    /**
+     * RSASSA-PSS over [data] with SHA-256, MGF1 with SHA-256 and a 32-byte salt (PS256), for formats that accept only
+     * PSS from RSA keys (C2PA and CAWG COSE signatures). Null when the key cannot sign PSS (an EC key, a card that
+     * pads PKCS#1 v1.5 itself, a service that does not list RSASSA-PSS).
+     */
+    suspend fun signRsaPss(data: ByteArray): ByteArray? = null
 }
 
 /** A failure the user can act on (wrong PIN, card removed, key not usable); [message] is shown as is. */

@@ -63,9 +63,9 @@ fun ProximityScreen(model: WalletModel) {
             OutlinedButton(onClick = { model.proximity.again() }) { Text(stringResource(Res.string.action_cancel)) }
         }
         is ProximityUi.Consent -> ConsentView(model, s)
-        is ProximityUi.Done -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is ProximityUi.Done -> ScreenColumn(spacing = 12.dp) {
             VerdictCard(Verdict.PASS, stringResource(Res.string.flow_presented), listOf(stringResource(Res.string.prox_handed, s.documents.joinToString(stringResource(Res.string.sep_list)), s.verifier), stringResource(Res.string.flow_presented_history)))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_done)) }
                 // "Present again" restarts the in-person listening flow; a DC API request is driven by the browser, not retriable here.
                 if (s.channel != diw.wallet.app.ProximityChannel.DC_API) {
@@ -73,14 +73,14 @@ fun ProximityScreen(model: WalletModel) {
                 }
             }
         }
-        is ProximityUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is ProximityUi.Failed -> ScreenColumn(spacing = 12.dp) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.flow_failed), listOf(s.message))
             // A DC API request cannot be retried inside the wallet (the browser owns it); "再試一次" would otherwise drop
             // the user onto the NFC sensing screen, which never answers the original online request.
             if (s.channel == diw.wallet.app.ProximityChannel.DC_API) {
                 Button(onClick = { model.back() }) { Text(stringResource(Res.string.action_leave)) }
             } else {
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                WrapRow() {
                     Button(onClick = { model.proximity.again() }) { Text(stringResource(Res.string.action_try_again)) }
                     OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_leave)) }
                 }
@@ -97,7 +97,7 @@ private fun ReadyView(model: WalletModel, s: ProximityUi.Ready) {
     var bleReason by remember { mutableStateOf<String?>(null) }
     // Asks for the Bluetooth permission up front: after the tap the data usually goes over Bluetooth.
     LaunchedEffect(Unit) { bleReason = model.platform.proximityTransportUnavailableReason() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(Tokens.ContainerRadius),
@@ -134,7 +134,7 @@ private fun ReadyView(model: WalletModel, s: ProximityUi.Ready) {
 
 @Composable
 private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         val extra = buildList {
             add(stringResource(Res.string.prox_channel, s.channel.title, s.channel.spec))
             if (s.chain.isEmpty()) add(stringResource(Res.string.prox_no_reader_auth))
@@ -153,7 +153,7 @@ private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
         val failed = s.attestations.filter { it.verdict == AttestationVerdict.INVALID }
         val attestationsOk = failed.isEmpty() || riskOverride(s, stringResource(Res.string.flow_registration_continue), stringResource(Res.string.flow_registration_title),
             failed.flatMap { it.problems }.distinct().take(5) + stringResource(Res.string.flow_registration_text))
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk && attestationsOk) { Text(stringResource(Res.string.flow_agree_share)) }
             OutlinedButton(onClick = { model.proximity.decline(s) }) { Text(stringResource(Res.string.action_decline)) }
         }

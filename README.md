@@ -66,14 +66,15 @@
 ### 文件與簽章
 
 - **保存與檢查**：
-  - 支援 PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、電子公文線上簽核（.si）、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2、OpenPGP 簽章，以及圖片的 C2PA 內容憑證；
+  - 支援 PAdES、CAdES（.p7s / .p7m）、XAdES 與 XMLDSig、ASiC、電子公文線上簽核（.si）、OFD 與 SES 電子印章、RFC 3161 時戳、OpenCerts、國密 SM2、OpenPGP 簽章，以及圖片的 C2PA 內容憑證與 CAWG 身分聲明；
+  - 圖片的 AI 生成與浮水印宣告（C2PA、IPTC 數位來源類型、軟綁定），提到 SynthID 或由 Google AI 生成時提供 Google 官方查驗頁（只讀宣告，不偵測浮水印）；
   - 每個簽章分別顯示完整性、憑證鏈信任、時戳與簽署後的變更；
   - 相同內容自動去重，同類的分年度文件可並存，並依項目整理。
 - **時戳與撤銷資訊**：可選擇 TSA，保存時可自動加時戳；時戳機構與文件內簽署者的憑證鏈和撤銷資訊（OCSP 優先，取不到才用 CRL）一併保存，公文容器可一次取得全部檔案的撤銷資訊；時戳可移除後重新取得；開啟文件時依目前的信任錨點重新判定。
 - **簽署**：
   - 方式：自然人憑證卡、PIV 卡、OpenPGP 卡（含 YubiKey；Android NFC、USB 或 PC/SC 讀卡機）、PKCS#11、PKCS#12、系統金鑰、錢包金鑰、行動自然人憑證（需要 SP 帳號）；
   - CSC v2 遠端簽章：內建 EUDI 測試服務，也可自行加入服務；
-  - 格式：PDF 以 PAdES 增量簽署，XML 以 XAdES，OFD 在文件內加數位簽章（SM2 金鑰為 GB/T 35275 國密簽章，其他金鑰為 PKCS#7，可加時戳；沒有 SM2 憑證時可建立自簽 SM2 憑證）或蓋 SES 電子印章（GB/T 38540，用制章機構發的 .esl 印章檔，或為 SM2 金鑰自製圓形／方形印章，可選頁面與位置），其他檔案以 CAdES 或 ASiC-E，電子公文在線上簽核檔（.si）加簽核點；
+  - 格式：PDF 以 PAdES 增量簽署，XML 以 XAdES，OFD 在文件內加數位簽章（SM2 金鑰為 GB/T 35275 國密簽章，其他金鑰為 PKCS#7，可加時戳；沒有 SM2 憑證時可建立自簽 SM2 憑證）或蓋 SES 電子印章（GB/T 38540，用制章機構發的 .esl 印章檔，或為 SM2 金鑰自製圓形／方形印章，可選頁面與位置），其他檔案以 CAdES 或 ASiC-E，電子公文在線上簽核檔（.si）加簽核點；圖片與其他檔案可加 C2PA 內容憑證與 CAWG 身分聲明（JPEG、PNG、WebP 內嵌，其他檔案為外部清單，可宣告 AI 生成與是否允許 AI 訓練）；
   - 保證層級：PAdES、CAdES、XAdES、ASiC-E 都可選 B-B、B-T（簽章時戳）、B-LT（再加憑證鏈與撤銷資訊，OCSP 優先）、B-LTA（再加保存時戳），簽完顯示實際達到的層級；
   - PDF 可選認證簽章（不允許變更、只允許填表、允許填表與註解）與頁面上的可見簽章，已簽署的 PDF 可「延長保存」補上長期驗證資料與文件時戳；
   - OpenPGP：以 OpenPGP 卡產生分離式簽章（.asc）、解開寄給自己的加密訊息，並可把檔案加密給清單中的收件人；
@@ -127,7 +128,7 @@
 - **[最新穩定版](https://github.com/mctea01/my-Bonds-fork-android/releases/latest)**：一般使用請裝這個。
 - **[nightly](https://github.com/mctea01/my-Bonds-fork-android/releases/tag/nightly)**：main 每次更新後的自動建置，想試最新功能時使用，另附區網測試用的 debug 版。
 
-每個 Release 頁最上方都有「下載哪個檔案」的對照表，依手機或電腦選一個檔案即可。支援 Android 10 以上（零知識證明需要 64 位元裝置）、Windows 10 以上、Debian 與 Ubuntu；macOS（Apple 晶片）與其他系統可用 Java 21 執行 jar。版本號與發佈流程見 [docs/release.md](docs/release.md)。
+每個 Release 頁最上方都有「下載哪個檔案」的對照表，依手機或電腦選一個檔案即可。支援 Android 10 以上（零知識證明需要 64 位元裝置）、Windows 10 以上、Debian 與 Ubuntu；macOS（Apple 晶片）與其他系統可用 Java 21 執行 jar。安裝步驟見[使用教程](docs/guides/user-guide.md#1-安裝)；版本號與發佈流程見 [docs/release.md](docs/release.md)。
 
 ## 建置與測試
 

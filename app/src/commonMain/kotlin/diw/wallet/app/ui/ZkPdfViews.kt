@@ -107,7 +107,7 @@ fun ZkPdfDeriveSection(
     }
     if (!form.on) return
     if (matches.size > 1) {
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        WrapRow(spacing = 6.dp) {
             matches.forEach { m ->
                 FilterChip(selected = m.profile.id == match.profile.id, onClick = { onChange(form.copy(profileId = m.profile.id, conditions = emptyMap())) },
                     label = { Text(m.profile.title + if (m.profile.test) stringResource(Res.string.test_suffix) else "") })
@@ -121,7 +121,7 @@ fun ZkPdfDeriveSection(
         LabelValue(field.label ?: field.name, field.value)
         if (match.profile.field(field.name)?.normalize == ZkPdfNormalize.DATE) {
             val c = form.conditions[field.name]
-            Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            WrapRow(spacing = 6.dp) {
                 FilterChip(selected = c == null, onClick = { onChange(form.copy(conditions = form.conditions - field.name)) }, label = { Text(stringResource(Res.string.zkpdf_no_condition)) })
                 FilterChip(selected = c?.kind == ZkPdfPredicate.DATE_LE,
                     onClick = { onChange(form.copy(conditions = form.conditions + (field.name to ZkPdfConditionInput(ZkPdfPredicate.DATE_LE, c?.date ?: "")))) },

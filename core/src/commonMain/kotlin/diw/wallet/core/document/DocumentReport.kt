@@ -56,6 +56,8 @@ enum class SignatureFormat(private val text: String) {
     OPENCERTS("core_fmt_opencerts"),
     OPENPGP("OpenPGP"),
     C2PA("core_fmt_c2pa"),
+    /** The X.509 signature of a CAWG identity assertion (cawg.x509.cose) on a C2PA manifest. */
+    CAWG_X509("core_fmt_cawg_x509"),
     /** Passive authentication of a travel document chip: the security object (SOD) signed by a document signer. */
     ICAO_PA("core_fmt_icao_pa");
 
@@ -243,6 +245,8 @@ data class DocumentReport(
     val openPgp: diw.wallet.core.document.pgp.OpenPgpReport? = null,
     /** Content credentials (C2PA manifests) of a picture or a sidecar manifest file. */
     val c2pa: diw.wallet.core.document.c2pa.C2paInfo? = null,
+    /** What the file declares about AI generation and watermarks (C2PA actions, soft bindings, XMP); no detection. */
+    val aiProvenance: diw.wallet.core.document.c2pa.AiProvenance? = null,
     /** Files inside a container (ZIP, OFD, ASiC). */
     val entries: List<String> = emptyList(),
     /** The checks of a travel document chip read into the wallet. */

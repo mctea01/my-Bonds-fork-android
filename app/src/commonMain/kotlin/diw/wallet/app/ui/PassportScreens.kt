@@ -98,9 +98,9 @@ fun PassportReadScreen(model: WalletModel, scanMrz: (suspend () -> String?)? = n
     val key = remember(number, birth, expiry) { runCatching { MrzKey.of(number, birth, expiry) }.getOrNull() }
     val secret: AccessSecret? = if (useCan) can.takeIf { it.length == 6 }?.let { AccessSecret.Can(it) } else key?.let { AccessSecret.MrzSecret(it) }
 
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Text(stringResource(Res.string.mrtd_intro), style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             FilterChip(selected = !useCan, onClick = { useCan = false }, label = { Text(stringResource(Res.string.mrtd_by_zone)) })
             FilterChip(selected = useCan, onClick = { useCan = true }, label = { Text(stringResource(Res.string.mrtd_by_can)) })
         }
@@ -159,7 +159,7 @@ fun PassportReadScreen(model: WalletModel, scanMrz: (suspend () -> String?)? = n
                     Text(stringResource(Res.string.action_find_again))
                 }
             }
-            else -> Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            else -> WrapRow() {
                 list.readers.forEach { r -> FilterChip(selected = r === reader, onClick = { reader = r }, label = { Text(r.name) }) }
             }
         }
@@ -313,7 +313,7 @@ private fun PictureDialog(p: PassportPicture, number: Int, onExport: ((PassportP
                 }
                 Text(stringResource(Res.string.mrtd_picture_info, img.width, img.height, p.image.mediaType, p.image.data.size),
                     style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
-                Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.horizontalScroll(rememberScrollState())) {
+                WrapRow() {
                     if (onExport != null) {
                         Button(onClick = { onExport(p, number, false) }) {
                             Text(stringResource(if (jp2) Res.string.mrtd_picture_export_png else Res.string.mrtd_picture_export))
