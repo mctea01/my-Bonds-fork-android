@@ -448,7 +448,9 @@ object C2paWriter {
             val body = extended + chunk
             val riffSize = body.size - 8
             for (k in 0 until 4) body[4 + k] = (riffSize ushr (8 * k)).toByte()
-            Triple(body, extended.size.toLong(), chunk.size.toLong())
+            // The exclusion is the chunk header and data without its pad byte, the manifest location c2pa-rs
+            // validators require the exclusion to equal.
+            Triple(body, extended.size.toLong(), (8 + store.size).toLong())
         }
     }
 

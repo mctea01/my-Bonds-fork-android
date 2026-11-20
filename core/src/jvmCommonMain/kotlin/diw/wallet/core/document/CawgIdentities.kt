@@ -384,7 +384,7 @@ internal class CawgIdentities(private val pki: PkiSupport, private val checks: C
 
         // Binding: c2paAsset is the JSON form of signer_payload (byte strings in standard base64).
         val asset = subject["c2paAsset"]
-        if (asset == null || asset != C2paManifests.toJson(payload)) r.fail("cawg.ica.signer_payload.mismatch", ct("core_cawg_payload_mismatch"))
+        if (asset == null || !samePayload(asset, C2paManifests.toJson(payload))) r.fail("cawg.ica.signer_payload.mismatch", ct("core_cawg_payload_mismatch"))
 
         // Verified identities.
         val list = subject["verifiedIdentities"] as? JsonArray
@@ -486,6 +486,41 @@ internal class CawgIdentities(private val pki: PkiSupport, private val checks: C
         (this as? CborMap)?.items?.entries?.firstOrNull { (k, _) -> (k as? Tstr)?.value == key }?.value
 
     private fun JsonObject.text(key: String): String? = (this[key] as? JsonPrimitive)?.contentOrNull
+
+    /**
+     * c2paAsset against signer_payload: the same referenced assertions (url and hash, in order), sig_type, role and
+     * any other field. A hashed URI may also state its alg (Adobe's issuer does); the hash is base64 text, or the
+     * bytes of that text as a JSON array (as c2pa-rs writes it), which is read for interoperability only.
+     */
+    private fun samePayload(asset: JsonElement, expected: JsonElement): Boolean {
+        val a = asset as? JsonObject ?: return false
+        val e = expected as? JsonObject ?: return false
+        val ar = a["referenced_assertions"] as? JsonArray ?: return false
+        val er = e["referenced_assertions"] as? JsonArray ?: return false
+        if (ar.size != er.size) return false
+        val refs = ar.zip(er).all { (x, y) ->
+            val xo = x as? JsonObject ?: return@all false
+            val yo = y as? JsonObject ?: return@all false
+            val xh = hashBytes(xo["hash"])
+            xo.text("url") == yo.text("url") && xh != null && xh.contentEquals(hashBytes(yo["hash"])) &&
+                (xo.text("alg") == null || yo.text("alg") == null || xo.text("alg") == yo.text("alg"))
+        }
+        if (!refs || texts(a["role"]) != texts(e["role"])) return false
+        return (a.keys + e.keys - setOf("referenced_assertions", "role")).all { a[it] == e[it] }
+    }
+
+    private fun hashBytes(e: JsonElement?): ByteArray? {
+        val raw = when (e) {
+            is JsonPrimitive -> return e.contentOrNull?.let(::base64)
+            is JsonArray -> ByteArray(e.size) { i -> (e[i] as? JsonPrimitive)?.contentOrNull?.toIntOrNull()?.takeIf { it in 0..255 }?.toByte() ?: return null }
+            else -> return null
+        }
+        val text = raw.decodeToString()
+        return if (raw.isNotEmpty() && text.all { it.isLetterOrDigit() || it in "+/=-_" }) base64(text) ?: raw else raw
+    }
+
+    private fun base64(s: String): ByteArray? =
+        runCatching { java.util.Base64.getDecoder().decode(s) }.recoverCatching { java.util.Base64.getUrlDecoder().decode(s) }.getOrNull()
 
     private fun texts(e: JsonElement?): List<String> = when (e) {
         is JsonArray -> e.mapNotNull { (it as? JsonPrimitive)?.contentOrNull }
