@@ -71,7 +71,7 @@ versionCode 由版本算出，換新版本線時一定變大（0.5 起為 50000 
 
 CI 產生的 Windows 檔案沒有 Authenticode 簽章。程式碼簽章憑證只存在 YubiKey（或其他智慧卡）時，在自己的 Windows 電腦上以 `tools/windows-sign.ps1` 簽署後傳回同一個 Release；私鑰不離開卡片，也不需要放進 CI。
 
-需要：Windows SDK 的 `signtool`（Signing Tools for Desktop Apps）、YubiKey Smart Card Minidriver（插上 YubiKey 時憑證出現在「目前使用者 > 個人」，簽署時 Windows 詢問 PIV PIN）、已 `gh auth login` 的 GitHub CLI；預設模式另需 JDK 21 以上（`jpackage`，設好 `JAVA_HOME`）與 WiX Toolset（JDK 21、22 用 3.14，JDK 23 起用 4 或 5）。執行前 `chcp 65001`，腳本本身以 UTF-8 輸出。只有一張可用的程式碼簽章憑證時自動選用，否則以 `-Thumbprint` 指定。時戳預設 `http://timestamp.digicert.com`（`-TimestampUrl` 可改）。
+需要：Windows SDK 的 `signtool`（Signing Tools for Desktop Apps）、YubiKey Smart Card Minidriver（插上 YubiKey 時憑證出現在「目前使用者 > 個人」，簽署時 Windows 詢問 PIV PIN）、已 `gh auth login` 的 GitHub CLI；預設模式另需 `jpackage`（JDK 21 以上，依序取 `-JdkHome`、`JAVA_HOME`、PATH）與 WiX Toolset：WiX 3.14（`candle.exe`、`light.exe`）可搭配任何版本的 jpackage；WiX 4 以上（單一的 `wix.exe`）要搭配 JDK 24 以上的 jpackage，並先安裝 jpackage 用到的擴充 `wix extension add -g WixToolset.Util.wixext/<與 wix --version 相同的版本>`（缺少時腳本會提示這行指令）。只用那個 JDK 的 jpackage 打包，MSI 內仍是原本映像裡的 Java 執行環境，所以可另外裝一個 JDK 24 以上並以 `-JdkHome` 指定，例如 `-JdkHome "C:\Program Files\Java\jdk-25"`。執行前 `chcp 65001`，腳本本身以 UTF-8 輸出。只有一張可用的程式碼簽章憑證時自動選用，否則以 `-Thumbprint` 指定。時戳預設 `http://timestamp.digicert.com`（`-TimestampUrl` 可改）。
 
 不用 signtool 時以 `-SignCommand` 改用自己的簽章命令（例如整合好的 jsign 腳本）：第一個元素是程式，其餘是參數，參數中的 `{file}` 換成要簽的檔案，沒有 `{file}` 時把檔案接在最後。命令要就地簽署檔案（時戳由命令自己處理）並以 0 結束；腳本之後以 `Get-AuthenticodeSignature` 確認檔案帶有簽章，`-Thumbprint` 與 `-TimestampUrl` 只用於 signtool。例如：
 
