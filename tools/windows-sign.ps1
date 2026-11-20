@@ -17,11 +17,12 @@
 # Third-party libraries that jars unpack at run time (Skiko, SQLite, JNA) are left as they are: their loaders check
 # their own digests, and they are not this project's code.
 #
-# Both need signtool (Windows SDK) and, to download and upload, the GitHub CLI (gh auth login). With a YubiKey, the
-# YubiKey Smart Card Minidriver puts the certificate into Cert:\CurrentUser\My while the key is inserted; Windows
-# asks for the PIV PIN when signing.
+# All modes sign with signtool (Windows SDK) and a certificate in Cert:\CurrentUser\My (with a YubiKey, the YubiKey
+# Smart Card Minidriver puts it there while the key is inserted; Windows asks for the PIV PIN when signing), or with
+# your own command (-SignCommand, for example a jsign script). Downloading and uploading need the GitHub CLI.
 #
 #   .\tools\windows-sign.ps1 -Tag v0.5.3
+#   .\tools\windows-sign.ps1 -Tag v0.5.3 -SignCommand C:\tools\jsign-yubikey.cmd,"{file}"
 #   .\tools\windows-sign.ps1 -Tag v0.5.3 -Thumbprint 0123ABCD... -Mode MsiOnly
 #   .\tools\windows-sign.ps1 -Msi .\DIW-MY-WALLET-0.5.3.msi -NoUpload
 #   .\tools\windows-sign.ps1 -Mode Native -Path .\desktop-native-windows.zip -Tag v0.5.3
@@ -33,6 +34,7 @@ param(
     [string]$Repo = "mctea01/my-Bonds-fork-android",
     [ValidateSet("Full", "MsiOnly", "Native")] [string]$Mode = "Full",
     [string]$Thumbprint,
+    [string[]]$SignCommand,
     [string]$TimestampUrl = "http://timestamp.digicert.com",
     [string]$WorkDir = (Join-Path $env:TEMP "diw-windows-sign"),
     [switch]$NoUpload,
@@ -49,11 +51,15 @@ $Description = "DIW MY WALLET"
 $MenuGroup = "DIW MY WALLET"
 $UpgradeUuid = "5d0f4a52-8a3e-4b8e-9f0c-6c1d2b7e3a41"
 
+# A tool on the PATH, directly in one of the roots, or (Windows SDK layout) in an x64 folder below them.
 function Find-Tool([string]$name, [string[]]$roots) {
     $cmd = Get-Command $name -ErrorAction SilentlyContinue
     if ($cmd) { return $cmd.Source }
     foreach ($root in $roots) {
-        if (Test-Path $root) {
+        if ($root -and (Test-Path (Join-Path $root $name))) { return (Join-Path $root $name) }
+    }
+    foreach ($root in $roots) {
+        if ($root -and (Test-Path $root)) {
             $hit = Get-ChildItem $root -Recurse -Filter $name -ErrorAction SilentlyContinue |
                 Where-Object { $_.FullName -match "\\x64\\" } | Sort-Object FullName -Descending | Select-Object -First 1
             if ($hit) { return $hit.FullName }
@@ -68,27 +74,50 @@ function Invoke-Checked([string]$exe, [string[]]$arguments) {
     if ($LASTEXITCODE -ne 0) { throw "$([IO.Path]::GetFileName($exe)) failed with exit code $LASTEXITCODE" }
 }
 
-$signtool = Find-Tool "signtool.exe" @("${env:ProgramFiles(x86)}\Windows Kits\10\bin", "$env:ProgramFiles\Windows Kits\10\bin")
-if (-not $signtool) { throw "signtool.exe not found: install the Windows SDK (Signing Tools for Desktop Apps)" }
-
-# The certificate: the one given, or the only code signing certificate with a private key in the user's store.
-if ($Thumbprint) {
-    $Thumbprint = ($Thumbprint -replace "\s", "").ToUpperInvariant()
-    $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -eq $Thumbprint }
-    if (-not $cert) { throw "No certificate $Thumbprint in Cert:\CurrentUser\My (is the YubiKey inserted?)" }
+# -SignCommand: your own signing command (jsign, a wrapper script around it, another signer) instead of signtool and
+# the certificate store. The first element is the program, the rest its arguments; {file} in an argument becomes the
+# file to sign, and the file is appended when no argument has {file}. The command signs the file in place (with its
+# own timestamp) and exits with 0; -Thumbprint and -TimestampUrl apply to signtool only.
+if ($SignCommand) {
+    # Only the program: its arguments may hold a PIN or a password.
+    Write-Host "Signing with the custom command $($SignCommand[0])"
 } else {
-    $certs = @(Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) })
-    if ($certs.Count -ne 1) {
-        $certs | ForEach-Object { Write-Host ("  {0}  {1}  until {2:yyyy-MM-dd}" -f $_.Thumbprint, $_.Subject, $_.NotAfter) }
-        throw "Found $($certs.Count) usable code signing certificates: pass -Thumbprint"
+    $signtool = Find-Tool "signtool.exe" @("${env:ProgramFiles(x86)}\Windows Kits\10\bin", "$env:ProgramFiles\Windows Kits\10\bin")
+    if (-not $signtool) { throw "signtool.exe not found: install the Windows SDK (Signing Tools for Desktop Apps)" }
+
+    # The certificate: the one given, or the only code signing certificate with a private key in the user's store.
+    if ($Thumbprint) {
+        $Thumbprint = ($Thumbprint -replace "\s", "").ToUpperInvariant()
+        $cert = Get-ChildItem Cert:\CurrentUser\My | Where-Object { $_.Thumbprint -eq $Thumbprint }
+        if (-not $cert) { throw "No certificate $Thumbprint in Cert:\CurrentUser\My (is the YubiKey inserted?)" }
+    } else {
+        $certs = @(Get-ChildItem Cert:\CurrentUser\My -CodeSigningCert | Where-Object { $_.HasPrivateKey -and $_.NotAfter -gt (Get-Date) })
+        if ($certs.Count -ne 1) {
+            $certs | ForEach-Object { Write-Host ("  {0}  {1}  until {2:yyyy-MM-dd}" -f $_.Thumbprint, $_.Subject, $_.NotAfter) }
+            throw "Found $($certs.Count) usable code signing certificates: pass -Thumbprint"
+        }
+        $cert = $certs[0]
     }
-    $cert = $certs[0]
+    Write-Host "Signing with $($cert.Subject) ($($cert.Thumbprint)), valid until $($cert.NotAfter.ToString('yyyy-MM-dd'))"
 }
-Write-Host "Signing with $($cert.Subject) ($($cert.Thumbprint)), valid until $($cert.NotAfter.ToString('yyyy-MM-dd'))"
+$Signer = $null
 
 function Sign-File([string]$path) {
-    Invoke-Checked $signtool @("sign", "/sha1", $cert.Thumbprint, "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256",
-        "/d", $Description, $path)
+    if ($SignCommand) {
+        $arguments = @($SignCommand | Select-Object -Skip 1 | ForEach-Object { $_.Replace("{file}", $path) })
+        if (-not ($SignCommand | Where-Object { $_.Contains("{file}") })) { $arguments += $path }
+        Invoke-Checked $SignCommand[0] $arguments
+    } else {
+        Invoke-Checked $signtool @("sign", "/sha1", $cert.Thumbprint, "/fd", "SHA256", "/tr", $TimestampUrl, "/td", "SHA256",
+            "/d", $Description, $path)
+    }
+    # Whatever signed it, the file must now carry an Authenticode signature over its current content.
+    $signature = Get-AuthenticodeSignature $path
+    if (-not $signature.SignerCertificate -or $signature.Status -in @("NotSigned", "HashMismatch", "NotSupportedFileFormat")) {
+        throw "$path has no valid signature after signing ($($signature.Status))"
+    }
+    if ($signature.Status -ne "Valid") { Write-Warning "$([IO.Path]::GetFileName($path)): $($signature.Status), $($signature.StatusMessage)" }
+    $script:Signer = $signature.SignerCertificate
 }
 
 # The project's native libraries inside a jar: extract, sign, put back with a new .sha256 (lowercase hex and a
@@ -145,7 +174,6 @@ if ($Mode -eq "Native") {
     $binaries = @(Get-ChildItem $root -Recurse -Include "*.exe", "*.dll" | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
     Write-Host "Signing $($binaries.Count) files of the native executable folder"
     foreach ($b in $binaries) { Sign-File $b.FullName }
-    foreach ($b in $binaries) { Invoke-Checked $signtool @("verify", "/pa", $b.FullName) }
     $zipName = if ($Tag -match "^v(\d+\.\d+\.\d+)$") { "$PackageName-$($Matches[1])-windows-x64-native.zip" } else { "$PackageName-windows-x64-native.zip" }
     $signed = Join-Path $output $zipName
     [IO.Compression.ZipFile]::CreateFromDirectory($root, $signed, [IO.Compression.CompressionLevel]::Optimal, $false)
@@ -190,6 +218,25 @@ if ($Mode -eq "Native") {
             if (-not (Test-Path (Join-Path $image $dir))) { throw "The unpacked installer has no $dir folder next to $PackageName.exe" }
         }
 
+        # jpackage leaves app\.jpackage.xml out of the installed files, and --app-image refuses a folder without it.
+        # Write it again for the jpackage that rebuilds the MSI (its version must match that jpackage).
+        $state = Join-Path $image "app\.jpackage.xml"
+        if (-not (Test-Path $state)) {
+            $jdkVersion = ((& $jpackage --version | Out-String).Trim() -split "\s+")[0]
+            if ($LASTEXITCODE -ne 0 -or -not $jdkVersion) { throw "jpackage --version failed" }
+            $mainClass = "diw.wallet.app.desktop.MainKt"
+            $cfg = Join-Path $image "app\$PackageName.cfg"
+            if (Test-Path $cfg) {
+                $line = Get-Content $cfg -Encoding UTF8 | Where-Object { $_ -match "^app\.mainclass=" } | Select-Object -First 1
+                if ($line) { $mainClass = $line.Substring("app.mainclass=".Length).Trim() }
+            }
+            $xml = "<?xml version=`"1.0`" ?>`n<jpackage-state version=`"$jdkVersion`" platform=`"windows`">`n" +
+                "  <app-version>$version</app-version>`n  <main-launcher>$PackageName</main-launcher>`n" +
+                "  <main-class>$mainClass</main-class>`n  <signed>false</signed>`n  <app-store>false</app-store>`n</jpackage-state>`n"
+            [IO.File]::WriteAllText($state, $xml, (New-Object Text.UTF8Encoding $false))
+            Write-Host "Wrote $state (jpackage $jdkVersion, main class $mainClass)"
+        }
+
         $libraries = 0
         foreach ($jar in Get-ChildItem (Join-Path $image "app") -Filter "*.jar") { $libraries += Sign-JarLibraries $jar.FullName }
         if ($libraries -eq 0) { Write-Warning "No zk/native/windows-*/ library found in the app's jars: the zero-knowledge library stays unsigned" }
@@ -213,7 +260,6 @@ if ($Mode -eq "Native") {
     }
 
     Sign-File $signed
-    Invoke-Checked $signtool @("verify", "/pa", $signed)
     $uploads = @($signed)
 
     # The Windows release jar carries the same native libraries.
@@ -242,7 +288,8 @@ if (-not $NoNotes) {
     $bodyFile = Join-Path $WorkDir "notes.md"
     $body = (& gh release view $Tag --repo $Repo --json body --jq .body | Out-String)
     if ($LASTEXITCODE -ne 0) { throw "gh release view failed" }
-    $subject = $cert.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
+    if (-not $Signer) { $Signer = (Get-AuthenticodeSignature $signed).SignerCertificate }
+    $subject = $Signer.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
     $line = "$what 已以 $subject 的程式碼簽章憑證簽署（Authenticode）。"
 
     # The guide ends with the marker sentence; a line from an earlier run of the same mode is replaced.

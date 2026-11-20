@@ -73,9 +73,16 @@ CI 產生的 Windows 檔案沒有 Authenticode 簽章。程式碼簽章憑證只
 
 需要：Windows SDK 的 `signtool`（Signing Tools for Desktop Apps）、YubiKey Smart Card Minidriver（插上 YubiKey 時憑證出現在「目前使用者 > 個人」，簽署時 Windows 詢問 PIV PIN）、已 `gh auth login` 的 GitHub CLI；預設模式另需 JDK 21 以上（`jpackage`，設好 `JAVA_HOME`）與 WiX Toolset（JDK 21、22 用 3.14，JDK 23 起用 4 或 5）。執行前 `chcp 65001`，腳本本身以 UTF-8 輸出。只有一張可用的程式碼簽章憑證時自動選用，否則以 `-Thumbprint` 指定。時戳預設 `http://timestamp.digicert.com`（`-TimestampUrl` 可改）。
 
+不用 signtool 時以 `-SignCommand` 改用自己的簽章命令（例如整合好的 jsign 腳本）：第一個元素是程式，其餘是參數，參數中的 `{file}` 換成要簽的檔案，沒有 `{file}` 時把檔案接在最後。命令要就地簽署檔案（時戳由命令自己處理）並以 0 結束；腳本之後以 `Get-AuthenticodeSignature` 確認檔案帶有簽章，`-Thumbprint` 與 `-TimestampUrl` 只用於 signtool。例如：
+
+```powershell
+.\tools\windows-sign.ps1 -Tag v0.5.3 -SignCommand C:\tools\jsign-yubikey.cmd,"{file}"
+.\tools\windows-sign.ps1 -Tag v0.5.3 -SignCommand java,-jar,C:\tools\jsign.jar,--storetype,YUBIKEY,--storepass,$env:PIV_PIN,--tsaurl,http://timestamp.digicert.com,"{file}"
+```
+
 | 模式 | 指令 | 簽署的內容 |
 |---|---|---|
-| `Full`（預設） | `.\tools\windows-sign.ps1 -Tag v0.5.3` | 以系統管理安裝（`msiexec /a`）解開 MSI，簽署啟動程式與所有尚未簽章的 .exe、.dll，以及 jar 內本專案的零知識原生程式庫（`zk/native/windows-x86_64/` 的 `diw_zk.dll`、`diw_bb5.dll`），再以 `jpackage --app-image` 依 CI 相同的名稱、版本、升級 UUID 與安裝選項重建 MSI 並簽署；Release 的 `DIW-MY-WALLET-windows-x64-<版本>-release.jar` 內的原生程式庫也一併簽署 |
+| `Full`（預設） | `.\tools\windows-sign.ps1 -Tag v0.5.3` | 以系統管理安裝（`msiexec /a`）解開 MSI（並補回 jpackage 不安裝、但 `--app-image` 需要的 `app\.jpackage.xml`），簽署啟動程式與所有尚未簽章的 .exe、.dll，以及 jar 內本專案的零知識原生程式庫（`zk/native/windows-x86_64/` 的 `diw_zk.dll`、`diw_bb5.dll`），再以 `jpackage --app-image` 依 CI 相同的名稱、版本、升級 UUID 與安裝選項重建 MSI 並簽署；Release 的 `DIW-MY-WALLET-windows-x64-<版本>-release.jar` 內的原生程式庫也一併簽署 |
 | `MsiOnly` | `.\tools\windows-sign.ps1 -Tag v0.5.3 -Mode MsiOnly` | 只簽 MSI 本身，裡面的程式不變；只需要 `signtool` |
 | `Native` | `.\tools\windows-sign.ps1 -Mode Native -Path .\desktop-native-windows.zip -Tag v0.5.3` | 實驗的 GraalVM 原生版（Actions 執行頁下載的 `desktop-native-windows` Artifact，.zip 或解開的資料夾）：簽署 `diw-desktop.exe` 與旁邊所有尚未簽章的 .exe、.dll（native-image 複製的 JDK 程式庫、`jawt.dll`），打包成 `DIW-MY-WALLET-<版本>-windows-x64-native.zip` 上傳到該 Release |
 
