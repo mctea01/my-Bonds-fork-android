@@ -370,20 +370,31 @@ fn disclose_commitment_matches_a_real_circuit_output() {
     assert_eq!(d["documentNumber"], json!("PA1234567"));
 }
 
-/// The mainnet certificate package of 2026-11 (its serialised tree left out) hashes to the root the registry
-/// published for it, and changing one key changes the root.
+/// The mainnet certificate package of 2026-11-16 (its serialised tree left out) hashes to the root the registry
+/// published for it. Its Aadhaar (UIDAI) keys hash with their own type byte and are not offered as CSCA keys; an
+/// unknown type and a changed key both fail.
 #[test]
 fn published_certificates_hash_to_the_registry_root() {
     let mut text = String::new();
-    flate2::read::GzDecoder::new(&fixture("certificates-1398607f.json.gz")[..]).read_to_string(&mut text).unwrap();
+    flate2::read::GzDecoder::new(&fixture("certificates-0ad5ebef.json.gz")[..]).read_to_string(&mut text).unwrap();
     let out: Value = serde_json::from_str(&certificates::package_json(&text).unwrap()).unwrap();
-    assert_eq!(out["root"], json!("0x1398607f65ee117db9e7de8a9a91e0c7bbe157d431c4cb2dcf764be3b1a101c2"));
+    let root = "0x0ad5ebefadaac8b78af33db76722570bf215f3e32b7971d6ccedd6717de67ab1";
+    assert_eq!(out["root"], json!(root));
     let keys = out["certificates"].as_array().unwrap();
     assert_eq!(keys.len(), 614);
     assert!(keys.iter().any(|k| k["country"] == json!("JPN")));
     let mut package: Value = serde_json::from_str(&text).unwrap();
+    let certs = package["certificates"].as_array().unwrap();
+    assert_eq!(certs.len(), 629);
+    let uidai = certs.iter().position(|c| c["type"] == json!("uidai")).unwrap();
+    let mut untyped = package.clone();
+    untyped["certificates"][uidai].as_object_mut().unwrap().remove("type");
+    assert_ne!(hex32(&certificates::root(&untyped).unwrap()), root);
+    let mut unknown = package.clone();
+    unknown["certificates"][uidai]["type"] = json!("dsc");
+    assert_eq!(certificates::root(&unknown).unwrap_err(), "certificates_type");
     package["certificates"][0]["country"] = json!("ZZZ");
-    assert_ne!(hex32(&certificates::root(&package).unwrap()), out["root"].as_str().unwrap());
+    assert_ne!(hex32(&certificates::root(&package).unwrap()), root);
     package["version"] = json!(2);
     assert_eq!(certificates::root(&package).unwrap_err(), "certificates_version");
 }
