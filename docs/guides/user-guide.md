@@ -27,21 +27,16 @@ App 內也能打開這份教程：右上角齒輪進入「設定」，第一列�
 
 ## 1. 安裝
 
-所有安裝檔都在 GitHub 的 [Releases 頁面](https://github.com/mctea01/my-Bonds-fork-android/releases)。打開最新的版本，在「Assets」下載適合你裝置的檔案。每個檔案的完整說明見[發佈建置](../release.md)。
+安裝檔都在 GitHub 的 Releases 頁面：
 
-| 你的裝置 | 下載這個檔案 |
-|---|---|
-| 一般 Android 手機（Android 10 以上） | 檔名結尾是 `-arm64-v8a.apk` 的檔案 |
-| 不確定手機的處理器 | 檔名沒有其他字尾的 `DIW-MY-WALLET-<版本>.apk`（含所有處理器，檔案較大） |
-| Windows 10、11 | `.msi` |
-| Debian、Ubuntu 等 Linux | `.deb` |
-| macOS（Apple 晶片，14 以上） | 檔名結尾是 `-release.jar` 的檔案，需要先安裝 Java 21 |
+- [最新穩定版](https://github.com/mctea01/my-Bonds-fork-android/releases/latest)：一般使用者請用這個。還沒有發佈過穩定版時，這個連結會找不到頁面，請改用下面的測試版。
+- [測試版（nightly）](https://github.com/mctea01/my-Bonds-fork-android/releases/tag/nightly)：每次更新程式就重新發佈，可以先試新功能，但可能不穩定。
 
-一般使用者不需要 `-debug.apk`、`.apks`、`.aab` 與 `-mapping.txt`：它們是測試版或給開發者、商店使用的格式。
+打開頁面後，依頁面最上方的「下載哪個檔案」表格，選一個適合你裝置的檔案下載，再照下面對應平台的步驟安裝。
 
 ### Android
 
-1. 用手機下載 APK，在下載完成的通知或「檔案」App 中點它。
+1. 用手機下載 APK（Android 10 以上），在下載完成的通知或「檔案」App 中點它。
 2. 系統詢問是否允許瀏覽器或檔案 App 安裝未知的應用程式時，選擇允許。
 3. 安裝完成後開啟「DIW MY WALLET」。
 
@@ -63,7 +58,7 @@ sudo apt install ./diw-my-wallet_<版本>_amd64.deb
 
 ### macOS 與其他系統
 
-安裝 Java 21 後，在「終端機」執行：
+macOS（Apple 晶片，14 以上）與其他系統下載 `.jar` 檔，安裝 Java 21 後在「終端機」執行：
 
 ```bash
 java -jar DIW-MY-WALLET-<平台>-<版本>-release.jar
