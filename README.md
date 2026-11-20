@@ -127,7 +127,7 @@
 - **[最新穩定版](https://github.com/mctea01/my-Bonds-fork-android/releases/latest)**：一般使用請裝這個。
 - **[nightly](https://github.com/mctea01/my-Bonds-fork-android/releases/tag/nightly)**：main 每次更新後的自動建置，想試最新功能時使用，另附區網測試用的 debug 版。
 
-每個 Release 頁最上方都有「下載哪個檔案」的對照表，依手機或電腦選一個檔案即可。支援 Android 10 以上（零知識證明需要 64 位元裝置）、Windows 10 以上、Debian 與 Ubuntu；macOS（Apple 晶片）與其他系統可用 Java 21 執行 jar。版本號與發佈流程見 [docs/release.md](docs/release.md)。
+每個 Release 頁最上方都有「下載哪個檔案」的對照表，依手機或電腦選一個檔案即可。支援 Android 10 以上（零知識證明需要 64 位元裝置）、Windows 10 以上、Debian 與 Ubuntu；macOS（Apple 晶片）與其他系統可用 Java 21 執行 jar。安裝步驟見[使用教程](docs/guides/user-guide.md#1-安裝)；版本號與發佈流程見 [docs/release.md](docs/release.md)。
 
 ## 建置與測試
 
