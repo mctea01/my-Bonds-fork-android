@@ -3326,6 +3326,9 @@
     <string name="settings_nfc_static_text">關閉時（預設）以協商式交握讓讀取端選擇 BLE 或 NFC；開啟時直接提供 BLE 兩種模式與 NFC 資料傳輸，給只支援靜態交握的讀取設備。</string>
     <string name="settings_no_builtin_sp">這個版本沒有內建 SP 帳號。</string>
     <string name="settings_notice">第三方授權聲明（NOTICE）</string>
+    <string name="settings_user_guide">使用教程</string>
+    <string name="settings_user_guide_text">常用功能的操作步驟：加入與出示證件、文件與簽署、查驗他人、zkPassport 與電腦版。在瀏覽器開啟。</string>
+    <string name="legal_done_guide">閱讀使用教程</string>
     <string name="settings_old_device_keys">以下為舊版留下的裝置金鑰紀錄，已停止使用，可自行刪除。</string>
     <string name="settings_old_record">舊紀錄</string>
     <string name="settings_openpgp_text">OpenPGP 簽章與加密使用的公開金鑰：自己的卡片、核對過指紋的金鑰、介紹人與不信任的金鑰</string>

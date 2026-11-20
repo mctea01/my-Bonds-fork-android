@@ -180,6 +180,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 ## 文件
 
+- [使用教程](docs/guides/user-guide.md)：給一般使用者，說明安裝、加入與出示證件、文件與簽署、查驗他人、電子護照與電腦版的操作。App 內在「設定」第一列開啟。
 - [專案現況](docs/STATUS.md)：單頁，各階段與功能的狀態、未完成項目與待實機驗證。
 - [AGENTS.md](AGENTS.md)：開發規則、模組職責與實作要點。貢獻前請先閱讀。
 - [docs/README.md](docs/README.md)：所有文件的索引，標明哪些是現行文件、設計規格或歷史紀錄。

@@ -65,7 +65,7 @@ App 註冊的連結 scheme（`diw-wallet://`、`diw-zktls://`、`diw-server://`�
 
 | 項目 | 位置 |
 |---|---|
-| 原始碼網址 | `LegalTexts.kt` 與 `SettingsScreen.kt` 的 `SOURCE_URL`；`SelfAttestationWalletProvider.kt`、`MultipazTestWalletProvider.kt` 與 `test-servers` 的 `WalletProviderService.kt` 的 `wallet_link` |
+| 原始碼網址 | `LegalTexts.kt` 與 `SettingsScreen.kt` 的 `SOURCE_URL`（使用教程的連結 `USER_GUIDE_URL` 由它組成，指向 `docs/guides/user-guide.md`）；`SelfAttestationWalletProvider.kt`、`MultipazTestWalletProvider.kt` 與 `test-servers` 的 `WalletProviderService.kt` 的 `wallet_link` |
 | 法律聲明中的開發者 | `LegalTexts.kt` 與 `LegalTextsEn.kt` 的 `DEVELOPER`，以及內文中的聯絡方式與發布事實 |
 | 商店的版本說明 | `distribution/whatsnew/` |
 | 商店資訊與隱私權政策網址 | [google-play.md](../google-play.md) 第 5、6 節 |

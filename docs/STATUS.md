@@ -46,6 +46,7 @@ P4 之後合併的工作：
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
 | 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 一般使用者的使用教程 | 完成：[user-guide.md](guides/user-guide.md) 涵蓋安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版與常見問題，附測試資料繪製的畫面；App 在設定清單第一列、關於頁與首次啟動完成頁以瀏覽器開啟它。教程只有繁體中文 | [user-guide.md](guides/user-guide.md) |
 
 ## 3. 功能狀態
 

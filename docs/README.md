@@ -4,6 +4,7 @@
 
 | 想知道 | 讀這份 |
 |---|---|
+| App 怎麼用（給一般使用者） | [guides/user-guide.md](guides/user-guide.md) |
 | 專案現在做到哪裡、還缺什麼、哪些待實機驗證 | [STATUS.md](STATUS.md)（單頁，狀態的唯一來源） |
 | 有哪些功能、怎麼下載與建置 | [../README.md](../README.md) |
 | 開發規則、模組職責、各領域的實作要點 | [../AGENTS.md](../AGENTS.md) |
@@ -30,6 +31,7 @@
 | [release.md](release.md) | 現行 | CI 發佈的檔案、版本號規則、Android 選用元件、簽章 secrets、TWDIW 應用金鑰、縮減規則 |
 | [google-play.md](google-play.md) | 現行 | Google Play 上架：上架前檢查、簽署金鑰、自動提交 workflow、商店資訊、資料安全與內容分級答案 |
 | [legal/README.md](legal/README.md) | 現行 | 隱私權政策、用戶協議與專門聲明的網頁版（由 App 內文字產生，中文與英文） |
+| [guides/user-guide.md](guides/user-guide.md) | 現行 | 一般使用者的使用教程：安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版、常見問題；App 的設定清單、關於頁與首次啟動完成頁連到這裡 |
 | [guides/fork-setup.md](guides/fork-setup.md) | 現行 | 新 Fork 的配置：GitHub 設定、secrets、要改成自己的識別與金鑰、版型與資產來源、與上游同步 |
 | [guides/windows-local-test.md](guides/windows-local-test.md) | 現行 | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
 | [research/device-test-checklist.md](research/device-test-checklist.md) | 現行 | 實機測試清單：步驟與判定 |

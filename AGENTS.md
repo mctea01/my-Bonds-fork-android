@@ -279,7 +279,7 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 
 - **狀態的唯一來源是 [docs/STATUS.md](docs/STATUS.md)。** 每個會改變狀態的提交或 PR（完成或新增功能、留下未完成或待驗證的項目、平台支援改變、決定改變）要在同一個 PR 內更新它：改對應的表格列與「最後更新」日期。還沒合併的工作列在「進行中」，合併它的 PR 把它移到完成。交付前檢查：只讀 STATUS.md 的人，對這次改動之後的狀態不會有錯誤的認知。
 - 同一個 PR 也要更新受影響的其他現行文件：使用者看得到的變更改 README 的功能清單，規則或實作要點改變時改本檔，新增第三方元件或內建第三方資料時改 `NOTICE`，發佈檔案或 secrets 改變時改 `docs/release.md`。
-- README 面向使用者（功能、畫面、下載、建置），開發規則與實作要點寫在本檔。截圖以 `uiScreenshots` 產生，縮成 412 像素寬、128 色後放在 `docs/images`。
+- README 面向使用者（功能、畫面、下載、建置），開發規則與實作要點寫在本檔。一般使用者的操作步驟寫在 [docs/guides/user-guide.md](docs/guides/user-guide.md)（App 以 `SettingsScreen.kt` 的 `USER_GUIDE_URL` 連到它）：使用者看得到的流程、按鈕名稱或平台差異改變時，同一個 PR 更新對應段落，文中的按鈕與畫面名稱照 `values-zh/strings.xml` 的文字。截圖以 `uiScreenshots` 產生，縮成 412 像素寬、128 色後放在 `docs/images`。
 - 設計與研究文件在 `docs/design`、`docs/research`，驗收紀錄在 `docs/acceptance`。每份文件屬於「現行、規格、紀錄」其中一種（定義與索引在 `docs/README.md`），新增文件時加入索引並標明性質。設計文件寫約定與理由，不寫目前進度；被取代的內容直接改寫或刪除，不留「以下為原規劃」之類的舊段落；紀錄類文件不回頭改寫。
 - 文件內不放個資（實機記錄的卡號、UID、憑證效期、姓名與證號先遮蔽）。
 - 授權為 Apache-2.0（`LICENSE` 為官方全文）。`NOTICE` 列出隨 App 散布的第三方元件、只在開發與測試使用的工具、另外下載的證明資產與內建的第三方資料。

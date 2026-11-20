@@ -55,6 +55,7 @@ object LegalStrings {
     val DONE_TITLE: String @Composable get() = stringResource(Res.string.legal_done_title)
     val DONE_TEXT: String @Composable get() = stringResource(Res.string.legal_done_text)
     val DONE_START: String @Composable get() = stringResource(Res.string.legal_done_start)
+    val DONE_GUIDE: String @Composable get() = stringResource(Res.string.legal_done_guide)
 
     // Settings
     val SETTINGS_SECTION: String @Composable get() = stringResource(Res.string.legal_settings_section)
