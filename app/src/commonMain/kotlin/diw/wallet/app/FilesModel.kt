@@ -21,6 +21,10 @@ import diw.wallet.core.profile.bonds.MyDataText
 import diw.wallet.core.document.sign.CscService
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
+import diw.wallet.core.document.c2pa.C2paAuthoring
+import diw.wallet.core.document.c2pa.C2paSignRequest
+import diw.wallet.core.document.c2pa.C2paWriter
+import diw.wallet.core.document.c2pa.SignerPayloadOrder
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.DocumentFormat
@@ -395,6 +399,22 @@ object MyDataFiles {
 class VisibleSignature(val page: Int, val position: PdfSignatureAppearance.Position, val image: PdfAppearanceImage? = null)
 
 /**
+ * Content credentials (C2PA) for a file: how it was made ([sourceType], an IPTC digital source type when the signer
+ * made the content; null signs the file as it was with c2pa.opened), a CAWG identity assertion by the chosen key,
+ * the named actor's [roles], the AI training and data mining choice, which key signs the claim, and the optional
+ * c2pa-rs field order of signer_payload (not the standard encoding).
+ */
+data class C2paChoice(
+    val sourceType: String? = null,
+    val identity: Boolean = true,
+    val roles: List<String> = listOf("cawg.creator"),
+    val allowTraining: Boolean? = null,
+    /** The wallet's own key signs the claim as the claim generator; the chosen key signs the identity assertion. */
+    val walletClaim: Boolean = false,
+    val c2paRsOrder: Boolean = false,
+)
+
+/**
  * An electronic seal for an OFD signature: an issued seal file ([file], .esl) or, without one, a seal the wallet
  * makes for the signing key, named [name] (blank: the certificate's name), round for an organisation or square for a
  * person, with [image] or else the drawn seal, [widthMm] wide; stamped on [page] (negative from the end) at [position].
@@ -458,6 +478,7 @@ enum class SignForm(private val titleRes: org.jetbrains.compose.resources.String
     ASIC(Res.string.sign_form_asic, Res.string.sign_form_asic_text),
     OPENPGP_DETACHED(Res.string.sign_form_pgp, Res.string.sign_form_pgp_text),
     OFD(Res.string.sign_form_ofd, Res.string.sign_form_ofd_text),
+    C2PA(Res.string.sign_form_c2pa, Res.string.sign_form_c2pa_text),
     ;
 
     val title: String get() = tr(titleRes)
@@ -483,6 +504,13 @@ class FilesModel(private val model: WalletModel) {
         override suspend fun knownCertificates(): List<ByteArray> = model.trust.chainCertificates().map { it.encoded.toByteArray() }
 
         override suspend fun openPgpKeys(): List<OpenPgpTrustedKey> = model.openPgp.trustedKeys()
+
+        override suspend fun resolveDid(did: String): diw.wallet.core.did.DidDocument = model.didResolver().resolve(did)
+
+        override suspend fun decideDid(did: String, role: TrustRole): TrustDecision? = model.didTrust.decide(did, role)
+
+        override suspend fun w3cStatus(credential: kotlinx.serialization.json.JsonObject, issuer: String): diw.wallet.core.status.CredentialStatus? =
+            diw.wallet.core.status.W3cStatusChecker(model.http, model.trust, model.didTrust).check(credential, issuer)
 
         override suspend fun fetchRevocationList(url: String): ByteArray? = try {
             if (!url.startsWith("http://") && !url.startsWith("https://")) null
@@ -1754,6 +1782,8 @@ class FilesModel(private val model: WalletModel) {
         add(SignForm.CADES_DETACHED)
         add(SignForm.CADES_ENVELOPING)
         add(SignForm.ASIC)
+        // Content credentials: embedded in JPEG, PNG and WebP, a sidecar manifest (.c2pa) for any other file.
+        if (f.report?.encrypted != true) add(SignForm.C2PA)
         add(SignForm.OPENPGP_DETACHED)
     }
 
@@ -1773,6 +1803,8 @@ class FilesModel(private val model: WalletModel) {
         visible: VisibleSignature? = null,
         /** Stamp an OFD with an electronic seal instead of a digital signature. */
         seal: OfdSealChoice? = null,
+        /** What the C2PA manifest records. */
+        c2pa: C2paChoice? = null,
     ) = run(tr(Res.string.step_prepare_sign)) {
         if (form == SignForm.OPENPGP_DETACHED) {
             signOpenPgp(f, choice as? SignerChoice.OpenPgp ?: throw SigningException(tr(Res.string.msg_pgp_needs_card)))
@@ -1787,15 +1819,15 @@ class FilesModel(private val model: WalletModel) {
         // A CSC service that offers signatures/timestamp time-stamps its own signatures (falling back to the chosen authority).
         val cscTs = (signer as? CscSigner)?.let { runCatching { it.timestamper() }.getOrNull() }
         if (signer.keyType == SignerKeyType.SM2 && form != SignForm.OFD) throw SigningException(tr(Res.string.msg_sm2_ofd_only))
-        // OFD signatures carry a time stamp when asked ([timestamp]); they have no long-term levels.
-        val ts = if (form == SignForm.OFD) (if (timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null)
+        // OFD signatures and C2PA manifests carry a time stamp when asked ([timestamp]); they have no long-term levels.
+        val ts = if (form == SignForm.OFD || form == SignForm.C2PA) (if (timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null)
         else if (form != SignForm.APPROVAL && level.timestamp) cscTs?.let { remote -> fallbackTimestamper(remote, timestamper()) } ?: timestamper() else null
         // A CSC service without signatures/signHash but with signatures/signDoc builds the PAdES CMS itself.
         val viaSignDoc = form == SignForm.PADES && signer is CscSigner && !signer.supportsSignHash() && signer.supportsSignDoc()
         if (signer is CscSigner && !viaSignDoc && !signer.supportsSignHash()) {
             throw SigningException(if (signer.supportsSignDoc()) tr(Res.string.msg_csc_signdoc_only) else tr(Res.string.msg_csc_no_sign))
         }
-        val levelled = form != SignForm.APPROVAL && form != SignForm.OFD
+        val levelled = form != SignForm.APPROVAL && form != SignForm.OFD && form != SignForm.C2PA
         val validation = if (levelled && level.revocation) revocationFetch else null
         val archive = levelled && level.archive
         if (levelled) model.updateSettings { it.copy(padesLevel = level.name) }
@@ -1834,20 +1866,50 @@ class FilesModel(private val model: WalletModel) {
                 SignForm.ASIC -> DocumentSigning.buildAsic(listOf(f.name to data), signer, ts, validation, archive) to "$base.asice"
                 SignForm.OFD -> if (seal != null) DocumentSigning.signOfd(data, signer, ts, sealOptions(seal, signerName)) to "$base-sealed.ofd"
                     else DocumentSigning.signOfd(data, signer, ts) to "$base-signed.ofd"
+                SignForm.C2PA -> signC2pa(f, data, signer, c2pa ?: C2paChoice(), ts)
                 SignForm.APPROVAL -> throw IllegalStateException("approval handled above")
                 SignForm.OPENPGP_DETACHED -> throw IllegalStateException("OpenPGP handled above")
             }
         }
         busy.value = tr(Res.string.step_check_save_signed)
-        val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (form == SignForm.CADES_DETACHED) f.id else null)
+        // A detached CAdES signature and a sidecar manifest are checked against the file they were made for.
+        val detached = form == SignForm.CADES_DETACHED || (form == SignForm.C2PA && name.endsWith(".c2pa"))
+        val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (detached) f.id else null)
         // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
         val reached = reachedLevel(file(stored.id) ?: stored)
-        val levelNote = if (form == SignForm.OFD) tr(Res.string.sep_comma) + (if (ts != null) "B-T" else "B-B")
+        val levelNote = if (form == SignForm.C2PA) (if (ts != null) tr(Res.string.sep_comma) + tr(Res.string.c2pa_with_timestamp) else "")
+            else if (form == SignForm.OFD) tr(Res.string.sep_comma) + (if (ts != null) "B-T" else "B-B")
             else tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
         model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
-        val lower = form != SignForm.OFD && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
-        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
+        val lower = form != SignForm.OFD && form != SignForm.C2PA && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
+        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
         model.screen.value = Screen.FileDetail(stored.id)
+    }
+
+    /**
+     * A C2PA manifest for [f]: embedded in a JPEG, PNG or WebP (named "-c2pa"), a sidecar store (.c2pa) for any other
+     * file. The chosen key signs the claim and, with [C2paChoice.identity], the CAWG identity assertion; with
+     * [C2paChoice.walletClaim] the wallet's own key signs the claim as the claim generator instead. A file that
+     * already carries content credentials keeps them, and its active manifest becomes the parent ingredient.
+     */
+    private suspend fun signC2pa(f: StoredFile, data: ByteArray, signer: DocumentSigner, c: C2paChoice, ts: Timestamper?): Pair<ByteArray, String> {
+        val claimSigner = if (c.walletClaim && c.identity) walletSigner(C2PA_GENERATOR) else signer
+        val previous = f.report?.c2pa?.manifests?.firstOrNull { it.active }?.statuses.orEmpty()
+        val request = C2paSignRequest(
+            title = f.name,
+            authoring = c.sourceType?.let { C2paAuthoring.Created(it) } ?: C2paAuthoring.Opened,
+            identity = c.identity,
+            roles = c.roles,
+            allowTraining = c.allowTraining,
+            payloadOrder = if (c.c2paRsOrder) SignerPayloadOrder.C2PA_RS else SignerPayloadOrder.DETERMINISTIC,
+            generatorName = C2PA_GENERATOR,
+            generatorVersion = AppBuild.version,
+            time = Clock.System.now(),
+            previousResults = previous,
+        )
+        val out = C2paWriter.sign(data, request, claimSigner, if (c.identity) signer else null, ts, f.report?.let { mediaTypeOf(it, f.name) })
+        val base = f.name.substringBeforeLast('.')
+        return out.bytes to if (out.sidecar) "$base.c2pa" else "$base-c2pa." + f.name.substringAfterLast('.', "jpg")
     }
 
     /** What the core needs for [seal]: the issued seal file, or the picture of the seal to make (the chosen image or the drawn one). */
@@ -2815,6 +2877,9 @@ class FilesModel(private val model: WalletModel) {
             SELF_HOST_COMPOSITIONS.flatMap { diw.wallet.core.zk.ZkPdfAssets.required(it, prover = false) }.distinct()
         private val metaTable = StorageTableSpec(name = "DiwFiles", supportPartitions = false, supportExpiration = false)
         private val dataTable = StorageTableSpec(name = "DiwFileData", supportPartitions = false, supportExpiration = false)
+
+        /** The claim generator named in C2PA manifests, and the subject of the wallet key's certificate that signs them. */
+        const val C2PA_GENERATOR = "DIW MY WALLET"
 
         fun mediaTypeOf(report: DocumentReport, name: String): String = when (report.format) {
             DocumentFormat.IMAGE -> ImageKind.ofExtension(name)?.mediaType ?: "image/*"

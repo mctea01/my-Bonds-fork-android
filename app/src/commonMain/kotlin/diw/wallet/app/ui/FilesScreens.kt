@@ -61,9 +61,11 @@ import androidx.compose.ui.text.font.FontFamily
 import diw.wallet.app.FilePreview
 import diw.wallet.app.VisibleSignature
 import diw.wallet.app.OfdSealChoice
+import diw.wallet.app.C2paChoice
 import diw.wallet.app.SealPicture
 import diw.wallet.core.document.ofd.OfdShading
 import diw.wallet.core.document.c2pa.C2paInfo
+import diw.wallet.core.document.c2pa.DigitalSourceTypes
 import diw.wallet.core.document.official.OfficialDocument
 import diw.wallet.core.document.official.OfficialEntry
 import diw.wallet.core.document.official.OfficialItem
@@ -583,7 +585,8 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
             }
             report.openCert?.let { oc -> OpenCertSection(model, f, oc, busy) }
             report.openPgp?.let { pgp -> OpenPgpFileSection(model, f, report, pgp, busy) }
-            report.c2pa?.let { C2paSection(f, it) }
+            report.c2pa?.let { C2paSection(model, f, it) }
+            if (report.format == DocumentFormat.IMAGE || report.aiProvenance != null) AiProvenanceSection(model, report.aiProvenance)
             report.travelDocument?.let { TravelDocumentSection(it) }
             if (report.entries.isNotEmpty()) {
                 val zip = report.format == DocumentFormat.ASIC_E || report.format == DocumentFormat.ZIP
@@ -941,6 +944,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         var certification by remember { mutableStateOf<Int?>(null) }
         var visible by remember { mutableStateOf<VisibleSignature?>(null) }
         var seal by remember { mutableStateOf<OfdSealChoice?>(null) }
+        var c2pa by remember { mutableStateOf(C2paChoice()) }
         val firstSignature = f.report?.signatures.isNullOrEmpty()
         var action by remember { mutableStateOf(ApprovalPoint().action) }
         var organization by remember { mutableStateOf("") }
@@ -1021,6 +1025,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 OfdSignOptions(model, timestamp, tsaName) { timestamp = it }
                 OfdSealPicker(model, f, seal) { seal = it }
             }
+            SignForm.C2PA -> C2paSignOptions(f, c2pa, choice, timestamp, tsaName, { c2pa = it }, { timestamp = it })
             else -> {
                 SectionTitle(stringResource(Res.string.sign_step_level))
                 LevelPicker(if (form == SignForm.XADES) "XAdES" else if (form == SignForm.ASIC) "ASiC-E" else "CAdES", level) { level = it }
@@ -1031,7 +1036,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
         }
         var details by remember { mutableStateOf(false) }
         TextButton(onClick = { details = !details }) { Text(if (details) stringResource(Res.string.action_hide_details) else stringResource(Res.string.technical_details)) }
-        if (details) InfoCard(stringResource(Res.string.technical_details), signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }, visible != null))
+        if (details) InfoCard(stringResource(Res.string.technical_details), signDetails(form, level, timestamp, certification.takeIf { form == SignForm.PADES && firstSignature }, visible != null, c2pa))
         val locked = form == SignForm.PADES && f.report?.signatures?.any { it.docMdp == 1 } == true
         val breakOk = if (locked) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.sign_certified_locked), listOf(stringResource(Res.string.sign_certified_locked_text)))
@@ -1051,6 +1056,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                     level = level, certification = certification.takeIf { form == SignForm.PADES && firstSignature },
                     visible = visible.takeIf { form == SignForm.PADES },
                     seal = seal.takeIf { form == SignForm.OFD },
+                    c2pa = c2pa.takeIf { form == SignForm.C2PA },
                 ) } }, enabled = choice != null && busy == null && breakOk) {
             Text(stringResource(Res.string.files_sign))
         }
@@ -1303,7 +1309,15 @@ private fun OfdSealPicker(model: WalletModel, f: StoredFile, value: OfdSealChoic
 
 /** What the chosen form and options put in the signature, for the expandable technical details. */
 @Composable
-private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?, visible: Boolean = false): List<String> = when (form) {
+private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolean, certification: Int?, visible: Boolean = false, c2pa: C2paChoice = C2paChoice()): List<String> = when (form) {
+    SignForm.C2PA -> buildList {
+        add(stringResource(Res.string.tech_c2pa_1))
+        add(stringResource(Res.string.tech_c2pa_2))
+        if (c2pa.identity) add(stringResource(if (c2pa.c2paRsOrder) Res.string.tech_c2pa_identity_rs else Res.string.tech_c2pa_identity))
+        if (timestamp) add(stringResource(Res.string.tech_c2pa_ts))
+        add(stringResource(Res.string.tech_c2pa_rsa))
+        add(stringResource(Res.string.tech_verify_after))
+    }
     SignForm.PADES -> buildList {
         add(stringResource(Res.string.tech_pades_1))
         add(stringResource(Res.string.tech_pades_2))
@@ -1819,11 +1833,11 @@ private fun methodText(m: OaMethod): String = when (m) {
  */
 /** Content credentials of a picture: what each manifest says and the checks in the C2PA specification's codes. */
 @Composable
-private fun C2paSection(f: StoredFile, c: C2paInfo) {
+private fun C2paSection(model: WalletModel, f: StoredFile, c: C2paInfo) {
     SectionTitle(stringResource(Res.string.c2pa_title))
     Text(stringResource(Res.string.c2pa_text, c.container), style = MaterialTheme.typography.bodySmall)
     c.manifests.forEach { m ->
-        val failed = m.statuses.any { !it.success && (it.code.endsWith("mismatch") || it.code == "assertion.missing" || it.code == "claimSignature.missing") }
+        val failed = m.statuses.any { !it.success && !it.informational && (it.code.endsWith("mismatch") || it.code == "assertion.missing" || it.code == "claimSignature.missing") }
         val trusted = m.statuses.any { it.code == "signingCredential.trusted" }
         CollapsibleSection(if (m.active) stringResource(Res.string.c2pa_active) else stringResource(Res.string.c2pa_ingredient_manifest), initiallyExpanded = m.active, key = "c2pa-${f.id}-${m.label}") {
             VerdictPill(
@@ -1842,24 +1856,228 @@ private fun C2paSection(f: StoredFile, c: C2paInfo) {
             m.ingredients.forEach { i ->
                 LabelValue(stringResource(Res.string.c2pa_ingredients), listOfNotNull(i.title, i.relationship, i.format).joinToString(stringResource(Res.string.sep_comma)) + if (i.manifest != null) stringResource(Res.string.c2pa_has_manifest) else "", small = true)
             }
-            m.identities.forEach { id ->
-                VerdictPill(checkVerdict(id.signature), stringResource(Res.string.c2pa_identity, id.sigType) + id.names.joinToString(stringResource(Res.string.sep_list)).ifEmpty { stringResource(Res.string.c2pa_no_name) })
-                id.detail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
-            }
+            m.identities.forEach { id -> CawgIdentityCard(model, f, m.label, id) }
             m.training.forEach { LabelValue(stringResource(Res.string.c2pa_training), it, small = true) }
             CollapsibleSection(stringResource(Res.string.technical_details), m.statuses.size, key = "c2pa-detail-${f.id}-${m.label}") {
                 LabelValue("Manifest", m.label, small = true)
                 LabelValue(stringResource(Res.string.c2pa_claim_version), "v${m.claimVersion}", small = true)
                 m.instanceId?.let { LabelValue("instanceID", it, small = true) }
                 LabelValue(stringResource(Res.string.c2pa_assertions), m.assertions.joinToString(stringResource(Res.string.sep_list)), small = true)
-                m.statuses.forEach { s ->
-                    Text(s.code + (s.explanation?.let { stringResource(Res.string.colon_value, it) } ?: ""), style = MaterialTheme.typography.bodySmall,
-                        color = if (s.success) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
-                }
+                m.statuses.forEach { StatusLine(it) }
             }
         }
     }
 }
+
+/** One C2PA or CAWG status code with its explanation: failures in the error colour, informational codes plain. */
+@Composable
+private fun StatusLine(s: diw.wallet.core.document.c2pa.C2paStatus) {
+    Text(s.code + (s.explanation?.let { stringResource(Res.string.colon_value, it) } ?: ""), style = MaterialTheme.typography.bodySmall,
+        color = if (s.success || s.informational) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+}
+
+/**
+ * A CAWG identity assertion: who the named actor is, the roles and the verdict in CAWG terms (trusted, well-formed
+ * without a root of trust, or failed), the X.509 signature as a signature card or the identities an aggregator
+ * verified, and the status codes.
+ */
+@Composable
+private fun CawgIdentityCard(model: WalletModel, f: StoredFile, manifest: String, id: diw.wallet.core.document.c2pa.C2paIdentity) {
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius),
+        colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surfaceContainerLow)) {
+        Column(Modifier.padding(12.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
+            Text(stringResource(Res.string.cawg_identity_title), style = MaterialTheme.typography.titleSmall)
+            VerdictPill(
+                checkVerdict(id.signature),
+                when (id.signature) {
+                    Check.PASS -> stringResource(Res.string.cawg_trusted)
+                    Check.WARN -> stringResource(Res.string.cawg_well_formed)
+                    else -> stringResource(Res.string.cawg_invalid)
+                },
+            )
+            LabelValue(stringResource(Res.string.cawg_named_actor), id.names.joinToString(stringResource(Res.string.sep_list)).ifEmpty { stringResource(Res.string.c2pa_no_name) }, small = true)
+            LabelValue(stringResource(Res.string.cawg_sig_type), id.sigType.ifEmpty { "-" }, small = true)
+            if (id.roles.isNotEmpty()) {
+                val roles = id.roles.map { cawgRole(it) }
+                LabelValue(stringResource(Res.string.cawg_roles), roles.joinToString(stringResource(Res.string.sep_list)), small = true)
+            }
+            id.issuer?.let { LabelValue(stringResource(Res.string.cawg_issuer), it, small = true) }
+            id.issuerTrust?.let { t ->
+                val d = t.decision()
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                    TierBadge(d)
+                    d.anchorName?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
+                }
+            }
+            id.verifiedIdentities.forEach { v ->
+                LabelValue(cawgIdentityType(v.type), listOfNotNull(v.name, v.username, v.address, v.uri, v.providerName?.let { stringResource(Res.string.cawg_provider, it) }, v.verifiedAt)
+                    .joinToString(stringResource(Res.string.sep_comma)), small = true)
+            }
+            id.validFrom?.let { LabelValue(stringResource(Res.string.cawg_valid_from), it, small = true) }
+            id.validUntil?.let { LabelValue(stringResource(Res.string.cawg_valid_until), it, small = true) }
+            if (id.referenced.isNotEmpty()) LabelValue(stringResource(Res.string.cawg_referenced), id.referenced.joinToString(stringResource(Res.string.sep_list)), small = true)
+            id.detail.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
+            id.x509?.let { SignatureCard(model, it, 0, 1) }
+            CollapsibleSection(stringResource(Res.string.technical_details), id.statuses.size, key = "cawg-${f.id}-$manifest-${id.label}") {
+                id.label?.let { LabelValue(stringResource(Res.string.cawg_label), it, small = true) }
+                id.statuses.forEach { StatusLine(it) }
+            }
+        }
+    }
+}
+
+@Composable
+private fun cawgRole(role: String): String = when (role) {
+    "cawg.creator" -> stringResource(Res.string.cawg_role_creator)
+    "cawg.contributor" -> stringResource(Res.string.cawg_role_contributor)
+    "cawg.editor" -> stringResource(Res.string.cawg_role_editor)
+    "cawg.producer" -> stringResource(Res.string.cawg_role_producer)
+    "cawg.publisher" -> stringResource(Res.string.cawg_role_publisher)
+    "cawg.sponsor" -> stringResource(Res.string.cawg_role_sponsor)
+    "cawg.translator" -> stringResource(Res.string.cawg_role_translator)
+    else -> role
+}
+
+@Composable
+private fun cawgIdentityType(type: String): String = when (type) {
+    "cawg.document_verification" -> stringResource(Res.string.cawg_type_document)
+    "cawg.web_site" -> stringResource(Res.string.cawg_type_web_site)
+    "cawg.affiliation" -> stringResource(Res.string.cawg_type_affiliation)
+    "cawg.social_media" -> stringResource(Res.string.cawg_type_social)
+    "cawg.crypto_wallet" -> stringResource(Res.string.cawg_type_crypto)
+    else -> type
+}
+
+/**
+ * What the file declares about AI generation and watermarks, read offline: digital source types in its C2PA actions
+ * and XMP, soft binding assertions, and SynthID mentions. Nothing is detected in the content; Google's SynthID site
+ * can check the file itself after the holder uploads it there.
+ */
+@Composable
+private fun AiProvenanceSection(model: WalletModel, ai: diw.wallet.core.document.c2pa.AiProvenance?) {
+    SectionTitle(stringResource(Res.string.ai_title))
+    InfoPill(stringResource(Res.string.ai_declared_only))
+    if (ai == null || (ai.declarations.isEmpty() && ai.softBindings.isEmpty() && ai.synthIdHints.isEmpty())) {
+        Text(stringResource(Res.string.ai_nothing), style = MaterialTheme.typography.bodySmall)
+    } else {
+        when {
+            ai.aiDeclared -> VerdictPill(Verdict.CAUTION, stringResource(Res.string.ai_generated_declared))
+            ai.syntheticDeclared -> VerdictPill(Verdict.CAUTION, stringResource(Res.string.ai_synthetic_declared))
+            else -> Text(stringResource(Res.string.ai_no_ai_declared), style = MaterialTheme.typography.bodySmall)
+        }
+        ai.declarations.forEach { d ->
+            val where = if (d.source == "xmp") stringResource(Res.string.ai_source_xmp)
+                else stringResource(Res.string.ai_source_c2pa, d.manifest ?: "-") + when (d.signed) {
+                    true -> stringResource(Res.string.ai_signed)
+                    false -> stringResource(Res.string.ai_unsigned)
+                    null -> ""
+                }
+            LabelValue(stringResource(Res.string.ai_source_type), listOfNotNull(d.code, d.tool, where).joinToString(stringResource(Res.string.sep_comma)), small = true)
+        }
+        if (ai.aiTools.isNotEmpty()) LabelValue(stringResource(Res.string.ai_tools), ai.aiTools.joinToString(stringResource(Res.string.sep_list)), small = true)
+        ai.softBindings.forEach { b ->
+            LabelValue(stringResource(Res.string.ai_soft_binding), listOfNotNull(b.alg, b.type, b.description, if (b.registered) null else stringResource(Res.string.ai_unregistered))
+                .joinToString(stringResource(Res.string.sep_comma)), small = true)
+        }
+        if (ai.synthIdDeclared) Text(stringResource(Res.string.ai_synthid_named, ai.synthIdHints.joinToString(stringResource(Res.string.sep_list))), style = MaterialTheme.typography.bodySmall)
+        else if (ai.googleAi) Text(stringResource(Res.string.ai_synthid_google), style = MaterialTheme.typography.bodySmall)
+    }
+    Text(stringResource(Res.string.ai_synthid_explain), style = MaterialTheme.typography.bodySmall)
+    OutlinedButton(onClick = { model.platform.openBrowser(SYNTHID_URL) }) { Text(stringResource(Res.string.ai_synthid_check)) }
+    Text(stringResource(Res.string.ai_synthid_privacy), style = MaterialTheme.typography.bodySmall)
+}
+
+/** Google's SynthID Detector, where a signed-in user uploads a file to check for a SynthID watermark. */
+private const val SYNTHID_URL = "https://synthid.com/"
+
+/**
+ * Options of a C2PA manifest: how the file was made (signed as it was, or created with an IPTC digital source type),
+ * the CAWG identity assertion and roles, the AI training choice, which key signs the claim, the time stamp and the
+ * non-standard c2pa-rs encoding; with a warning that validators expect C2PA and CAWG certificate profiles.
+ */
+@Composable
+private fun C2paSignOptions(
+    f: StoredFile, value: C2paChoice, choice: SignerChoice?, timestamp: Boolean, tsaName: String,
+    onChange: (C2paChoice) -> Unit, onTimestamp: (Boolean) -> Unit,
+) {
+    val sidecar = f.report?.format != DocumentFormat.IMAGE || f.name.substringAfterLast('.').lowercase() !in setOf("jpg", "jpeg", "png", "webp")
+    Text(if (sidecar) stringResource(Res.string.c2pa_sign_sidecar, f.name.substringBeforeLast('.') + ".c2pa") else stringResource(Res.string.c2pa_sign_embedded), style = MaterialTheme.typography.bodySmall)
+    if (f.report?.c2pa != null) Text(stringResource(Res.string.c2pa_sign_keeps), style = MaterialTheme.typography.bodySmall)
+    SectionTitle(stringResource(Res.string.c2pa_sign_how))
+    Row(Modifier.fillMaxWidth().clickable { onChange(value.copy(sourceType = null)) }, verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.RadioButton(selected = value.sourceType == null, onClick = { onChange(value.copy(sourceType = null)) })
+        Column {
+            Text(stringResource(Res.string.c2pa_sign_opened), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(Res.string.c2pa_sign_opened_text), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    Row(Modifier.fillMaxWidth().clickable { onChange(value.copy(sourceType = value.sourceType ?: "digitalCreation")) }, verticalAlignment = Alignment.CenterVertically) {
+        androidx.compose.material3.RadioButton(selected = value.sourceType != null, onClick = { onChange(value.copy(sourceType = value.sourceType ?: "digitalCreation")) })
+        Column {
+            Text(stringResource(Res.string.c2pa_sign_created), style = MaterialTheme.typography.bodyMedium)
+            Text(stringResource(Res.string.c2pa_sign_created_text), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    if (value.sourceType != null) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            DigitalSourceTypes.DECLARABLE.forEach { code ->
+                FilterChip(selected = code == value.sourceType, onClick = { onChange(value.copy(sourceType = code)) }, label = { Text(code) })
+            }
+        }
+        if (value.sourceType in DigitalSourceTypes.AI_GENERATED) Text(stringResource(Res.string.c2pa_sign_ai_note), style = MaterialTheme.typography.bodySmall)
+    }
+    SectionTitle(stringResource(Res.string.c2pa_sign_identity))
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = value.identity, onCheckedChange = { onChange(value.copy(identity = it)) })
+        Text(stringResource(Res.string.c2pa_sign_identity_add))
+    }
+    if (value.identity) {
+        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            CAWG_ROLES.forEach { r ->
+                FilterChip(selected = r in value.roles, onClick = {
+                    onChange(value.copy(roles = if (r in value.roles) value.roles - r else value.roles + r))
+                }, label = { Text(cawgRole(r)) })
+            }
+        }
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = value.walletClaim, onCheckedChange = { onChange(value.copy(walletClaim = it)) })
+            Column {
+                Text(stringResource(Res.string.c2pa_sign_wallet_claim))
+                Text(stringResource(Res.string.c2pa_sign_wallet_claim_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+    SectionTitle(stringResource(Res.string.c2pa_sign_training))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = value.allowTraining == null, onClick = { onChange(value.copy(allowTraining = null)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_none)) })
+        FilterChip(selected = value.allowTraining == false, onClick = { onChange(value.copy(allowTraining = false)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_no)) })
+        FilterChip(selected = value.allowTraining == true, onClick = { onChange(value.copy(allowTraining = true)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_yes)) })
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = timestamp, onCheckedChange = onTimestamp)
+        Text(stringResource(Res.string.c2pa_sign_timestamp, tsaName))
+    }
+    if (value.identity) {
+        CollapsibleSection(stringResource(Res.string.c2pa_sign_interop), key = "c2pa-interop-${f.id}") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = value.c2paRsOrder, onCheckedChange = { onChange(value.copy(c2paRsOrder = it)) })
+                Column {
+                    Text(stringResource(Res.string.c2pa_sign_rs_order))
+                    Text(stringResource(Res.string.c2pa_sign_rs_order_text), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+    VerdictCard(Verdict.CAUTION, stringResource(Res.string.c2pa_sign_profile_title), buildList {
+        add(stringResource(Res.string.c2pa_sign_profile_1))
+        add(stringResource(Res.string.c2pa_sign_profile_2))
+        if (choice is SignerChoice.Wallet) add(stringResource(Res.string.c2pa_sign_profile_wallet))
+        if (choice is SignerChoice.Card) add(stringResource(Res.string.c2pa_sign_profile_card))
+    })
+}
+
+/** CAWG named actor roles offered when signing. */
+private val CAWG_ROLES = listOf("cawg.creator", "cawg.contributor", "cawg.editor", "cawg.producer", "cawg.publisher", "cawg.sponsor", "cawg.translator")
 
 @Composable
 private fun OpenCertSection(model: WalletModel, f: StoredFile, oc: OpenCertInfo, busy: String?) {

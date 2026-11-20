@@ -4,6 +4,7 @@ import diw.wallet.core.i18n.ct
 import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.document.c2pa.AiProvenanceReader
 import diw.wallet.core.document.c2pa.C2paManifests
+import diw.wallet.core.document.c2pa.C2paStore
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.TiffDecoder
 import diw.wallet.core.document.derived.ChinaInvoice
@@ -64,7 +65,7 @@ actual object DocumentInspector {
                 DocumentFormat.OPENPGP -> OpenPgpInspection.inspect(data, detachedContent, base, trust, now)
                 DocumentFormat.OFFICE -> base.copy(format = DocumentFormat.OFFICE, notes = officeNotes(data, fileName))
                 DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, trust, now)
-                else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, trust, now)
+                else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, trust, now, detachedContent)
                     else base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
@@ -189,15 +190,21 @@ actual object DocumentInspector {
      * Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one, and what the file declares
      * about AI generation and watermarks (C2PA actions, soft bindings, XMP), which is read without detecting anything.
      */
-    private suspend fun contentCredentials(b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, trust: DocumentTrustSource, now: Instant): DocumentReport {
-        val store = runCatching { C2paManifests.read(b) }.getOrNull()
+    private suspend fun contentCredentials(
+        b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, trust: DocumentTrustSource, now: Instant,
+        /** The file a sidecar manifest was made for, when the holder has it: the data hash is checked over it. */
+        sidecarAsset: ByteArray? = null,
+    ): DocumentReport {
+        val store = runCatching { C2paManifests.read(b) }.getOrNull()?.let { s ->
+            if (s.asset == null && sidecarAsset != null) C2paStore(s.container, s.root, s.manifests, sidecarAsset) else s
+        }
         if (store == null) {
             val ai = if (report.format == DocumentFormat.IMAGE) runCatching { AiProvenanceReader.read(b, null) }.getOrNull() else null
             return report.copy(aiProvenance = ai)
         }
         val (info, signature) = C2paSignatures(pki, checks, trust).inspect(store, now)
         val signed = info.manifests.filter { m -> m.statuses.any { it.code == "claimSignature.validated" } }.map { it.label }.toSet()
-        val ai = runCatching { AiProvenanceReader.read(if (store.asset != null) b else null, store, signed) }.getOrNull()
+        val ai = runCatching { AiProvenanceReader.read(store.asset, store, signed) }.getOrNull()
         val note = ct("core_c2pa_present", info.manifests.size, store.container)
         return report.copy(c2pa = info, aiProvenance = ai, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
     }
