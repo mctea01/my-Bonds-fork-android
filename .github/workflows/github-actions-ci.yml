@@ -1,9 +1,13 @@
 name: CI
 
+# A v* tag is a stable release (docs/release.md): the Stable release workflow pushes it and, when it pushed with the
+# workflow token (which starts no push run), starts this workflow on the tag with workflow_dispatch.
 on:
   push:
     branches: [main]
+    tags: ["v*"]
   pull_request:
+  workflow_dispatch:
 
 # A newer push to the same PR cancels the older run.
 concurrency:
@@ -409,7 +413,7 @@ jobs:
         run: ./gradlew --no-daemon --stacktrace --continue :app:desktopTest
       # zkTLS and zkPDF page templates (templates/README.md), signed for the nightly release. Skipped without the key.
       - name: Template pack
-        if: success() && github.event_name == 'push'
+        if: success() && github.event_name != 'pull_request'
         env:
           ZK_TEMPLATES_KEY: ${{ secrets.ZK_TEMPLATES_KEY }}
         run: |
@@ -417,7 +421,7 @@ jobs:
           ./gradlew --no-daemon --stacktrace :test-servers:templatePack
           mkdir -p dist && cp test-servers/build/zk-templates.jwt dist/
       - name: Upload template pack
-        if: success() && github.event_name == 'push'
+        if: success() && github.event_name != 'pull_request'
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7.0.2
         with:
           name: zk-templates
@@ -459,8 +463,8 @@ jobs:
       DIW_DEBUG_KEYSTORE_PASSWORD: ${{ secrets.DEBUG_KEYSTORE_PASSWORD }}
       DIW_DEBUG_KEY_ALIAS: ${{ secrets.DEBUG_KEY_ALIAS }}
       # Caller-owned TWDIW application signing pair. PR builds always generate their own test pair.
-      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
-      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
+      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name != 'pull_request' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name != 'pull_request' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
     steps:
       # Room for the Android build: unused preinstalled toolchains and the NDK versions other than the pinned one.
       - name: Free disk space
@@ -554,7 +558,7 @@ jobs:
           cp app/build/outputs/bundle/debug/app-debug.aab "dist/DIW-MY-WALLET-$APP_VERSION-debug.aab"
           bash tools/bundle-apks.sh debug app/build/outputs/bundle/debug/app-debug.aab "dist/DIW-MY-WALLET-$APP_VERSION-debug" --universal-only
       - name: Android APK and AAB (release)
-        if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+        if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v')
         run: |
           ./gradlew --no-daemon --stacktrace --max-workers=1 -Dorg.gradle.jvmargs='-Xmx4g -Dfile.encoding=UTF-8' -Pkotlin.compiler.execution.strategy=in-process :app:bundleRelease
           mkdir -p dist
@@ -601,8 +605,8 @@ jobs:
     timeout-minutes: 90
     env:
       DIW_ZK_FEATURES: ${{ matrix.features }}
-      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
-      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name == 'push' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
+      DIW_TWDIW_APP_PRIVATE_KEY: ${{ github.event_name != 'pull_request' && secrets.TWDIW_APP_PRIVATE_KEY || '' }}
+      DIW_TWDIW_APP_PUBLIC_KEY: ${{ github.event_name != 'pull_request' && secrets.TWDIW_APP_PUBLIC_KEY || '' }}
     defaults:
       run:
         shell: bash
@@ -739,10 +743,12 @@ jobs:
           path: build/desktop-native/${{ matrix.name }}
           retention-days: 14
 
-  # Every push to main replaces the "nightly" pre-release; release files are downloaded as-is, not zipped.
+  # Every push to main replaces the "nightly" pre-release; a v* tag publishes the stable release of that tag (marked
+  # latest, without the debug builds). Release files are downloaded as-is, not zipped. The body comes from
+  # tools/release-notes.py: the download guide once at the top, then the changes since the previous stable tag.
   # Published only when the tests passed too; drop "test" from needs to publish regardless.
   release:
-    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v')
     needs: [test, build, desktop]
     runs-on: ubuntu-latest
     timeout-minutes: 15
@@ -751,9 +757,10 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
+          # The patch number and the change list need the whole history and the tags.
           fetch-depth: 0
       # version.properties holds major.minor; the patch counts the commits since that line last changed, the same rule
-      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files.
+      # Gradle applies (app/build.gradle.kts). APP_VERSION names the files. On a tag it must match the tag.
       - name: Version
         run: bash tools/app-version.sh >> "$GITHUB_ENV"
       # Only the release files; the zk-native-* libraries are already inside the packages.
@@ -762,20 +769,20 @@ jobs:
           pattern: "{android,windows,linux,macos,zk-templates}"
           path: dist
           merge-multiple: true
-      - name: Publish nightly
+      - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
           GH_REPO: ${{ github.repository }}
         run: |
-          ls -l dist
-          cat > notes.md <<EOF
-          Automatic build of main at ${GITHUB_SHA::7} (version $APP_VERSION). Test build, not for production use.
-
-          - Android: DIW-MY-WALLET-$APP_VERSION.apk (release, optimized, both ABIs and every optional component), -arm64-v8a.apk and -x86_64.apk (one ABI, smaller), .apks (split set for split installers), .aab for bundle distribution and -mapping.txt (R8 mapping, for Google Play). All are made from the same bundle as the Google Play release. The -debug.apk and -debug.aab are test builds.
-          - Windows: .msi installer, no admin rights needed
-          - Linux: .deb package (Debian, Ubuntu)
-          - Any OS with Java 21 (including macOS on Apple silicon): DIW-MY-WALLET-<os>-<arch>-$APP_VERSION-release.jar, run with java -jar
-          - zk-templates.jwt: signed zkTLS and zkPDF page templates, downloaded by the app (when the release key is set)
-          EOF
-          gh release delete nightly --cleanup-tag --yes || true
-          gh release create nightly dist/* --prerelease --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md
+          if [[ "$GITHUB_REF" == refs/tags/v* ]]; then
+            # A stable release carries only the optimized builds; the debug builds stay in nightly.
+            rm -f dist/*-debug.apk dist/*-debug.aab
+            ls -l dist
+            python3 -I tools/release-notes.py --channel stable --version "$APP_VERSION" --tag "$GITHUB_REF_NAME" --dir dist > notes.md
+            gh release create "$GITHUB_REF_NAME" dist/* --verify-tag --latest --title "DIW MY WALLET $APP_VERSION" --notes-file notes.md
+          else
+            ls -l dist
+            python3 -I tools/release-notes.py --channel nightly --version "$APP_VERSION" --tag nightly --dir dist > notes.md
+            gh release delete nightly --cleanup-tag --yes || true
+            gh release create nightly dist/* --prerelease --latest=false --target "$GITHUB_SHA" --title "Nightly $APP_VERSION" --notes-file notes.md
+          fi

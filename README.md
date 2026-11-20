@@ -4,7 +4,7 @@
 
 以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫（繁體中文與英文），目前提供 Android 與 Windows、Linux 桌面版，macOS 可用 jar 執行。
 
-> 狀態：開發中，版本線 0.4。標準核心、相容 Profile、文件與簽章、零知識證明（P1 到 P4）都已在 main；驗證者透明（P5）與 iOS（P6）尚未開始，多數功能還沒有完整的實機驗收。各功能做到哪裡、還缺什麼，見 [專案現況](docs/STATUS.md)。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
+> 狀態：開發中，版本線 0.5。標準核心、相容 Profile、文件與簽章、零知識證明、驗證者透明與主動查驗（P1 到 P5）都已在 main；iOS（P6）尚未開始，多數功能還沒有完整的實機驗收。各功能做到哪裡、還缺什麼，見 [專案現況](docs/STATUS.md)。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
 
 ## 畫面
 
@@ -124,12 +124,10 @@
 
 ## 下載
 
-main 每次更新後，CI 發佈「nightly」預先發行版。
+- **[最新穩定版](https://github.com/mctea01/my-Bonds-fork-android/releases/latest)**：一般使用請裝這個。
+- **[nightly](https://github.com/mctea01/my-Bonds-fork-android/releases/tag/nightly)**：main 每次更新後的自動建置，想試最新功能時使用，另附區網測試用的 debug 版。
 
-- **Android**：Android 10（API 29）以上。release APK 經 R8 最佳化，另有單一 ABI 的 APK、分割 APK 組（.apks）與 AAB；debug APK 允許連到區網測試伺服器的 HTTP。零知識證明需要 64 位元裝置。
-- **桌面版**：Windows（.msi）與 Linux（.deb）安裝檔，內含 Java 執行環境；macOS（Apple 晶片，14 以上）與其他系統可用 Java 21 執行 jar。
-
-檔案說明與簽章方式見 [docs/release.md](docs/release.md)。
+每個 Release 頁最上方都有「下載哪個檔案」的對照表，依手機或電腦選一個檔案即可。支援 Android 10 以上（零知識證明需要 64 位元裝置）、Windows 10 以上、Debian 與 Ubuntu；macOS（Apple 晶片）與其他系統可用 Java 21 執行 jar。版本號與發佈流程見 [docs/release.md](docs/release.md)。
 
 ## 建置與測試
 
@@ -185,7 +183,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 - [專案現況](docs/STATUS.md)：單頁，各階段與功能的狀態、未完成項目與待實機驗證。
 - [AGENTS.md](AGENTS.md)：開發規則、模組職責與實作要點。貢獻前請先閱讀。
 - [docs/README.md](docs/README.md)：所有文件的索引，標明哪些是現行文件、設計規格或歷史紀錄。
-- [發佈建置](docs/release.md)：CI 發佈的檔案、版本號與簽章。
+- [發佈建置](docs/release.md)：發佈管道（穩定版與 nightly）、版本號、穩定版發佈 workflow 與簽章。
 - 設計規格：[零知識證明](docs/design/p4-zkp.md)、[電子護照與 zkPassport](docs/design/zkpassport.md)、[bbs-2023](docs/design/bbs-2023.md)、[OpenPGP](docs/design/openpgp.md)、[多語系](docs/design/i18n.md)。
 
 ## 隱私
