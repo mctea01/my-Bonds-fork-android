@@ -42,7 +42,7 @@ P4 之後合併的工作：
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
-| 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
+| 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；CSCA 的鏈結憑證（新金鑰由舊金鑰簽署、名稱相同）不當成根，繼續走到自簽的 CSCA（2026-11-20 修正，台灣護照原本顯示「找不到根憑證」）；其他項目未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
 | 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
@@ -97,7 +97,7 @@ P4 之後合併的工作：
 | 網站查驗證明（zkTLS，TLSNotary） | 可用 | 查驗頁：學信網學籍報告（中、英文）、移民署入出國日期證明書 |
 | mdoc 零知識出示（Longfellow） | 可用 | 只支援 P-256 發行端；Windows 沒有 Longfellow 函式庫 |
 | zkPDF | 可用；手機上很慢 | 版型：福州大學在學證明、國家移民管理局通行證關聯查詢結果；v1 只證明第 1 頁。手機建議改在電腦版或自架主機產生 |
-| zkPassport 查驗與回應 | 可用 | 回應可在手機、自架證明器或臨時證明器產生（人臉比對由手機比對並簽署後也可轉送，伺服器 PR #38）；揭露的生日與到期日以 ISO 日期放進查詢結果（官方 SDK 以日期讀取，2026-11-19 修正）；人臉比對只在 Android 版回應，且只能用本專案電路（請求方須列出 `diw`），桌面版拒絕；查驗端接受官方與本專案的人臉比對證明並標示等級 |
+| zkPassport 查驗與回應 | 可用 | 回應可在手機、自架證明器或臨時證明器產生（人臉比對由手機比對並簽署後也可轉送，伺服器 PR #38）；揭露的生日與到期日以 ISO 日期放進查詢結果（官方 SDK 以日期讀取，2026-11-19 修正）；憑證包裡的 Aadhaar（UIDAI）憑證以自己的類型計入憑證樹（2026-11-16 起的憑證包含這類憑證，之前錢包算出的樹根與註冊表不符，證明停在 `certificates_root`，2026-11-20 修正）；人臉比對只在 Android 版回應，且只能用本專案電路（請求方須列出 `diw`），桌面版拒絕；查驗端接受官方與本專案的人臉比對證明並標示等級 |
 
 ### 3.5 平台
 

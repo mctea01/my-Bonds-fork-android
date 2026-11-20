@@ -77,7 +77,7 @@ class ZkPassportProverTest {
                 }
                 respond("""{"jsonrpc":"2.0","id":1,"result":"$result"}""", HttpStatusCode.OK, headersOf("Content-Type", "application/json"))
             }
-            url.startsWith(ZkPassportRegistry.MAINNET_CERTIFICATES) -> respond(gz("certificates-1398607f.json.gz"), HttpStatusCode.OK)
+            url.startsWith(ZkPassportRegistry.MAINNET_CERTIFICATES) -> respond(gz("certificates-0ad5ebef.json.gz"), HttpStatusCode.OK)
             url.startsWith(ZkPassportRegistry.MAINNET_CIRCUITS + "/by-version/0.21.1/") -> respond(gz("manifest-0.21.1.json.gz"), HttpStatusCode.OK)
             else -> respond("", HttpStatusCode.NotFound)
         }
@@ -95,7 +95,7 @@ class ZkPassportProverTest {
 
     @Test fun checksTheRegistryBeforeGeneratingInputs() = runBlocking<Unit> {
         assumeTrue(native(), "zkPDF backend not built")
-        val root = Json.parseToJsonElement(zkpassportCertificates(text("certificates-1398607f.json.gz"))).jsonObject["root"]!!.jsonPrimitive.content
+        val root = Json.parseToJsonElement(zkpassportCertificates(text("certificates-0ad5ebef.json.gz"))).jsonObject["root"]!!.jsonPrimitive.content
         val crs = Files.createTempDirectory("diw-zkpassport-crs").toFile()
 
         // A package that does not hash to the root on chain is refused.

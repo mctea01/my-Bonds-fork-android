@@ -20,7 +20,8 @@ Changes from upstream, all in the `Cargo.toml` files only:
   and `repository` values taken from the upstream workspace manifest;
 - `[lib] crate-type` removed, so the crates build as plain Rust libraries.
 
-Changes in `src/`, two in `zkpassport-core/src/input_gen.rs` and one in `zkpassport-core/src/query.rs`:
+Changes in `src/`, two in `zkpassport-core/src/input_gen.rs`, one in `zkpassport-core/src/query.rs` and one in
+`zkpassport-core/src/registry.rs`:
 
 - `get_public_salt` reduces its SHA-256 digest modulo the BN254 scalar field. The
   digest is at or above the modulus about four times in five, and the circuits'
@@ -39,6 +40,13 @@ Changes in `src/`, two in `zkpassport-core/src/input_gen.rs` and one in `zkpassp
   of null (reading 'getFullYear')". Upstream main has the same change (it adds
   `current_date` to `build_query_result`); `input_gen.rs` passes
   `current_date_timestamp`.
+
+- Packaged certificates carry a `type` (`"uidai"` for Aadhaar signing keys,
+  `@zkpassport/utils` 0.41). `get_certificate_leaf_hashes` hashes each leaf
+  with its own type byte (UIDAI is 3) and `match_csca` only considers CSCAs.
+  The packages published from 2026-11-16 hold UIDAI keys, so with the CSCA
+  byte on every leaf the certificate tree no longer reached the registry root.
+  Upstream main has the same change (`get_certificate_type`).
 
 Keep these changes when updating unless upstream has made them.
 
