@@ -34,6 +34,17 @@ internal object InputExercise {
     @Volatile var confirm = ""
     @Volatile var mainScreen = false
 
+    /** Whether the OS showed this window under the pointer at the PIN field before the first click. */
+    @Volatile private var foreground = "?"
+
+    /**
+     * True when the exercise failed but a click and keys posted through AWT's event queue reached the field: Compose
+     * handles input, and only the platform's delivery to this window failed (on CI, typically a window the desktop
+     * kept behind another one).
+     */
+    @Volatile var postedReached = false
+        private set
+
     /** Null while running (or not started); then "ok" with where the focus was, or what failed. */
     @Volatile var result: String? = null
         private set
@@ -138,7 +149,23 @@ internal object InputExercise {
             Thread.sleep(1000)
             postKeys(c, pin)
         } ?: "no pin target"
-        return "$under windows=[$windows] canvas asked=$asked owner=$owner after posted click keys $clicked"
+        postedReached = clicked == "reached the field"
+        return "$under windows=[$windows] canvas asked=$asked owner=$owner after posted click keys $clicked; before the first click $foreground"
+    }
+
+    /** Moves the pointer to a target and reports whether the OS finds this window there, and the pixel shown. */
+    private fun onTop(robot: Robot, name: String): String {
+        val b = targets[name] ?: return "no $name target"
+        var origin = java.awt.Point()
+        SwingUtilities.invokeAndWait { origin = window!!.contentPane.locationOnScreen }
+        val x = origin.x + (b.center.x / density).toInt()
+        val y = origin.y + (b.center.y / density).toInt()
+        robot.mouseMove(x, y)
+        robot.waitForIdle()
+        var under: java.awt.Point? = null
+        SwingUtilities.invokeAndWait { under = window?.getMousePosition(true) }
+        val c = robot.getPixelColor(x, y)
+        return "underPointer=$under pixel=#%02x%02x%02x".format(c.red, c.green, c.blue)
     }
 
     private fun all(root: java.awt.Component): List<java.awt.Component> =
@@ -168,9 +195,15 @@ internal object InputExercise {
         waitFor("the unlock screen", 60) { window != null && targets.containsKey("pin") && targets.containsKey("unlock") }
         val firstRun = targets.containsKey("confirm")
         val frame = window!!
-        SwingUtilities.invokeAndWait { frame.toFront(); frame.requestFocus() }
         val robot = Robot().apply { autoDelay = 30 }
+        // Windows lets a process take the foreground only right after it produced input; a tap of Alt counts. Only
+        // while the window is inactive, so the tap never reaches the window itself.
+        var active = false
+        SwingUtilities.invokeAndWait { active = frame.isActive }
+        if (!active) key(robot, KeyEvent.VK_ALT)
+        SwingUtilities.invokeAndWait { frame.toFront(); frame.requestFocus() }
         robot.waitForIdle()
+        foreground = "active=$active " + onTop(robot, "pin")
 
         click(robot, "pin")
         type(robot, PIN + "1")

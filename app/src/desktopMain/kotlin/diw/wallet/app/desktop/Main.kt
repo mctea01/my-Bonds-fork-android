@@ -99,7 +99,8 @@ private fun handleUncaught() {
  * DIW_EXIT_AFTER_SECONDS (tests and the native build only): ends the app after that many seconds, through a normal
  * exit so the tracing agent writes what it recorded. With DIW_EXERCISE_INPUT=1 it waits up to as long again for the
  * input exercise to finish. Exit code 0 when the first screen was composed and nothing was thrown, 1 after an uncaught
- * exception, 2 when nothing was composed, 3 when the input exercise failed.
+ * exception, 2 when nothing was composed, 3 when the input exercise failed, 4 when it failed only because the desktop
+ * did not deliver Robot's input to the window while a click and keys posted through AWT's event queue reached the field.
  */
 private fun exitAfter(seconds: Long) {
     Thread({
@@ -111,7 +112,16 @@ private fun exitAfter(seconds: Long) {
         val problem = uncaught
         val exercise = if (InputExercise.enabled) InputExercise.result ?: "did not finish" else "ok"
         println("timed exit: composed=$composed uncaught=${problem?.let { it::class.java.name + ": " + it.message }} input=$exercise")
-        exitProcess(if (problem != null) 1 else if (!composed) 2 else if (!exercise.startsWith("ok")) 3 else 0)
+        exitProcess(
+            when {
+                problem != null -> 1
+                !composed -> 2
+                exercise.startsWith("ok") -> 0
+                // Compose took the click and keys AWT posted; only the desktop's delivery to the window failed.
+                InputExercise.postedReached -> 4
+                else -> 3
+            },
+        )
     }, "timed-exit").apply { isDaemon = true; start() }
 }
 

@@ -44,7 +44,7 @@ P4 之後合併的工作：
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
 | 電腦版版面與鍵盤操作（PR #146） | 可用：寬視窗改側邊導覽列、內容限寬置中、按鈕列自動換行、捲軸、視窗大小記憶；Esc／Alt+左鍵／滑鼠側鍵返回、Ctrl+1 至 5 切分頁、Ctrl+, 設定、PIN 欄 Enter | [guides/desktop-usage.md](guides/desktop-usage.md) |
-| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行。2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版仍收不到 Robot 的鍵盤與滑鼠事件，焦點未轉到 Skia 畫布，原因追查中；中文輸入法未經實機驗證 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行。2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact，實機輸入待確認；中文輸入法未經實機驗證 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 
 ## 3. 功能狀態
 
