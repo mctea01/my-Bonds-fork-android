@@ -66,6 +66,12 @@ def main():
     # circuits with the secp256r1 ECDSA black box (zkPassport's Android FaceMatch, this project's key attestation
     # circuits) than bb, clang builds and zkPassport's registry do; other circuits agree.
     clang = ["-DCMAKE_C_COMPILER=clang", "-DCMAKE_CXX_COMPILER=clang++"]
+    # Linux with Zig (native/build.sh, DIW_ZK_LINUX_LIBCXX=1): zig cc and zig c++ wrappers that target an old glibc
+    # and compile against Zig's own libc++, so the library needs neither a new glibc nor libstdc++ on the host.
+    zig = [os.environ.get(name) for name in ("ZKPDF_ZIG_CC", "ZKPDF_ZIG_CXX", "ZKPDF_ZIG_AR", "ZKPDF_ZIG_RANLIB")]
+    if all(zig) and args.target.endswith("-unknown-linux-gnu"):
+        clang = ["-DCMAKE_C_COMPILER=" + zig[0], "-DCMAKE_CXX_COMPILER=" + zig[1],
+                 "-DCMAKE_AR=" + zig[2], "-DCMAKE_RANLIB=" + zig[3]]
     if args.target == "x86_64-unknown-linux-gnu":
         if platform.system() != "Linux":
             raise SystemExit("native_linux_host_required")
@@ -76,7 +82,9 @@ def main():
         flags += ["-DARM=ON", *clang]
         # On an x86_64 host clang cross-compiles against the distribution's GNU cross toolchain (headers, libstdc++
         # and binutils of g++-aarch64-linux-gnu); upstream reads the processor name.
-        if platform.machine() not in ("aarch64", "arm64"):
+        if platform.machine() not in ("aarch64", "arm64") and all(zig):
+            flags += ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=aarch64"]
+        elif platform.machine() not in ("aarch64", "arm64"):
             flags += ["-DCMAKE_SYSTEM_NAME=Linux", "-DCMAKE_SYSTEM_PROCESSOR=aarch64",
                       "-DCMAKE_C_COMPILER_TARGET=aarch64-linux-gnu", "-DCMAKE_CXX_COMPILER_TARGET=aarch64-linux-gnu",
                       "-DCMAKE_AR=" + str(shutil.which("aarch64-linux-gnu-ar") or "aarch64-linux-gnu-ar"),

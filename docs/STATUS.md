@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-20（main 到 PR #152：P5 驗證者透明與主動查驗、信任鏈完整顯示到根憑證；PR #146 原生桌面版的輸入修正與電腦版版面、鍵盤操作）。
+最後更新：2026-11-20（main 到 PR #150：P5 驗證者透明與主動查驗、信任鏈完整顯示到根憑證、Linux 原生程式庫相容版；PR #146 原生桌面版的輸入修正與電腦版版面、鍵盤操作）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -9,7 +9,7 @@
 ## 1. 一眼看完
 
 - 版本線 `0.4`（[version.properties](../version.properties)），main 每次更新由 CI 發佈 nightly。
-- P1 到 P4 與其後的延伸功能都已合併進 main；P5（驗證者透明與主動驗證）已完成、待合併，P6（iOS）尚未開始。
+- P1 到 P4 與其後的延伸功能都已合併進 main；P5（驗證者透明與主動驗證）已完成並合併（PR #152），P6（iOS）尚未開始。
 - 平台：Android（API 29 以上）與 Windows、Linux 桌面版為正式發佈；macOS 只提供 jar。
 - 正式服務端在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，狀態見該 repo 的 `docs/STATUS.md`。
 - 多數功能以自動測試與測試伺服器驗收，實機驗證只做了一部分，見第 5 節。
@@ -23,7 +23,7 @@
 | P2 | OpenID4VC 全組合與相容 Profile（TWDIW、Bonds、Verified ID、草案 11／13、EUDI）、ISO 18013-5 近距離 | 完成（PR #5、#7） | [p2-acceptance.md](acceptance/p2-acceptance.md)、[p2-followup.md](acceptance/p2-followup.md) |
 | P3 | 文件、簽章、時戳、衍生憑證、電子公文、取件入口 | 完成（PR #8、#9、#11） | [p3-acceptance.md](acceptance/p3-acceptance.md)、[p1-p3-followup-2026-10-16.md](acceptance/p1-p3-followup-2026-10-16.md) |
 | P4 | 零知識證明：zkPDF、zkTLS、年齡證明、mdoc ZK | 完成（PR #12，2026-11-06） | [p4-zkp.md](design/p4-zkp.md)、[p4-work-packages.md](design/p4-work-packages.md) |
-| P5 | 驗證者透明與主動驗證（查驗方身分、代表關係、線上與近距離查驗） | 完成，待合併；實機驗收見第 5 節 | [p5-verifier.md](design/p5-verifier.md) |
+| P5 | 驗證者透明與主動驗證（查驗方身分、代表關係、線上與近距離查驗） | 完成（PR #152）；實機驗收見第 5 節 | [p5-verifier.md](design/p5-verifier.md) |
 | P6 | iOS | 未開始 | 同上 |
 
 P4 之後合併的工作：
@@ -43,6 +43,7 @@ P4 之後合併的工作：
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
+| Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟 | [native/README.md](../native/README.md) |
 | 電腦版版面與鍵盤操作（PR #146） | 可用：寬視窗改側邊導覽列、內容限寬置中、按鈕列自動換行、捲軸、視窗大小記憶；Esc／Alt+左鍵／滑鼠側鍵返回、Ctrl+1 至 5 切分頁、Ctrl+, 設定、PIN 欄 Enter | [guides/desktop-usage.md](guides/desktop-usage.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行。2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact，實機輸入待確認；中文輸入法未經實機驗證 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 
@@ -105,7 +106,7 @@ P4 之後合併的工作：
 | Android arm64-v8a、x86_64 | APK、AAB、分割 APK 組 | 全部；Barretenberg 5（舊 zkPassport 電路）在 Play 版是隨選模組 |
 | Android armeabi-v7a、x86 | 同一個 APK | 沒有證明後端，只有相片解碼 |
 | Windows x86_64 | .msi、jar | 年齡證明、zkTLS、zkPDF、zkPassport；沒有 Longfellow |
-| Linux x86_64 | .deb、jar | 全部 |
+| Linux x86_64 | .deb、jar | 全部（glibc 2.38、libstdc++ 13、x86-64-v2 以上）；較舊的系統或 CPU 自動改用相容版：年齡證明、zkTLS、OPRF、BBS，沒有 zkPDF 與 zkPassport |
 | macOS arm64（14 以上） | 只有 jar | 全部 |
 | Linux ARM64 | 沒有安裝檔與 CI | 原生函式庫可交叉建置；Linux 的 Barretenberg 改用 clang 編譯（GCC 版對 P-256 簽章電路算出不同的驗證金鑰）後，ARM64 交叉建置尚未重新驗證 |
 | iOS | 未開始（P6） | |

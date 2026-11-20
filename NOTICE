@@ -202,6 +202,14 @@ Windows runtime
   Exceptions; mingw-w64 CRT - Zope Public License 2.1 and public domain;
   winpthreads - MIT and BSD 3-Clause License). No GCC runtime is linked.
 
+Linux runtime linked by Zig
+
+- Zig 0.14.1 links its compiler-rt (LLVM - Apache License 2.0 with LLVM
+  Exceptions) into the Linux compatibility libraries (linux-*-compat). Builds
+  with DIW_ZK_LINUX_LIBCXX=1 also link Zig's libc++ and libc++abi (LLVM -
+  Apache License 2.0 with LLVM Exceptions) statically into the full Linux
+  libraries instead of using the system libstdc++.
+
 ========================================================================
 5. Built-in data, certificates and layouts
 ========================================================================
