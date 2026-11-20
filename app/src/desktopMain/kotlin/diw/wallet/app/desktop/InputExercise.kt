@@ -58,7 +58,7 @@ internal object InputExercise {
         Thread({
             result = try {
                 run()
-                "ok (${focus()}; components=${components()}; threads=${threads()})"
+                "ok (${focus()}; before the first click $foreground; components=${components()}; threads=${threads()})"
             } catch (e: Throwable) {
                 e.printStackTrace()
                 (e.message ?: e::class.java.name) + "; " + diagnostics()
@@ -165,7 +165,7 @@ internal object InputExercise {
         var under: java.awt.Point? = null
         SwingUtilities.invokeAndWait { under = window?.getMousePosition(true) }
         val c = robot.getPixelColor(x, y)
-        return "underPointer=$under pixel=#%02x%02x%02x".format(c.red, c.green, c.blue)
+        return "underPointer=$under pixel=#%02x%02x%02x ".format(c.red, c.green, c.blue) + WindowProbe.at(x, y)
     }
 
     private fun all(root: java.awt.Component): List<java.awt.Component> =
