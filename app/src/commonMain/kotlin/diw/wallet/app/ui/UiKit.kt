@@ -6,9 +6,19 @@ import org.jetbrains.compose.resources.stringResource
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.foundation.ScrollState
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.FlowRowScope
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -33,8 +43,14 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 
 /**
@@ -200,4 +216,63 @@ fun TechDetails(lines: List<String>, key: String) {
             }
         }
     }
+}
+
+/** Widest a screen's content gets; wider windows keep it centred so lines and buttons stay within reach. */
+val ContentMaxWidth = 840.dp
+
+/**
+ * The body of a screen: scrolls as a whole (the wheel works anywhere across the window), keeps its content centred
+ * and no wider than [ContentMaxWidth], and shows a scroll bar where the platform has one (desktop).
+ */
+@Composable
+fun ScreenColumn(
+    spacing: Dp,
+    horizontalAlignment: Alignment.Horizontal = Alignment.Start,
+    content: @Composable ColumnScope.() -> Unit,
+) {
+    val scroll = rememberScrollState()
+    Box(Modifier.fillMaxSize()) {
+        Column(Modifier.fillMaxSize().verticalScroll(scroll), horizontalAlignment = Alignment.CenterHorizontally) {
+            Column(
+                Modifier.widthIn(max = ContentMaxWidth).fillMaxWidth().padding(16.dp),
+                verticalArrangement = Arrangement.spacedBy(spacing),
+                horizontalAlignment = horizontalAlignment,
+                content = content,
+            )
+        }
+        VerticalScrollIndicator(scroll, Modifier.align(Alignment.CenterEnd).fillMaxHeight())
+    }
+}
+
+/**
+ * Buttons, chips and tags side by side that wrap onto the next line when the window is narrow, instead of being
+ * squeezed or pushed off the side (a sideways scroll cannot be reached with a mouse wheel).
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+fun WrapRow(modifier: Modifier = Modifier, spacing: Dp = 8.dp, content: @Composable FlowRowScope.() -> Unit) {
+    FlowRow(
+        modifier,
+        horizontalArrangement = Arrangement.spacedBy(spacing),
+        verticalArrangement = Arrangement.spacedBy(spacing),
+        itemVerticalAlignment = Alignment.CenterVertically,
+        content = content,
+    )
+}
+
+/** A vertical scroll bar for [state] on desktop; nothing on touch platforms, where the content is dragged. */
+@Composable
+expect fun VerticalScrollIndicator(state: ScrollState, modifier: Modifier = Modifier)
+
+/** A horizontal scroll bar for [state] on desktop, for content that is wider than the window (tables). */
+@Composable
+expect fun HorizontalScrollIndicator(state: ScrollState, modifier: Modifier = Modifier)
+
+/** Runs [action] when Enter or the keypad's Enter is pressed while this element has the focus (hardware keyboards). */
+fun Modifier.onEnterKey(action: () -> Unit): Modifier = onPreviewKeyEvent { e ->
+    if (e.type == KeyEventType.KeyDown && (e.key == Key.Enter || e.key == Key.NumPadEnter)) {
+        action()
+        true
+    } else false
 }

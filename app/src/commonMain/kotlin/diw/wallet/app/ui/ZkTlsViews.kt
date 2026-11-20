@@ -144,7 +144,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
     val left = secondsLeft(request)
     val captchaInput = s.profile.prepare.input.takeIf { ZkTlsPrepare.needed(s.profile) }
     val complete = inputsComplete(s.profile, inputs, s.captcha)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         TrustCard(stringResource(Res.string.role_verifier), s.verifier, s.trust, listOf(stringResource(Res.string.zktls_purpose_inline) + request.purpose.ifEmpty { stringResource(Res.string.age_unstated) }))
         PageCard(s.profile, request.fields, s.inline)
         Text(stringResource(Res.string.zktls_consent_text),
@@ -166,7 +166,7 @@ internal fun ZkTlsConsentView(model: WalletModel, s: OfflineUi.ZkTlsConsent) {
         HolderServerButton(model)
         Text(if (left > 0) stringResource(Res.string.age_time_left, clock(left)) else stringResource(Res.string.age_expired), style = MaterialTheme.typography.bodySmall,
             color = if (left > 60) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.error)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(
                 onClick = { if (s.trust.tier == TrustTier.T4) confirm = true else model.taiwan.zkTls.prove(s, inputs.toMap(), keep) },
                 enabled = left > 0 && complete,
@@ -190,7 +190,7 @@ internal fun ZkTlsProvingView(model: WalletModel, s: OfflineUi.ZkTlsProving) {
     val jobs by model.zk.jobs.collectAsState()
     val job = jobs[s.jobId]
     val left = secondsLeft(s.consent.session.request)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         PageCard(s.consent.profile, s.consent.session.request.fields, s.consent.inline)
         Text(
             when {
@@ -229,7 +229,7 @@ private fun serverLines(name: String, time: Long, trust: TrustDecision?): List<S
 internal fun ZkTlsHolderResultView(model: WalletModel, s: OfflineUi.ZkTlsHolderResult) {
     val proved = s.proved
     val fields = s.consent.session.request.fields
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         when {
             proved == null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zktls_not_finished), listOfNotNull(s.error))
             proved.outcome.passed -> VerdictCard(Verdict.PASS, stringResource(Res.string.zktls_proved_to, s.consent.verifier), listOf(stringResource(Res.string.zktls_proved_sees)))
@@ -268,7 +268,7 @@ internal fun ZkTlsHolderResultView(model: WalletModel, s: OfflineUi.ZkTlsHolderR
                 stringResource(Res.string.zktls_disclosed_bytes) + proved.plan.received.joinToString(", ") { "${it.start}-${it.end}" },
             ), "zktls-holder-${s.consent.session.request.sessionId}")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             if (s.retry) Button(onClick = { model.taiwan.zkTls.retry(s.consent) }) { Text(stringResource(Res.string.action_retry)) }
             OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.consent.forFile) }) { Text(if (s.consent.forFile != null) stringResource(Res.string.zktls_back_to_document) else stringResource(Res.string.action_done)) }
         }
@@ -282,14 +282,14 @@ internal fun ZkTlsVerifierSetupView(model: WalletModel, s: OfflineUi.ZkTlsVerifi
     val chosen = remember(page) { mutableStateMapOf<String, Boolean>().apply { page?.fields?.forEach { put(it.name, true) } } }
     val purposeDefault = stringResource(Res.string.zktls_eligibility)
     var purpose by remember { mutableStateOf(purposeDefault) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.zktls_verifier_text),
             style = MaterialTheme.typography.bodyMedium)
         s.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         PeerServerButton(model)
         if (s.pages.isEmpty()) {
             OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_back)) }
-            return@Column
+            return@ScreenColumn
         }
         Text(stringResource(Res.string.zktls_page), style = MaterialTheme.typography.titleSmall)
         s.pages.forEachIndexed { i, p ->
@@ -313,7 +313,7 @@ internal fun ZkTlsVerifierSetupView(model: WalletModel, s: OfflineUi.ZkTlsVerifi
         OutlinedTextField(value = purpose, onValueChange = { purpose = it.take(ZkTlsSessionRequest.MAX_PURPOSE) },
             label = { Text(stringResource(Res.string.age_purpose_label)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
         val fields = page?.fields?.map { it.name }?.filter { chosen[it] == true }.orEmpty()
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.taiwan.zkTls.startVerifier(page!!, fields, purpose.trim()) }, enabled = page != null && fields.isNotEmpty() && purpose.isNotBlank()) {
                 Text(stringResource(Res.string.zktls_make_qr))
             }
@@ -325,7 +325,7 @@ internal fun ZkTlsVerifierSetupView(model: WalletModel, s: OfflineUi.ZkTlsVerifi
 @Composable
 internal fun ZkTlsVerifierWaitingView(model: WalletModel, s: OfflineUi.ZkTlsVerifierWaiting) {
     val left = secondsLeft(s.request)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp),
+    ScreenColumn(spacing = 10.dp,
         horizontalAlignment = Alignment.CenterHorizontally) {
         Text(stringResource(Res.string.age_scan_with_wallet), style = MaterialTheme.typography.titleMedium)
         QrImage(s.link, Modifier.fillMaxWidth().widthIn(max = 420.dp))
@@ -352,7 +352,7 @@ internal fun ZkTlsVerifierWaitingView(model: WalletModel, s: OfflineUi.ZkTlsVeri
 @Composable
 internal fun ZkTlsVerifierResultView(model: WalletModel, s: OfflineUi.ZkTlsVerifierResult) {
     val o = s.outcome
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         when {
             o == null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zktls_not_finished), listOfNotNull(s.error))
             o.passed && s.local -> VerdictCard(Verdict.PASS, stringResource(Res.string.zktls_passed, s.profile.title), listOf(stringResource(Res.string.zktls_passed_local)))
@@ -380,12 +380,12 @@ internal fun ZkTlsVerifierResultView(model: WalletModel, s: OfflineUi.ZkTlsVerif
 internal fun ZkTlsSelfPickView(model: WalletModel, s: OfflineUi.ZkTlsSelfPick) {
     var index by remember(s) { mutableStateOf(0) }
     val page = s.pages.getOrNull(index)
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.zktls_self_intro) + if (s.fileId != null) stringResource(Res.string.zktls_self_intro_doc) else stringResource(Res.string.zktls_self_intro_save), style = MaterialTheme.typography.bodyMedium)
         s.note?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
         if (s.pages.isEmpty()) {
             OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.fileId) }) { Text(stringResource(Res.string.action_back)) }
-            return@Column
+            return@ScreenColumn
         }
         Text(stringResource(Res.string.zktls_page), style = MaterialTheme.typography.titleSmall)
         s.pages.forEachIndexed { i, p ->
@@ -426,7 +426,7 @@ internal fun ZkTlsSelfPickView(model: WalletModel, s: OfflineUi.ZkTlsSelfPick) {
 @Composable
 internal fun ZkTlsSelfView(model: WalletModel, s: OfflineUi.ZkTlsSelf) {
     val inputs = remember(s.profile.id) { mutableStateMapOf<String, String>() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         PageCard(s.profile, s.profile.fields.map { it.name }, false)
         Text(stringResource(Res.string.zktls_self_text), style = MaterialTheme.typography.bodySmall)
         QueryInputs(model, s.profile, inputs, s.captcha, s.preparing, s.fileId) { model.taiwan.zkTls.refreshSelfCaptcha(s) }
@@ -435,7 +435,7 @@ internal fun ZkTlsSelfView(model: WalletModel, s: OfflineUi.ZkTlsSelf) {
             LinearProgressIndicator(Modifier.fillMaxWidth())
             Text(stringResource(Res.string.zktls_querying, s.profile.host), style = MaterialTheme.typography.bodySmall)
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.taiwan.zkTls.queryDirect(s, inputs.toMap()) }, enabled = !s.working && inputsComplete(s.profile, inputs, s.captcha)) {
                 Text(stringResource(Res.string.zktls_query_save))
             }
@@ -448,7 +448,7 @@ internal fun ZkTlsSelfView(model: WalletModel, s: OfflineUi.ZkTlsSelf) {
 internal fun ZkTlsSelfResultView(model: WalletModel, s: OfflineUi.ZkTlsSelfResult) {
     val o = s.outcome
     val fields = s.state.profile.fields.map { it.name }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         when {
             o == null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.zktls_query_not_finished), listOfNotNull(s.error))
             o.passed -> VerdictCard(Verdict.PASS, stringResource(Res.string.zktls_found_data, s.state.profile.title), listOf(stringResource(Res.string.zktls_found_data_text)))
@@ -481,7 +481,7 @@ internal fun ZkTlsSelfResultView(model: WalletModel, s: OfflineUi.ZkTlsSelfResul
                 stringResource(Res.string.zktls_size, f.received.size),
             ), "zktls-self-${s.state.profile.id}")
         }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             if (s.kept == null) Button(onClick = { model.taiwan.zkTls.retrySelf(s) }) { Text(stringResource(Res.string.action_retry)) }
             OutlinedButton(onClick = { model.taiwan.zkTls.leave(s.state.fileId) }) { Text(if (s.state.fileId != null) stringResource(Res.string.zktls_back_to_document) else stringResource(Res.string.action_done)) }
         }

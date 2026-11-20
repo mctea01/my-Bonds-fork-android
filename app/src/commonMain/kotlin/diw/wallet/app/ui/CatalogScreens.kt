@@ -55,7 +55,7 @@ fun AddDocumentScreen(model: WalletModel) {
     val files by model.files.files.collectAsState()
     var issuer by remember { mutableStateOf("") }
     LaunchedEffect(Unit) { if (cards == null && error == null) model.taiwan.loadServices() }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Text(stringResource(Res.string.catalog_intro), style = MaterialTheme.typography.bodyMedium)
         if (model.twdiwPlatform != TwdiwPlatform.PRODUCTION) {
             Text(stringResource(Res.string.catalog_test_platform, model.twdiwPlatform.frontendUrl), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
@@ -139,7 +139,7 @@ fun TrustListScreen(model: WalletModel) {
     var filter by remember { mutableStateOf("") }
     // Opening the list checks every organisation not checked in the last day, without a tap per entry.
     LaunchedEffect(Unit) { if (rows == null) model.taiwan.loadTrust() else model.taiwan.verifyAll(force = false) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.trust_list_text),
             style = MaterialTheme.typography.bodyMedium)
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {

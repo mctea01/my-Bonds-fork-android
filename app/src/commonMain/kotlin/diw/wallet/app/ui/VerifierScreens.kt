@@ -92,9 +92,9 @@ fun OnlineVerifyScreen(model: WalletModel) {
         }
         is OnlineVerifyUi.Waiting -> OnlineWaiting(model, s)
         is OnlineVerifyUi.Result -> OnlineResult(model, s)
-        is OnlineVerifyUi.Failed -> Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+        is OnlineVerifyUi.Failed -> ScreenColumn(spacing = 12.dp) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.ov_failed_title), listOf(s.message))
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 Button(onClick = { model.verifier.again() }) { Text(stringResource(Res.string.action_try_again)) }
                 OutlinedButton(onClick = { model.verifier.close(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_leave)) }
             }
@@ -117,7 +117,7 @@ private fun OnlineSetup(model: WalletModel) {
     val lan = model.platform.bondsLan != null
     var route by remember { mutableStateOf(if (server != null) OnlineRoute.SERVER else OnlineRoute.LAN) }
     var keys by remember(profileId) { mutableStateOf(VerifierKeys()) }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(Tokens.ContainerRadius),
@@ -251,7 +251,7 @@ private fun OnlineWaiting(model: WalletModel, s: OnlineVerifyUi.Waiting) {
         Text(s.route, style = MaterialTheme.typography.bodyMedium, textAlign = TextAlign.Center)
         s.profile?.let { Text(stringResource(Res.string.ov_as_profile, it), style = MaterialTheme.typography.bodySmall) }
         Text(stringResource(Res.string.ov_valid_until, localTime(s.expiresAt)), style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             OutlinedButton(onClick = { clipboard.setText(AnnotatedString(s.invocation)) }) { Text(stringResource(Res.string.ov_copy_link)) }
             OutlinedButton(onClick = { model.verifier.again() }) { Text(stringResource(Res.string.action_cancel)) }
         }
@@ -261,7 +261,7 @@ private fun OnlineWaiting(model: WalletModel, s: OnlineVerifyUi.Waiting) {
 
 @Composable
 private fun OnlineResult(model: WalletModel, s: OnlineVerifyUi.Result) {
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         val v = s.verification
         when {
             v.error != null -> VerdictCard(Verdict.FAIL, stringResource(Res.string.ov_invalid), listOfNotNull(v.errorDescription ?: v.error))
@@ -274,7 +274,7 @@ private fun OnlineResult(model: WalletModel, s: OnlineVerifyUi.Result) {
         s.credentials.forEach { CredentialResult(it) }
         Text(stringResource(Res.string.ov_summary, s.ask, s.policy.accepted.joinToString(stringResource(Res.string.sep_list)) { it.title }) +
             (s.profile?.let { stringResource(Res.string.ov_note_as, it) } ?: ""), style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.verifier.again() }) { Text(stringResource(Res.string.reader_again)) }
             OutlinedButton(onClick = { model.verifier.close(); model.showTab(HomeTab.VERIFY) }) { Text(stringResource(Res.string.action_done)) }
         }
@@ -332,7 +332,7 @@ fun VerifierProfilesScreen(model: WalletModel) {
         ProfileEditor(model, it)
         return
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
+    ScreenColumn(spacing = 12.dp) {
         Text(stringResource(Res.string.vp_text), style = MaterialTheme.typography.bodyMedium)
         if (profiles.isEmpty()) Text(stringResource(Res.string.vp_empty), style = MaterialTheme.typography.bodySmall)
         profiles.forEach { p ->
@@ -360,7 +360,7 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
     var agentClientId by remember { mutableStateOf("") }
     var mandateDays by remember { mutableStateOf("180") }
     val kind = p.verifierKind
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         SectionTitle(stringResource(Res.string.vp_kind))
         VerifierKind.entries.forEach { k ->
             Row(Modifier.fillMaxWidth().clickable { p = p.copy(kind = k.wire) }, verticalAlignment = Alignment.CenterVertically) {
@@ -374,7 +374,7 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
             singleLine = true, modifier = Modifier.fillMaxWidth(),
         )
         Text(stringResource(Res.string.vp_party_id), style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             FilterChip(selected = p.partyScheme == null, onClick = { p = p.copy(partyScheme = null, partyValue = null) }, label = { Text(stringResource(Res.string.vp_no_id)) })
             listOf(PartyId.TW_UBN, PartyId.EUID, PartyId.LEI, PartyId.TW_ID).forEach { scheme ->
                 FilterChip(selected = p.partyScheme == scheme, onClick = { p = p.copy(partyScheme = scheme) }, label = { Text(scheme) })
@@ -401,12 +401,12 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
         OutlinedTextField(value = p.purpose, onValueChange = { p = p.copy(purpose = it.take(200)) },
             label = { Text(stringResource(Res.string.verify_purpose)) }, modifier = Modifier.fillMaxWidth())
         Text(stringResource(Res.string.vp_legal_basis), style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             FilterChip(selected = p.legalBasis == null, onClick = { p = p.copy(legalBasis = null) }, label = { Text(stringResource(Res.string.vp_unstated)) })
             VerifierModel.LEGAL_BASES.forEach { b -> FilterChip(selected = p.legalBasis == b, onClick = { p = p.copy(legalBasis = b) }, label = { Text(legalBasisText(b)) }) }
         }
         Text(stringResource(Res.string.vp_retention), style = MaterialTheme.typography.titleSmall)
-        Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             FilterChip(selected = p.retention == null, onClick = { p = p.copy(retention = null) }, label = { Text(stringResource(Res.string.vp_unstated)) })
             VerifierModel.RETENTIONS.forEach { r ->
                 FilterChip(selected = p.retention == r, onClick = { p = p.copy(retention = r) },
@@ -468,7 +468,7 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
             Text(stringResource(Res.string.vp_mandates_text, p.mandates.size), style = MaterialTheme.typography.bodySmall)
             OutlinedTextField(value = mandateText, onValueChange = { mandateText = it.take(32 * 1024) },
                 label = { Text(stringResource(Res.string.vp_mandate_paste)) }, modifier = Modifier.fillMaxWidth())
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            WrapRow() {
                 OutlinedButton(onClick = { model.verifier.importMandate(p, mandateText); mandateText = "" }, enabled = mandateText.isNotBlank()) { Text(stringResource(Res.string.vp_mandate_import)) }
                 if (p.mandates.isNotEmpty()) TextButton(onClick = { p = p.copy(mandates = emptyList()) }) { Text(stringResource(Res.string.vp_mandates_clear)) }
             }
@@ -504,7 +504,7 @@ private fun ProfileEditor(model: WalletModel, initial: VerifierProfile) {
         SectionTitle(stringResource(Res.string.vp_registration))
         OutlinedTextField(value = p.registration.orEmpty(), onValueChange = { p = p.copy(registration = it.trim().take(64 * 1024).ifEmpty { null }) },
             label = { Text(stringResource(Res.string.vp_registration_paste)) }, modifier = Modifier.fillMaxWidth())
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             Button(onClick = { model.verifier.save(p) }, enabled = p.partyName.isNotBlank()) { Text(stringResource(Res.string.action_save)) }
             if (model.verifier.profiles.value.any { it.id == p.id }) OutlinedButton(onClick = { model.verifier.delete(p) }) { Text(stringResource(Res.string.action_delete)) }
             TextButton(onClick = { model.verifier.editing.value = null }) { Text(stringResource(Res.string.action_cancel)) }

@@ -1741,6 +1741,8 @@
     <string name="derive_zk_claim">zkPDF zero-knowledge proof (tick it along when presenting document fields)</string>
     <string name="derive_zk_opening">Zero-knowledge opening data of \"%1$s\"</string>
     <string name="derive_zk_suffix"> (zkPDF)</string>
+    <string name="desktop_error_log">The app stopped because of an error: %1$s\n\nDetails were saved to %2$s</string>
+    <string name="desktop_error_title">DIW MY WALLET error</string>
     <string name="did_hint">DID (did:web, did:key, did:ion...)</string>
     <string name="did_trust">Trust this DID</string>
     <string name="dids_none">None added. Organizations outside the trust list (such as a company's own issuer) can be added here.</string>

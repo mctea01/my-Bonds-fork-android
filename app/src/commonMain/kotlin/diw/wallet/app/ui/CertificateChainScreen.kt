@@ -79,7 +79,7 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
             focused = true
         }
     }
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+    ScreenColumn(spacing = 8.dp) {
         Text(selected.displaySubject(), style = MaterialTheme.typography.titleMedium)
         val p = path
         if (p == null) {

@@ -91,7 +91,7 @@ fun KeyViewerScreen(model: WalletModel) {
     var reading by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     val clipboard = LocalClipboardManager.current
-    Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState()).padding(16.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+    ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.keys_viewer_intro), style = MaterialTheme.typography.bodyMedium)
         SignerPicker(model) { choice = it; read = null; problem = null }
         CscPromptPanel(model)
