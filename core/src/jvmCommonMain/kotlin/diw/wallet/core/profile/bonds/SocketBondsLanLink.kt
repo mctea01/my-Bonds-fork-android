@@ -1,6 +1,7 @@
 package diw.wallet.core.profile.bonds
 
 import diw.wallet.core.document.sign.CleartextHttp
+import diw.wallet.core.document.sign.FetchReply
 import kotlinx.coroutines.CompletableDeferred
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.awaitCancellation
@@ -102,6 +103,7 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         path: String,
         maxPayload: Int,
         onListening: (urls: List<String>) -> Unit,
+        get: (suspend (target: String) -> Pair<String, ByteArray>?)?,
         answer: suspend (body: ByteArray) -> Pair<ByteArray, Boolean>,
     ): ByteArray {
         val servers = withContext(Dispatchers.IO) {
@@ -123,7 +125,7 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
                     launch {
                         while (!done.isCompleted) {
                             val socket = try { withContext(Dispatchers.IO) { server.accept() } } catch (_: IOException) { break }
-                            socket.use { handle(it, path, maxPayload, ended) }?.let { done.complete(it) }
+                            socket.use { handle(it, path, maxPayload, ended, get) }?.let { done.complete(it) }
                         }
                     }
                 }
@@ -141,7 +143,13 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
     }
 
     /** Answers one connection; returns the body when it ended the exchange. */
-    private suspend fun handle(socket: Socket, path: String, maxPayload: Int, answer: suspend (ByteArray) -> Pair<ByteArray, Boolean>): ByteArray? {
+    private suspend fun handle(
+        socket: Socket,
+        path: String,
+        maxPayload: Int,
+        answer: suspend (ByteArray) -> Pair<ByteArray, Boolean>,
+        get: (suspend (String) -> Pair<String, ByteArray>?)?,
+    ): ByteArray? {
         val (method, target, body) = try {
             withContext(Dispatchers.IO) {
                 socket.soTimeout = READ_TIMEOUT_MS
@@ -149,6 +157,11 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
             }
         } catch (e: IOException) {
             respond(socket, if (e is TooLarge) 413 else 400, ERROR)
+            return null
+        }
+        if (method == "GET" && get != null) {
+            val content = get(target)
+            if (content == null) respond(socket, 404, ERROR) else respond(socket, 200, content.second, content.first)
             return null
         }
         if (method != "POST" || target != path) {
@@ -198,12 +211,12 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         }
     }
 
-    private suspend fun respond(socket: Socket, status: Int, body: ByteArray) = withContext(Dispatchers.IO) {
+    private suspend fun respond(socket: Socket, status: Int, body: ByteArray, type: String = "application/json") = withContext(Dispatchers.IO) {
         runCatching {
             val reason = when (status) { 200 -> "OK"; 404 -> "Not Found"; 413 -> "Payload Too Large"; else -> "Bad Request" }
             val out = socket.getOutputStream()
             out.write(
-                ("HTTP/1.1 $status $reason\r\nContent-Type: application/json\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n")
+                ("HTTP/1.1 $status $reason\r\nContent-Type: $type\r\nContent-Length: ${body.size}\r\nConnection: close\r\n\r\n")
                     .toByteArray(Charsets.ISO_8859_1),
             )
             out.write(body)
@@ -212,11 +225,17 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
     }
 
     override suspend fun post(url: String, body: ByteArray, timeout: Duration): Pair<Int, String> {
+        val reply = cleartext(url, timeout, REPLY_MAX).exchange(url, body, "application/json", "application/json")
+        return reply.status to reply.body.decodeToString()
+    }
+
+    override suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?, timeout: Duration): FetchReply =
+        cleartext(url, timeout, EXCHANGE_MAX).exchange(url, body, contentType, accept)
+
+    private fun cleartext(url: String, timeout: Duration, max: Int): CleartextHttp {
         val host = URI(url).host?.removePrefix("[")?.removeSuffix("]")
         val factory = host?.let { socketFactoryFor(it) } ?: SocketFactory.getDefault()
-        val reply = CleartextHttp(timeoutMillis = timeout.inWholeMilliseconds.toInt(), maxBytes = REPLY_MAX, socketFactory = factory)
-            .exchange(url, body, "application/json", "application/json")
-        return reply.status to reply.body.decodeToString()
+        return CleartextHttp(timeoutMillis = timeout.inWholeMilliseconds.toInt(), maxBytes = max, socketFactory = factory)
     }
 
     private companion object {
@@ -224,6 +243,7 @@ class SocketBondsLanLink(private val socketFactoryFor: (host: String) -> SocketF
         const val READ_TIMEOUT_MS = 30_000
         const val MAX_LINE = 8192
         const val REPLY_MAX = 64 * 1024
+        const val EXCHANGE_MAX = 1024 * 1024
         val LOCAL = listOf("wlan", "swlan", "ap", "en", "eth", "wifi", "softap")
         val HOTSPOT = listOf("swlan", "ap", "softap")
         val VIRTUAL_NAMES = listOf("docker", "br-", "veth", "virbr", "vmnet", "vboxnet", "zt", "tailscale", "lxc", "lxd", "cni", "flannel", "podman")

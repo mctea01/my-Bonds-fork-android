@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -363,6 +364,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
                 )
             }
             Text(stringResource(Res.string.offline_purpose_risk, s.request.purpose, StatusTexts.risk(s.risk)))
+            s.delivery?.let { Text(it, style = MaterialTheme.typography.bodySmall) }
             specStatus(s.status)?.let { Text(stringResource(Res.string.status_spec_value, it), style = MaterialTheme.typography.bodySmall) }
             Text(stringResource(Res.string.offline_presented_at, r.created), style = MaterialTheme.typography.bodySmall)
             Text(stringResource(Res.string.offline_holder, r.holder), style = MaterialTheme.typography.bodySmall)
@@ -373,7 +375,7 @@ private fun VerifierResultView(model: WalletModel, s: OfflineUi.VerifierResult) 
             r.credentialType?.let { LabelValue(stringResource(Res.string.credential_kind), it, small = true) }
             r.issuerChain?.let { chain ->
                 LabelValue(stringResource(Res.string.reader_issuer_cert), chain.first().displaySubject(), small = true) {
-                    model.screen.value = Screen.Certificate(chain, 0, Screen.Offline)
+                    model.screen.value = Screen.Certificate(chain, 0, Screen.Offline, TrustRole.ISSUER)
                 }
             }
             r.claims.forEach { (k, v) -> ClaimRow(model, model.claimLabel(k.split('.'), null, null), v) }

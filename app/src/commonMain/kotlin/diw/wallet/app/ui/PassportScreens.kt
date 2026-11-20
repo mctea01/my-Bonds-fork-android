@@ -100,7 +100,7 @@ fun PassportReadScreen(model: WalletModel, scanMrz: (suspend () -> String?)? = n
 
     ScreenColumn(spacing = 12.dp) {
         Text(stringResource(Res.string.mrtd_intro), style = MaterialTheme.typography.bodySmall)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        WrapRow() {
             FilterChip(selected = !useCan, onClick = { useCan = false }, label = { Text(stringResource(Res.string.mrtd_by_zone)) })
             FilterChip(selected = useCan, onClick = { useCan = true }, label = { Text(stringResource(Res.string.mrtd_by_can)) })
         }

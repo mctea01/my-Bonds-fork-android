@@ -31,6 +31,10 @@ import diw.wallet.core.trust.TrustTier
 import diw.wallet.core.oid4vp.AttestationVerdict
 import diw.wallet.core.oid4vp.VerifierAttestation
 import diw.wallet.core.oid4vp.VerifierInfoChecker
+import diw.wallet.core.verifier.CheckStatus
+import diw.wallet.core.verifier.declaration.DeclarationEvidence
+import diw.wallet.core.verifier.declaration.VerifierIdentity
+import diw.wallet.core.verifier.declaration.VerifierKind
 
 fun tierColor(t: TrustTier): Color = when (t) {
     TrustTier.T1 -> Color(0xFF1B7F3B)
@@ -194,6 +198,10 @@ fun TrustCard(title: String, subject: String, trust: TrustDecision, extra: List<
  */
 @Composable
 fun VerifierAttestationCard(a: VerifierAttestation) {
+    a.identity?.let {
+        VerifierIdentityCard(it)
+        return
+    }
     val (verdict, title) = when (a.verdict) {
         AttestationVerdict.VALID -> Verdict.PASS to stringResource(Res.string.attestation_valid)
         AttestationVerdict.PARTIAL -> Verdict.CAUTION to stringResource(Res.string.attestation_partial)
@@ -233,6 +241,105 @@ fun VerifierAttestationCard(a: VerifierAttestation) {
             a.problems.forEach { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
             a.notes.forEach { Text(it, style = MaterialTheme.typography.bodySmall) }
         }
+    }
+}
+
+/**
+ * Who a verifier says it is in its declaration (docs/design/p5-verifier.md section 4.2), as checked: the party the data
+ * goes to, the person handling it, the purpose with its legal basis and retention, and each piece of evidence.
+ */
+@Composable
+fun VerifierIdentityCard(id: VerifierIdentity) {
+    val (verdict, title) = when {
+        !id.bound -> Verdict.FAIL to stringResource(Res.string.vd_not_bound)
+        id.confirmed -> Verdict.PASS to stringResource(Res.string.vd_confirmed)
+        else -> Verdict.CAUTION to stringResource(Res.string.vd_partial)
+    }
+    val c = id.content
+    val small = MaterialTheme.typography.bodySmall
+    Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = verdict.color.copy(alpha = 0.10f))) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Text(stringResource(Res.string.vd_title), style = MaterialTheme.typography.labelLarge)
+                VerdictPill(verdict, title)
+                if (id.bound) Box(Modifier.background(tierColor(id.tier), RoundedCornerShape(6.dp)).padding(horizontal = 8.dp, vertical = 3.dp)) {
+                    Text(WalletModel.tierTitle(id.tier), color = Color.White, fontSize = 12.sp, fontWeight = FontWeight.SemiBold)
+                }
+            }
+            if (c != null && id.bound) {
+                Text(kindText(c.kind), style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(Res.string.vd_party, c.party.name), style = MaterialTheme.typography.titleSmall)
+                c.party.id?.let { Text(stringResource(Res.string.vd_party_id, it.scheme, it.value), style = small) }
+                if (c.party.publicBody == true) Text(stringResource(Res.string.attestation_public_body), style = small)
+                c.agent?.let { a ->
+                    Text(a.role?.let { stringResource(Res.string.vd_agent_role, a.name, it) } ?: stringResource(Res.string.vd_agent, a.name), style = MaterialTheme.typography.bodyMedium)
+                }
+                val purpose = c.purpose
+                purpose?.let { Text(stringResource(Res.string.vd_purpose, it.text), style = MaterialTheme.typography.bodyMedium) }
+                purpose?.legalBasis?.let { Text(stringResource(Res.string.vd_legal_basis, legalBasisText(it)), style = small) }
+                purpose?.retention?.let { Text(if (it == "none") stringResource(Res.string.vd_retention_none) else stringResource(Res.string.vd_retention, retentionText(it)), style = small) }
+                purpose?.privacyPolicy?.let { Text(stringResource(Res.string.attestation_privacy, it), style = small, color = MaterialTheme.colorScheme.outline) }
+                if (id.evidence.isEmpty()) Text(stringResource(Res.string.vd_no_evidence), style = small, color = tierColor(TrustTier.T3))
+                id.evidence.forEach { e ->
+                    val what = when {
+                        e.mandate -> stringResource(Res.string.vd_evidence_mandate, e.title)
+                        e.role == DeclarationEvidence.ROLE_AGENT -> stringResource(Res.string.vd_evidence_agent, e.title)
+                        else -> stringResource(Res.string.vd_evidence_party, e.title)
+                    }
+                    val result = if (e.passed) stringResource(Res.string.vd_evidence_passed) else stringResource(Res.string.vd_evidence_failed)
+                    Text(what + stringResource(Res.string.sep_space) + result, style = small,
+                        color = if (e.passed) MaterialTheme.colorScheme.onSurface else MaterialTheme.colorScheme.error)
+                    e.signer?.let { s ->
+                        Text(stringResource(Res.string.attestation_signer, s) + (e.trust?.let { t -> stringResource(Res.string.sep_space) + WalletModel.tierTitle(t.tier) +
+                            (t.anchorName?.let { n -> stringResource(Res.string.parenthesized, n) } ?: "") } ?: ""), style = small)
+                    }
+                    e.problems.forEach { Text(it, style = small, color = MaterialTheme.colorScheme.error) }
+                }
+                id.outsideDeclaration?.let {
+                    if (it.isEmpty()) Text(stringResource(Res.string.vd_in_scope), style = small)
+                    else Text(stringResource(Res.string.vd_outside, it.joinToString(stringResource(Res.string.sep_list))), style = small, color = MaterialTheme.colorScheme.error)
+                }
+            }
+            id.checks.filter { it.status != CheckStatus.PASS }.forEach { k ->
+                Text(k.name + (if (k.detail.isNotEmpty()) stringResource(Res.string.sep_comma) + k.detail else ""), style = small,
+                    color = if (k.status == CheckStatus.FAIL) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface)
+            }
+            id.expiresAt?.let { Text(stringResource(Res.string.attestation_valid_until) + localTime(it), style = small) }
+            id.problems.forEach { Text(it, style = small, color = MaterialTheme.colorScheme.error) }
+            id.notes.forEach { Text(it, style = small) }
+        }
+    }
+}
+
+@Composable
+private fun kindText(k: VerifierKind): String = when (k) {
+    VerifierKind.NATURAL_PERSON -> stringResource(Res.string.vd_kind_natural)
+    VerifierKind.LEGAL_PERSON -> stringResource(Res.string.vd_kind_legal)
+    VerifierKind.FOR_LEGAL_PERSON -> stringResource(Res.string.vd_kind_for_legal)
+    VerifierKind.FOR_NATURAL_PERSON -> stringResource(Res.string.vd_kind_for_natural)
+}
+
+@Composable
+fun legalBasisText(b: String): String = when (b) {
+    "consent" -> stringResource(Res.string.vd_basis_consent)
+    "contract" -> stringResource(Res.string.vd_basis_contract)
+    "legal_obligation" -> stringResource(Res.string.vd_basis_legal_obligation)
+    "public_task" -> stringResource(Res.string.vd_basis_public_task)
+    "vital_interest" -> stringResource(Res.string.vd_basis_vital_interest)
+    "legitimate_interest" -> stringResource(Res.string.vd_basis_legitimate_interest)
+    else -> b
+}
+
+/** An ISO 8601 duration of one unit (P30D, P6M, P1Y, P2W) in words; anything else as written. */
+@Composable
+fun retentionText(r: String): String {
+    val m = Regex("^P(\\d{1,4})([DWMY])$").matchEntire(r) ?: return r
+    val n = m.groupValues[1].toInt()
+    return when (m.groupValues[2]) {
+        "D" -> stringResource(Res.string.vd_retention_days, n)
+        "W" -> stringResource(Res.string.vd_retention_weeks, n)
+        "M" -> stringResource(Res.string.vd_retention_months, n)
+        else -> stringResource(Res.string.vd_retention_years, n)
     }
 }
 

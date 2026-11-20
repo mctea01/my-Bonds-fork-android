@@ -110,8 +110,10 @@ class Oid4vpHolder(
     private val requestObjectDecryptionKeys: suspend () -> List<org.multipaz.crypto.AsymmetricKey> = { emptyList() },
     /** OpenID Federation Trust Anchors for openid_federation verifiers. */
     federationAnchors: suspend () -> List<diw.wallet.core.federation.FederationAnchor> = { emptyList() },
+    /** Clear text to a wallet verifying on the local network (request_uri and response_uri under [LanEndpoints]). */
+    private val lanHttp: diw.wallet.core.document.sign.SignedDataHttp? = null,
 ) {
-    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, requestObjectDecryptionKeys)
+    private val resolver = RequestResolver(httpClient, policy, environment.insecureLoopbackAllowed, lanHttp, requestObjectDecryptionKeys)
     private val didResolver = DidResolver(httpClient, environment.insecureLoopbackAllowed)
     private val validator = RequestValidator(
         trustRegistry, didResolver, policy, environment.insecureLoopbackAllowed, didTrust,
@@ -228,6 +230,38 @@ class Oid4vpHolder(
         return result.copy(credentialSets = sets)
     }
 
+    /**
+     * Presents one held credential as evidence of a verifier declaration (docs/design/p5-verifier.md section 4): the
+     * DCQL [query] (mdoc or SD-JWT VC) is answered as if [clientId] had asked with [nonce], the mdoc handover naming
+     * [diw.wallet.core.verifier.declaration.VerifierDeclaration.EVIDENCE_RESPONSE_URI]. [documentId] picks the
+     * document when several match. Returns the vp_token object.
+     */
+    suspend fun evidence(clientId: String, nonce: String, query: JsonObject, documentId: String? = null): JsonObject {
+        val request = ValidatedAuthorizationRequest(
+            raw = RawAuthorizationRequest(RequestChannel.URI, emptyMap(), null, JsonObject(emptyMap()), null, null),
+            verifier = VerifierIdentityInfo(ClientId.parse(clientId), clientId, clientId, null, emptyList(), null, diw.wallet.core.trust.TrustDecision.unknown()),
+            responseMode = ResponseMode.DIRECT_POST,
+            responseUri = diw.wallet.core.verifier.declaration.VerifierDeclaration.EVIDENCE_RESPONSE_URI,
+            nonce = nonce,
+            state = null,
+            dcqlQuery = JsonObject(mapOf("credentials" to kotlinx.serialization.json.JsonArray(listOf(query)))),
+            transactionData = emptyList(),
+            clientMetadata = null,
+            verifierInfo = emptyList(),
+            expectedOrigins = emptyList(),
+            warnings = emptyList(),
+        )
+        val prepared = prepareStandard(request)
+        val all = prepared.queryResult.select(emptyList())
+        val selection = if (documentId == null) all else {
+            val wanted = prepared.queryResult.credentialSets.flatMap { it.options }.flatMap { it.members }.flatMap { it.matches }
+                .firstOrNull { it.credential.document.identifier == documentId }
+                ?: throw ProtocolException("access_denied", "The chosen document does not answer the evidence query")
+            all.copy(matches = listOf(wanted))
+        }
+        return builder.build(request, selection).vpToken
+    }
+
     /** Responds to a request prepared by the wallet's own engine with its chosen credentials. */
     /** Responds with the default choice: the first match of each standard query, or the engine's choice for extended requests. */
     suspend fun respondDefault(prepared: PreparedRequest): PresentationOutcome = when (prepared) {
@@ -331,6 +365,17 @@ class Oid4vpHolder(
     }
 
     private suspend fun post(responseUri: String, payload: JsonObject): PresentationOutcome.Posted {
+        // Only a validated LAN request has an http response_uri (RequestValidator); it goes over the local network.
+        if (lanHttp != null && policy.allowLanEndpoints && LanEndpoints.host(responseUri) != null) {
+            val form = payload.entries.joinToString("&") { (k, v) ->
+                k.encodeURLParameter() + "=" + (if (v is JsonPrimitive && v.isString) v.content else v.toString()).encodeURLParameter()
+            }
+            val reply = lanHttp.exchange(responseUri, form.encodeToByteArray(), "application/x-www-form-urlencoded", "application/json")
+            if (!reply.success) {
+                throw ProtocolException("verifier_error", "Verifier rejected the response: HTTP ${reply.status} ${reply.body.decodeToString().take(200)}")
+            }
+            return PresentationOutcome.Posted(null, reply.status)
+        }
         val resp = httpClient.submitForm(
             url = responseUri,
             formParameters = parameters {

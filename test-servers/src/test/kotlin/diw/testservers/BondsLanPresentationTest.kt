@@ -96,7 +96,8 @@ class BondsLanPresentationTest {
             BondsPresentationRequest.create("abc", "年齡確認", now, lanUrls = (1..5).map { "http://10.0.0.$it/vp" }, lanKey = keyText)
         }
         refused("http://192.168.43.1:41234/vp", null)
-        refused(null, keyText)
+        // The key alone is allowed: it seals the presentation over Bluetooth.
+        assertEquals(keyText, BondsPresentationRequest.create("abc", "年齡確認", now, lanKey = keyText).lanKey)
         refused("http://8.8.8.8/vp", keyText)
         refused("https://192.168.43.1/vp", keyText)
         refused("http://verifier.example.com/vp", keyText)
@@ -151,6 +152,36 @@ class BondsLanPresentationTest {
         withTimeout(10.seconds) { served.await() }
         assertEquals(jws, opened)
         assertEquals(mapOf("birthdate" to "1990-01-01"), verifier.verify(opened!!, request!!).claims)
+    }
+
+    /**
+     * The Bonds BLE link between two of these wallets is sealed to the challenge's key; a Bonds App holder ignores
+     * the key and sends the JWS in clear text, which is still taken, as not encrypted.
+     */
+    @Test
+    fun bluetoothPayloadIsSealedToTheChallengeKey() = runBlocking<Unit> {
+        val key = BondsLanPresentation.newKey()
+        val request = BondsPresentationRequest.generate("年齡確認", BondsCredentialSource.ANY, lanKey = BondsLanPresentation.keyText(key.publicKey))
+        val parsed = BondsPresentationRequest.parse(request.encode())
+        assertEquals(request.lanKey, parsed.lanKey)
+        assertTrue(parsed.lanUrls.isEmpty())
+        val jws = presentation(parsed)
+
+        val (payload, sealed) = BondsLanPresentation.linkPayload(jws, parsed)
+        assertTrue(sealed)
+        assertFalse(payload.contains(jws.substringBefore('.')), "the clear JWS must not be on the link")
+        val (opened, wasSealed) = BondsLanPresentation.fromLink(payload.encodeToByteArray(), key, request)
+        assertEquals(jws, opened)
+        assertTrue(wasSealed)
+        assertEquals(mapOf("birthdate" to "1990-01-01"), verifier.verify(opened, request).claims)
+
+        // Another challenge's key cannot open it.
+        assertFailsWith<ProtocolException> { BondsLanPresentation.fromLink(payload.encodeToByteArray(), BondsLanPresentation.newKey(), request) }
+
+        // The Bonds App: no key in its verifier's challenge, or a holder that sends the clear JWS.
+        val bondsRequest = BondsPresentationRequest.generate("年齡確認", BondsCredentialSource.ANY)
+        assertEquals(jws to false, BondsLanPresentation.linkPayload(jws, bondsRequest))
+        assertEquals(jws to false, BondsLanPresentation.fromLink(jws.encodeToByteArray(), key, request))
     }
 
     @Test

@@ -1987,7 +1987,8 @@ class FilesModel(private val model: WalletModel) {
         model.screen.value = Screen.FileDetail(stored.id)
     }
 
-    private suspend fun signer(choice: SignerChoice, hint: String = tr(Res.string.sign_default_reason)): DocumentSigner = when (choice) {
+    /** The signer [choice] names, with its certificate read (a card is tapped once here). */
+    internal suspend fun signer(choice: SignerChoice, hint: String = tr(Res.string.sign_default_reason)): DocumentSigner = when (choice) {
         is SignerChoice.Card -> cardSigner(choice)
         is SignerChoice.Piv -> pivSigner(choice)
         is SignerChoice.Pkcs12 -> DocumentSigning.pkcs12Signer(choice.file, choice.password)
@@ -2003,7 +2004,7 @@ class FilesModel(private val model: WalletModel) {
      * An OpenPGP card signer with the card read (first tap). For the X.509 formats the key gets the card's cardholder
      * certificate, the certificate the card signed for itself before, or a new self-issued one (kept for next time).
      */
-    private suspend fun openPgpSigner(choice: SignerChoice.OpenPgp, x509: Boolean): OpenPgpTapSigner {
+    internal suspend fun openPgpSigner(choice: SignerChoice.OpenPgp, x509: Boolean): OpenPgpTapSigner {
         busy.value = OpenPgpModel.tapMessage(choice.reader, tr(Res.string.step_read_card))
         val signer = OpenPgpTapSigner(
             choice.reader.reader, choice.pin, model.openPgp.knownBodies(), { model.openPgp.selfIssuedCertificate(it) },
@@ -2040,6 +2041,15 @@ class FilesModel(private val model: WalletModel) {
     }
 
     // ---------------------------------------------------------------- OpenPGP messages
+
+    /** Checks again the files with a signature or time stamp whose chain led to no anchor, after an anchor was added. */
+    suspend fun reinspectUnanchored() {
+        files.value.filter { f ->
+            val r = f.report ?: return@filter false
+            r.signatures.any { s -> s.trust?.labels?.contains("UNKNOWN_ANCHOR") == true || s.timestamp?.trust?.labels?.contains("UNKNOWN_ANCHOR") == true } ||
+                f.timestamps.any { !it.trusted }
+        }.forEach { runCatching { refreshed(it) } }
+    }
 
     /** Checks the OpenPGP files again after the key list or the user's trust changed. */
     suspend fun reinspectOpenPgp() {

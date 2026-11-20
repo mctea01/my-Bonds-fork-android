@@ -11,6 +11,7 @@ import kotlinx.serialization.json.putJsonObject
 import org.multipaz.crypto.AsymmetricKey
 import org.multipaz.crypto.EcPrivateKey
 import org.multipaz.webtoken.buildJwt
+import diw.wallet.core.verifier.declaration.signCompact
 
 /** Parameters of an OpenID4VP 1.0 authorization request created by a Verifier. */
 data class VerifierRequestSpec(
@@ -73,6 +74,10 @@ object RequestObjectBuilder {
         for ((k, v) in spec.extra) put(k, v)
         }
     }
+
+    /** Signs the request with a verifier identity's [signer] (a DID key or an X.509 certificate from any document signer). */
+    suspend fun sign(spec: VerifierRequestSpec, signer: diw.wallet.core.verifier.declaration.JwsSigner): String =
+        signer.signCompact("oauth-authz-req+jwt", claims(spec))
 
     /** Signs the request with [key]: X.509 keys produce an x5c header, named keys a kid header. */
     suspend fun sign(spec: VerifierRequestSpec, key: AsymmetricKey, extraHeader: Map<String, JsonElement> = emptyMap()): String {

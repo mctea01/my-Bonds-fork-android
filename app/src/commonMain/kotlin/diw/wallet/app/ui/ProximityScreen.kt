@@ -1,5 +1,7 @@
 package diw.wallet.app.ui
 
+import diw.wallet.core.oid4vp.AttestationVerdict
+import diw.wallet.core.trust.TrustRole
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -141,13 +143,18 @@ private fun ConsentView(model: WalletModel, s: ProximityUi.Consent) {
         TrustCard(if (s.channel == diw.wallet.app.ProximityChannel.DC_API) stringResource(Res.string.role_verifier) else stringResource(Res.string.prox_reader), s.verifier, s.trust, extra)
         if (s.chain.isNotEmpty()) {
             LabelValue(stringResource(Res.string.prox_reader_cert), s.chain.first().displaySubject(), small = true) {
-                model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity)
+                model.screen.value = Screen.Certificate(s.chain, 0, Screen.Proximity, TrustRole.VERIFIER)
             }
         }
+        s.attestations.forEach { VerifierAttestationCard(it) }
+        s.declarationNote?.let { VerdictCard(Verdict.CAUTION, stringResource(Res.string.prox_declaration_unchecked), listOf(it)) }
         val statusOk = requestedDocuments(model, s.items, s.risk, s.trust.tier, s)
         val ok = riskAcknowledgement(s.trust)
+        val failed = s.attestations.filter { it.verdict == AttestationVerdict.INVALID }
+        val attestationsOk = failed.isEmpty() || riskOverride(s, stringResource(Res.string.flow_registration_continue), stringResource(Res.string.flow_registration_title),
+            failed.flatMap { it.problems }.distinct().take(5) + stringResource(Res.string.flow_registration_text))
         WrapRow() {
-            Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk) { Text(stringResource(Res.string.flow_agree_share)) }
+            Button(onClick = { model.proximity.approve(s) }, enabled = ok && statusOk && attestationsOk) { Text(stringResource(Res.string.flow_agree_share)) }
             OutlinedButton(onClick = { model.proximity.decline(s) }) { Text(stringResource(Res.string.action_decline)) }
         }
     }

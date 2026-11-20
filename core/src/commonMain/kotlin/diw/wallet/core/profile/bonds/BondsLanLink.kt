@@ -22,18 +22,26 @@ interface BondsLanLink {
      * Listens on each of [addresses] at a free port and answers POSTs to [path]: [answer] turns a body into the JSON
      * reply and says whether the exchange is over. [onListening] receives the URLs to put in the request, in the order
      * of [addresses] (an address that cannot be bound is left out). Returns the body that ended the exchange; cancel
-     * to stop listening.
+     * to stop listening. With [get], GET requests are answered too: it maps the request target to a content type and
+     * body, or null for 404 (the OpenID4VP request object of a wallet verifying on the local network).
      */
     suspend fun serve(
         addresses: List<String>,
         path: String,
         maxPayload: Int,
         onListening: (urls: List<String>) -> Unit,
+        get: (suspend (target: String) -> Pair<String, ByteArray>?)? = null,
         answer: suspend (body: ByteArray) -> Pair<ByteArray, Boolean>,
     ): ByteArray
 
     /** Posts [body] as JSON to a LAN [url] and returns the status and reply text; the verifier checks before it answers. */
     suspend fun post(url: String, body: ByteArray, timeout: Duration): Pair<Int, String>
+
+    /**
+     * One clear-text exchange with a LAN [url] (a GET, or a POST of [body] as [contentType]) over the network the
+     * address belongs to: the OpenID4VP request and response of a wallet verifying on the local network.
+     */
+    suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?, timeout: Duration): diw.wallet.core.document.sign.FetchReply
 
     /** [urls] reordered so those on a subnet of this device come first; the rest keep their order. */
     fun preferred(urls: List<String>): List<String> = urls

@@ -49,7 +49,7 @@ import diw.wallet.core.x509.displaySubject
 import kotlin.time.Instant
 
 @Composable
-private fun roleName(r: TrustRole): String = when (r) {
+internal fun roleName(r: TrustRole): String = when (r) {
     TrustRole.ISSUER -> stringResource(Res.string.role_issuer)
     TrustRole.VERIFIER -> stringResource(Res.string.role_verifier)
     TrustRole.STATUS_LIST -> stringResource(Res.string.role_status_list)
@@ -62,7 +62,7 @@ private fun roleName(r: TrustRole): String = when (r) {
 }
 
 @Composable
-private fun environmentTitle(e: TrustEnvironment): String = when (e) {
+internal fun environmentTitle(e: TrustEnvironment): String = when (e) {
     TrustEnvironment.PRODUCTION -> stringResource(Res.string.env_production)
     TrustEnvironment.USER -> stringResource(Res.string.env_user)
     TrustEnvironment.TEST -> stringResource(Res.string.env_test)
@@ -250,7 +250,7 @@ private fun SignedListSection(model: WalletModel) {
         }
     }
     if (lists.isNotEmpty()) TextButton(onClick = { model.refreshMdocTrustLists() }) { Text(stringResource(Res.string.signed_lists_refresh)) }
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         FilterChip(selected = kind == "vical", onClick = { kind = "vical" }, label = { Text(stringResource(Res.string.signed_list_vical)) })
         FilterChip(selected = kind == "rical", onClick = { kind = "rical" }, label = { Text(stringResource(Res.string.signed_list_rical)) })
     }
@@ -695,7 +695,7 @@ private fun FederationSection(model: WalletModel) {
     OutlinedTextField(value = entityId, onValueChange = { entityId = it.trim().take(512) }, label = { Text(stringResource(Res.string.federation_entity)) },
         singleLine = true, modifier = Modifier.fillMaxWidth())
     OutlinedTextField(value = name, onValueChange = { name = it.take(80) }, label = { Text(stringResource(Res.string.display_name_optional)) }, singleLine = true, modifier = Modifier.fillMaxWidth())
-    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+    WrapRow() {
         FilterChip(selected = !test, onClick = { test = false }, label = { Text(stringResource(Res.string.federation_production)) })
         FilterChip(selected = test, onClick = { test = true }, enabled = settings.testEnvironment, label = { Text(stringResource(Res.string.federation_test)) })
     }

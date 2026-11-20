@@ -1,5 +1,7 @@
 package diw.wallet.app.ui
 
+import diw.wallet.app.SettingsSection
+import androidx.compose.material3.HorizontalDivider
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import org.jetbrains.compose.resources.stringResource
@@ -252,52 +254,32 @@ fun UseTab(model: WalletModel, scan: ScanActions) {
  */
 @Composable
 fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
-    val defaultPurpose = stringResource(Res.string.verify_identity)
-    var purpose by remember { mutableStateOf(defaultPurpose) }
-    var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
-    var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
+    val profiles by model.verifier.profiles.collectAsState()
+    LaunchedEffect(Unit) { model.verifier.load() }
     ScreenColumn(spacing = 12.dp) {
         Card(
             Modifier.fillMaxWidth(),
             shape = RoundedCornerShape(Tokens.ContainerRadius),
             colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
         ) {
-            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
                 Icon(WalletIcons.Shield, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(32.dp))
                 Text(stringResource(Res.string.verify_others), style = MaterialTheme.typography.titleLarge)
-                Text(stringResource(Res.string.verify_others_text),
-                    style = MaterialTheme.typography.bodyMedium)
-                Text(stringResource(Res.string.verify_accepted), style = MaterialTheme.typography.titleSmall)
-                WrapRow() {
-                    listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.SELF_ISSUED, BondsCredentialSource.ANY).forEach { s ->
-                        FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
-                    }
-                }
-                if (source == BondsCredentialSource.SELF_ISSUED) {
-                    Text(stringResource(Res.string.verify_accepted_moica),
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                if (source == BondsCredentialSource.ANY) {
-                    Text(stringResource(Res.string.verify_accepted_any),
-                        style = MaterialTheme.typography.bodySmall)
-                }
-                OutlinedTextField(
-                    value = purpose,
-                    onValueChange = { purpose = it.take(100) },
-                    label = { Text(stringResource(Res.string.verify_purpose)) },
-                    singleLine = true,
-                    modifier = Modifier.fillMaxWidth(),
-                )
-                Text(stringResource(Res.string.verify_purpose_risk), style = MaterialTheme.typography.titleSmall)
-                RiskSelector(risk) { risk = it }
-                Button(onClick = { model.taiwan.startVerifier(purpose.trim(), risk, source) }, enabled = purpose.isNotBlank()) {
-                    Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
-                    Spacer(Modifier.width(6.dp))
-                    Text(stringResource(Res.string.verify_make_challenge))
-                }
+                Text(stringResource(Res.string.verify_intro), style = MaterialTheme.typography.bodyMedium)
             }
         }
-        BondsAgeVerifierSetup(model, canScanFrames)
+        SectionTitle(stringResource(Res.string.verify_standard))
+        ActionRow(WalletIcons.Link, stringResource(Res.string.verify_online), stringResource(Res.string.verify_online_text)) { model.verifier.openOnline() }
+        ActionRow(WalletIcons.Nfc, stringResource(Res.string.verify_reader), stringResource(Res.string.verify_reader_text)) { model.reader.open() }
+        SectionTitle(stringResource(Res.string.verify_verifier_identity))
+        ActionRow(
+            WalletIcons.Person, stringResource(Res.string.verify_as_whom),
+            if (profiles.isEmpty()) stringResource(Res.string.verify_as_whom_text) else stringResource(Res.string.verify_as_whom_count, profiles.size),
+        ) { model.verifier.openProfiles() }
+        ActionRow(WalletIcons.Card, stringResource(Res.string.settings_section_trust), stringResource(Res.string.verify_keys_text)) {
+            model.screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+        }
+        SectionTitle(stringResource(Res.string.verify_zk))
         ActionRow(
             WalletIcons.Link, stringResource(Res.string.verify_zktls),
             stringResource(Res.string.verify_zktls_text),
@@ -307,11 +289,54 @@ fun VerifyTab(model: WalletModel, canScanFrames: Boolean = false) {
                 model.taiwan.zkPassport.openSetup()
             }
         } else IntegrationOffRow(model, Integration.ZKPASSPORT, stringResource(Res.string.verify_zkpassport))
-        SectionTitle(stringResource(Res.string.verify_verifier_identity))
-        ActionRow(WalletIcons.Person, stringResource(Res.string.verify_as_whom), stringResource(Res.string.verify_as_whom_text), enabled = false) {}
-        SectionTitle(stringResource(Res.string.verify_other_methods))
-        ActionRow(WalletIcons.Link, stringResource(Res.string.verify_online), stringResource(Res.string.verify_online_text), enabled = false) {}
-        ActionRow(WalletIcons.Nfc, stringResource(Res.string.verify_reader), stringResource(Res.string.verify_reader_text)) { model.reader.open() }
+        Text(stringResource(Res.string.verify_zk_age_hint), style = MaterialTheme.typography.bodySmall)
+        HorizontalDivider()
+        CollapsibleSection(stringResource(Res.string.verify_bonds), key = "verify-bonds") {
+            Text(stringResource(Res.string.verify_bonds_text), style = MaterialTheme.typography.bodySmall)
+            BondsChallengeSetup(model)
+            BondsAgeVerifierSetup(model, canScanFrames)
+        }
+    }
+}
+
+/** A Bonds offline challenge: the cards accepted, the purpose shown to the holder and its risk. */
+@Composable
+private fun BondsChallengeSetup(model: WalletModel) {
+    val defaultPurpose = stringResource(Res.string.verify_identity)
+    var purpose by remember { mutableStateOf(defaultPurpose) }
+    var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
+    var source by remember { mutableStateOf(BondsCredentialSource.TWDIW) }
+    Card(Modifier.fillMaxWidth()) {
+        Column(Modifier.padding(16.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            Text(stringResource(Res.string.verify_bonds_challenge), style = MaterialTheme.typography.titleMedium)
+            Text(stringResource(Res.string.verify_others_text), style = MaterialTheme.typography.bodySmall)
+            Text(stringResource(Res.string.verify_accepted), style = MaterialTheme.typography.titleSmall)
+            WrapRow() {
+                listOf(BondsCredentialSource.TWDIW, BondsCredentialSource.SELF_ISSUED, BondsCredentialSource.ANY).forEach { s ->
+                    FilterChip(selected = source == s, onClick = { source = s }, label = { Text(bondsSourceLabel(s)) })
+                }
+            }
+            if (source == BondsCredentialSource.SELF_ISSUED) {
+                Text(stringResource(Res.string.verify_accepted_moica), style = MaterialTheme.typography.bodySmall)
+            }
+            if (source == BondsCredentialSource.ANY) {
+                Text(stringResource(Res.string.verify_accepted_any), style = MaterialTheme.typography.bodySmall)
+            }
+            OutlinedTextField(
+                value = purpose,
+                onValueChange = { purpose = it.take(100) },
+                label = { Text(stringResource(Res.string.verify_purpose)) },
+                singleLine = true,
+                modifier = Modifier.fillMaxWidth(),
+            )
+            Text(stringResource(Res.string.verify_purpose_risk), style = MaterialTheme.typography.titleSmall)
+            RiskSelector(risk) { risk = it }
+            Button(onClick = { model.taiwan.startVerifier(purpose.trim(), risk, source) }, enabled = purpose.isNotBlank()) {
+                Icon(WalletIcons.Qr, contentDescription = null, modifier = Modifier.size(18.dp))
+                Spacer(Modifier.width(6.dp))
+                Text(stringResource(Res.string.verify_make_challenge))
+            }
+        }
     }
 }
 

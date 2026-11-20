@@ -119,6 +119,7 @@ fun SettingsScreen(model: WalletModel) {
                     if (s.myDataIdNumber != null) stringResource(Res.string.settings_mydata_set) else null,
                 ).joinToString("・")
                 SettingsSection.TRUST -> listOf(
+                    stringResource(Res.string.settings_keys_summary, model.openPgp.keys.collectAsState().value.size, model.verifier.profiles.collectAsState().value.size),
                     stringResource(Res.string.settings_system_store_prefix) + onOff(s.systemTrustStore),
                     stringResource(Res.string.settings_china_prefix) + onOff(s.mainlandChinaRoots),
                     stringResource(Res.string.settings_aatl_prefix) + onOff(s.aatlTrustList),
@@ -233,6 +234,9 @@ private fun DocumentsPage(model: WalletModel) {
     }
     Text(level.detail + stringResource(Res.string.settings_signature_level_text), style = MaterialTheme.typography.bodySmall)
     Text(stringResource(Res.string.settings_csc_hint), style = MaterialTheme.typography.bodySmall)
+    ActionRow(WalletIcons.Card, stringResource(Res.string.screen_key_viewer), stringResource(Res.string.keys_viewer_text)) {
+        model.screen.value = Screen.KeyViewer
+    }
     HorizontalDivider()
     MyDataProfileSection(model)
 }
@@ -240,31 +244,26 @@ private fun DocumentsPage(model: WalletModel) {
 @Composable
 private fun TrustPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
-    Text(stringResource(Res.string.settings_trust_levels),
-        style = MaterialTheme.typography.bodySmall)
-    CustomTrustRow(model)
-    HorizontalDivider()
-    SectionTitle(stringResource(Res.string.settings_trust_sources))
-    Toggle(stringResource(Res.string.settings_system_store), stringResource(Res.string.settings_system_store_text), s.systemTrustStore) { v ->
-        model.updateSettings { it.copy(systemTrustStore = v) }
-    }
-    Toggle(stringResource(Res.string.settings_china), stringResource(Res.string.settings_china_text), s.mainlandChinaRoots) { v ->
-        model.updateSettings { it.copy(mainlandChinaRoots = v) }
-    }
-    Toggle("Adobe AATL", stringResource(Res.string.settings_aatl_text), s.aatlTrustList) { v -> model.updateSettings { it.copy(aatlTrustList = v) } }
-    Toggle(stringResource(Res.string.settings_eutl), stringResource(Res.string.settings_eutl_text), s.eutlTrustList) { v -> model.updateSettings { it.copy(eutlTrustList = v) } }
-    HorizontalDivider()
-    SectionTitle(stringResource(Res.string.settings_lists_anchors))
-    if (model.legal.enabled(Integration.TWDIW)) {
-        ActionRow(WalletIcons.Shield, stringResource(Res.string.settings_twdiw_trust_list), stringResource(Res.string.settings_twdiw_trust_list_text)) {
-            model.screen.value = Screen.TrustList
+    KeysAndTrustPage(model) {
+        Text(stringResource(Res.string.settings_trust_levels), style = MaterialTheme.typography.bodySmall)
+        CustomTrustRow(model)
+        ActionRow(WalletIcons.Shield, stringResource(Res.string.screen_trust_anchors), stringResource(Res.string.settings_trust_anchors_text)) {
+            model.screen.value = Screen.TrustAnchors
         }
-    } else IntegrationOffRow(model, Integration.TWDIW, stringResource(Res.string.settings_twdiw_trust_list))
-    ActionRow(WalletIcons.Shield, stringResource(Res.string.screen_trust_anchors), stringResource(Res.string.settings_trust_anchors_text)) {
-        model.screen.value = Screen.TrustAnchors
-    }
-    ActionRow(WalletIcons.Shield, stringResource(Res.string.screen_openpgp_keys), stringResource(Res.string.settings_openpgp_text)) {
-        model.screen.value = Screen.OpenPgpKeys()
+        if (model.legal.enabled(Integration.TWDIW)) {
+            ActionRow(WalletIcons.Shield, stringResource(Res.string.settings_twdiw_trust_list), stringResource(Res.string.settings_twdiw_trust_list_text)) {
+                model.screen.value = Screen.TrustList
+            }
+        } else IntegrationOffRow(model, Integration.TWDIW, stringResource(Res.string.settings_twdiw_trust_list))
+        Text(stringResource(Res.string.settings_trust_sources), style = MaterialTheme.typography.titleSmall)
+        Toggle(stringResource(Res.string.settings_system_store), stringResource(Res.string.settings_system_store_text), s.systemTrustStore) { v ->
+            model.updateSettings { it.copy(systemTrustStore = v) }
+        }
+        Toggle(stringResource(Res.string.settings_china), stringResource(Res.string.settings_china_text), s.mainlandChinaRoots) { v ->
+            model.updateSettings { it.copy(mainlandChinaRoots = v) }
+        }
+        Toggle("Adobe AATL", stringResource(Res.string.settings_aatl_text), s.aatlTrustList) { v -> model.updateSettings { it.copy(aatlTrustList = v) } }
+        Toggle(stringResource(Res.string.settings_eutl), stringResource(Res.string.settings_eutl_text), s.eutlTrustList) { v -> model.updateSettings { it.copy(eutlTrustList = v) } }
     }
 }
 

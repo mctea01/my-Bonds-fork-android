@@ -35,6 +35,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withTimeout
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.io.bytestring.ByteString
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.add
@@ -89,9 +90,13 @@ class WalletModelE2eTest {
         val zkPassport: diw.wallet.core.zkpassport.ZkPassportVerifier? = null,
         /** Replaces the zkPassport holder, so answers can be driven without a prover or the bridge. */
         val zkPassportHolder: diw.wallet.core.zkpassport.ZkPassportHolder? = null,
+        /** Bluetooth is available (the test replaces the transports with [LoopbackBle]). */
+        val bluetooth: Boolean = false,
     ) : PlatformServices {
         lateinit var model: WalletModel
         var pinPrompts = 0
+        override suspend fun proximityTransportUnavailableReason(): String? =
+            if (bluetooth) null else super.proximityTransportUnavailableReason()
         override val refreshTrustListsInBackground = false
         override val oid4vciRedirectUri = "diw-wallet://oid4vci/callback"
         override suspend fun openStorage() = storage
@@ -147,8 +152,8 @@ class WalletModelE2eTest {
         }
     }
 
-    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test", noLan: Boolean = false): Pair<WalletModel, TestPlatform> {
-        val p = TestPlatform(storage, platformName = platformName, noLan = noLan)
+    private suspend fun newWallet(storage: Storage = EphemeralStorage(), platformName: String = "test", noLan: Boolean = false, bluetooth: Boolean = false): Pair<WalletModel, TestPlatform> {
+        val p = TestPlatform(storage, platformName = platformName, noLan = noLan, bluetooth = bluetooth)
         val m = WalletModel(p)
         p.model = m
         // Answers every App PIN request like a user would.
@@ -342,6 +347,62 @@ class WalletModelE2eTest {
     }
 
     /**
+     * The certificate screen with chains shown up to their roots: a document signer chain whose root no anchor holds
+     * (T3, under review), the same signer sent without its issuers, and a built-in passport CSCA. DIW_SCREENSHOTS
+     * names the output folder.
+     */
+    @Test
+    fun certificateChainScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        start()
+        val (m, _) = newWallet()
+        val gen = java.security.KeyPairGenerator.getInstance("EC").apply { initialize(java.security.spec.ECGenParameterSpec("secp256r1")) }
+        fun cert(subject: String, issuer: String, key: java.security.KeyPair, signer: java.security.PrivateKey, ca: Boolean): org.multipaz.crypto.X509Cert {
+            val now = System.currentTimeMillis()
+            val b = org.bouncycastle.cert.jcajce.JcaX509v3CertificateBuilder(
+                org.bouncycastle.asn1.x500.X500Name(issuer), java.math.BigInteger.valueOf(System.nanoTime()), java.util.Date(now - 86_400_000L),
+                java.util.Date(now + 3650L * 86_400_000L), org.bouncycastle.asn1.x500.X500Name(subject), key.public,
+            )
+                .addExtension(org.bouncycastle.asn1.x509.Extension.basicConstraints, true, org.bouncycastle.asn1.x509.BasicConstraints(ca))
+                .addExtension(org.bouncycastle.asn1.x509.Extension.subjectKeyIdentifier, false,
+                    org.bouncycastle.cert.jcajce.JcaX509ExtensionUtils().createSubjectKeyIdentifier(key.public))
+            return org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(
+                b.build(org.bouncycastle.operator.jcajce.JcaContentSignerBuilder("SHA256withECDSA").build(signer)).encoded))
+        }
+        val rootKey = gen.generateKeyPair()
+        val midKey = gen.generateKeyPair()
+        val root = cert("CN=Example Government Root CA,O=Example Government,C=XX", "CN=Example Government Root CA,O=Example Government,C=XX", rootKey, rootKey.private, true)
+        val mid = cert("CN=Example Signing CA,O=Example Government,C=XX", "CN=Example Government Root CA,O=Example Government,C=XX", midKey, rootKey.private, true)
+        val leaf = cert("CN=Example Agency,O=Example Government,C=XX", "CN=Example Signing CA,O=Example Government,C=XX", gen.generateKeyPair(), midKey.private, false)
+        val tw = diw.wallet.core.trust.BuiltInCscas.validAt(kotlin.time.Clock.System.now()).first { it.country == "TW" }.certificate
+
+        fun shot(name: String, s: Screen, height: Int) {
+            m.screen.value = s
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, height * 2, androidx.compose.ui.unit.Density(2f)) {
+                diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {})
+            }
+            try {
+                var image = scene.render(0)
+                for (i in 1..15) {
+                    Thread.sleep(150)
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+        val role = diw.wallet.core.trust.TrustRole.DOCUMENT
+        shot("chain-01-unknown-root", Screen.Certificate(listOf(leaf, mid, root), 0, Screen.Home, role, focusRoot = true), 2600)
+        shot("chain-02-missing-issuer", Screen.Certificate(listOf(leaf), 0, Screen.Home, role), 1400)
+        shot("chain-03-csca", Screen.Certificate(listOf(tw), 0, Screen.Home, diw.wallet.core.trust.TrustRole.TRAVEL_DOCUMENT), 1900)
+        val path = m.trustPath(listOf(leaf, mid, root), role)
+        assertTrue(path.rootReached && path.decision?.labels?.contains(diw.wallet.core.trust.TrustLabel.UNKNOWN_ANCHOR) == true)
+    }
+
+    /**
      * Renders the main screens to PNG files for review without a device: DIW_SCREENSHOTS names the output folder.
      * The wallet holds a PID and an mDL from the test issuer and has presented once.
      */
@@ -415,6 +476,10 @@ class WalletModelE2eTest {
             }
         }
         screen("09-verify", Screen.Home, HomeTab.VERIFY, height = 1900)
+        m.reader.open()
+        screen("09b-reader", Screen.Reader, height = 2400)
+        m.reader.close()
+        screen("09c-key-viewer", Screen.KeyViewer)
         screen("12-files", Screen.Home, HomeTab.FILES)
         screen("12b-document-sources", Screen.DocumentSources)
         screen("13-trust-anchors", Screen.TrustAnchors)
@@ -818,6 +883,60 @@ class WalletModelE2eTest {
         assertTrue(verifier.back())
         assertEquals(HomeTab.VERIFY, verifier.tab.value)
         return result
+    }
+
+    /**
+     * Two wallets in person without NFC: the verifier scans the holder's QR code and reads over Bluetooth as a
+     * verifier profile, so the request carries reader authentication and the declaration with the verifier's own
+     * driving licence as evidence; the holder checks the declaration against the session before asking.
+     */
+    @Test
+    fun qrBluetoothReadAsVerifierProfile() = runBlocking<Unit> {
+        start()
+        val ble = LoopbackBle()
+        val (holder, _) = newWallet(bluetooth = true)
+        assertIs<IssuanceResult.Issued>(issue(holder, offer(listOf("mdl_mdoc")), null).single())
+        holder.refreshDocuments().join()
+        holder.proximity.transportFactory = ble
+        val (verifier, _) = newWallet(bluetooth = true)
+        assertIs<IssuanceResult.Issued>(issue(verifier, offer(listOf("mdl_mdoc")), null).single())
+        verifier.refreshDocuments().join()
+        verifier.reader.transportFactory = ble
+        val ownLicence = verifier.documents.value.single().identifier
+        val profile = VerifierProfile(id = "counter", partyName = "Che-Chuan Lin", purpose = "Identity check at the counter", partyEvidence = listOf(ownLicence))
+        verifier.verifier.save(profile).join()
+        try {
+            holder.proximity.open()
+            holder.proximity.showQr()
+            val qr = withTimeout(10.seconds) { holder.proximity.state.first { (it as? ProximityUi.Ready)?.qr != null || it is ProximityUi.Failed } }
+            val code = assertNotNull((qr as? ProximityUi.Ready)?.qr, "holder: $qr")
+            assertNotNull(ReaderModel.engagementOf(code))
+
+            verifier.reader.open()
+            verifier.reader.startQr(code, ReaderRequest.MDL_IDENTITY, diw.wallet.core.status.RiskLevel.MEDIUM, ReaderIdentity(profile, "Identity check at the counter"))
+            val consent = withTimeoutOrNull(60.seconds) { holder.proximity.state.first { it is ProximityUi.Consent || it is ProximityUi.Failed } }
+            assertIs<ProximityUi.Consent>(consent, "consent: ${holder.proximity.state.value}; reader: ${verifier.reader.state.value}")
+            assertEquals(ProximityChannel.QR, consent.channel)
+            assertEquals("Che-Chuan Lin", consent.chain.single().subject.components[org.multipaz.asn1.OID.COMMON_NAME.oid]?.value)
+            assertNull(consent.declarationNote)
+            val declared = consent.attestations.single()
+            val id = assertNotNull(declared.identity, declared.problems.toString())
+            assertTrue(id.bound, id.problems.toString())
+            assertEquals("Che-Chuan Lin", declared.name)
+            assertEquals(listOf("Identity check at the counter"), declared.purposes)
+            assertTrue(id.evidence.single().passed, id.evidence.toString())
+            assertEquals(emptyList(), id.outsideDeclaration)
+            holder.proximity.approve(consent)
+
+            val result = withTimeout(60.seconds) { verifier.reader.state.first { it is ReaderUi.Result || it is ReaderUi.Failed } }
+            assertIs<ReaderUi.Result>(result, "result: $result")
+            assertNull(result.integrityError)
+            assertEquals("Che-Chuan Lin", result.asProfile)
+            assertEquals("行動駕照", result.documents.single().title)
+            withTimeout(30.seconds) { holder.proximity.state.first { it is ProximityUi.Done } }
+        } finally {
+            verifier.reader.close(); holder.proximity.close()
+        }
     }
 
     @Test
@@ -1666,20 +1785,28 @@ class WalletModelE2eTest {
         assertTrue(r.moica!!.nameChecked)
 
         // A Bonds verifier's challenge carries a one-time BLE service: this wallet as verifier also listens on it, so the
-        // holder's Bluetooth send (as the Bonds App does it) arrives without scanning the frames back.
+        // holder's Bluetooth send (as the Bonds App does it) arrives without scanning the frames back. Between two of
+        // these wallets the presentation is sealed to the challenge's key; a holder that ignores the key (as the Bonds
+        // App) sends it in clear text, which the verifier takes and marks as not encrypted.
         val (checker, _) = newWallet()
-        checker.taiwan.startVerifier("身分確認", source = diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
-        val challenge = checker.challenge()
-        assertNotNull(challenge.request.linkServiceId)
-        val read = cameraOnly(challenge.request)
-        holder.handleUri(read.encode())
-        val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == read } })
-        holder.taiwan.presentBonds(chosen.request, chosen.cards.single(), setOf("over18AtIssuance"))
-        val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == read } })
-        holder.taiwan.sendOverLink(shown)
-        val checked = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { checker.taiwan.offline.first { it is OfflineUi.VerifierResult } })
-        assertEquals(challenge.request, checked.request)
-        withTimeout(10.seconds) { holder.taiwan.offline.first { (it as? OfflineUi.BondsFrames)?.link == "查驗方已收到" } }
+        for (sealed in listOf(true, false)) {
+            checker.taiwan.startVerifier("身分確認", source = diw.wallet.core.profile.bonds.BondsCredentialSource.SELF_ISSUED)
+            val challenge = checker.challenge()
+            assertNotNull(challenge.request.linkServiceId)
+            assertNotNull(challenge.request.lanKey)
+            val read = if (sealed) challenge.request.copy(lanUrls = emptyList()) else cameraOnly(challenge.request)
+            holder.taiwan.offline.value = OfflineUi.Working("")
+            holder.handleUri(read.encode())
+            val chosen = assertIs<OfflineUi.BondsChoose>(withTimeout(10.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsChoose && it.request == read } })
+            holder.taiwan.presentBonds(chosen.request, chosen.cards.single(), setOf("over18AtIssuance"))
+            val shown = assertIs<OfflineUi.BondsFrames>(withTimeout(30.seconds) { holder.taiwan.offline.first { it is OfflineUi.BondsFrames && it.request == read } })
+            holder.taiwan.sendOverLink(shown)
+            val checked = assertIs<OfflineUi.VerifierResult>(withTimeout(30.seconds) { checker.taiwan.offline.first { it is OfflineUi.VerifierResult } })
+            assertEquals(challenge.request, checked.request)
+            assertEquals(if (sealed) "經藍牙收到，已用這次挑戰的一次性金鑰加密。" else "經藍牙收到，未加密（持卡人的 App 不使用挑戰金鑰，例如原版 Bonds App）。", checked.delivery)
+            val done = withTimeout(10.seconds) { holder.taiwan.offline.first { (it as? OfflineUi.BondsFrames)?.link?.startsWith("查驗方已收到") == true } }
+            assertEquals(sealed, "已用查驗方的一次性金鑰加密" in (done as OfflineUi.BondsFrames).link!!)
+        }
 
         // A Bonds web age request offers the national ID card for a self-issued proof and never opens the offline frames.
         holder.handleUri(ageRequest("s"))

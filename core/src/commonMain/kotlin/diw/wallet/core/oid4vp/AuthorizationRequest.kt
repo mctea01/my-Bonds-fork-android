@@ -53,6 +53,8 @@ data class RawAuthorizationRequest(
     val entryHint: String? = null,
     /** Verified separately: JWS JSON Serialization offers alternative verifier identities. */
     val multiSignedCandidates: List<RawAuthorizationRequest> = emptyList(),
+    /** Host of a request_uri fetched over the local network ([LanEndpoints]); the response must go to the same host. */
+    val lanHost: String? = null,
 )
 
 /** Identity of the Verifier as established by the request validation layer. */

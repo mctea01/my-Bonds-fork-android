@@ -282,7 +282,20 @@ sealed class Screen {
     data object Presentation : Screen()
     /** [from] is where the Back button returns to. */
     data class DocumentDetail(val documentId: String, val from: Screen = Home) : Screen()
-    data class Certificate(val chain: List<X509Cert>, val index: Int, val from: Screen) : Screen()
+    /**
+     * A certificate chain shown up to its root. [role] is what the chain was used for (the trust it is evaluated
+     * against, and the use offered when the user trusts its root); [focusRoot] opens the root for review.
+     */
+    data class Certificate(
+        val chain: List<X509Cert>,
+        val index: Int,
+        val from: Screen,
+        val role: TrustRole? = null,
+        val docType: String? = null,
+        val focusRoot: Boolean = false,
+        /** The time the chain was judged at (a trusted signing time, a time stamp's genTime); null for now. */
+        val at: kotlin.time.Instant? = null,
+    ) : Screen()
     /** Documents that can be requested: the cards the TWDIW platform lists, or any issuer address. */
     data object AddDocument : Screen()
     /** Issuers and verifiers on the TWDIW trust list, opened from the settings. */
@@ -305,6 +318,12 @@ sealed class Screen {
     data object Proximity : Screen()
     /** In-person verification: the wallet reads another wallet's mdoc by NFC (ISO/IEC 18013-5 reader). */
     data object Reader : Screen()
+    /** Online verification as an OpenID4VP verifier, through the user's server or the local network. */
+    data object OnlineVerify : Screen()
+    /** Who this wallet says it is when it verifies: verifier profiles with their evidence and mandates. */
+    data object VerifierProfiles : Screen()
+    /** Reads any signing key and shows its certificate, opened from the certificates, keys and trust settings. */
+    data object KeyViewer : Screen()
     /** A stored file with its signature report. */
     data class FileDetail(val fileId: String) : Screen()
     data class FileSign(val fileId: String) : Screen()
@@ -515,6 +534,7 @@ class WalletModel(val platform: PlatformServices) {
     val ms = MsIssuanceModel(this)
     val proximity = ProximityModel(this)
     val reader = ReaderModel(this)
+    val verifier = VerifierModel(this)
     val files = FilesModel(this)
     val csc = CscModel(this)
     val openPgp = OpenPgpModel(this)
@@ -608,6 +628,7 @@ class WalletModel(val platform: PlatformServices) {
         )
         historyLog = HistoryLog(storage)
         history.value = historyLog.load()
+        verifier.load()
         status.load()
         openPgp.load()
         files.load()
@@ -821,6 +842,7 @@ class WalletModel(val platform: PlatformServices) {
             Screen.AddDocument -> screen.value = Screen.Home
             Screen.TrustList -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.TrustAnchors -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
+            Screen.KeyViewer -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.CustomTrust -> screen.value = Screen.SettingsPage(SettingsSection.TRUST)
             Screen.ZkSettings -> screen.value = Screen.SettingsPage(SettingsSection.SECURITY)
             is Screen.OpenPgpKeys -> {
@@ -843,6 +865,13 @@ class WalletModel(val platform: PlatformServices) {
             Screen.Reader -> {
                 reader.close()
                 showTab(HomeTab.VERIFY)
+            }
+            Screen.OnlineVerify -> {
+                verifier.close()
+                showTab(HomeTab.VERIFY)
+            }
+            Screen.VerifierProfiles -> {
+                if (verifier.editing.value != null) verifier.editing.value = null else showTab(HomeTab.VERIFY)
             }
             is Screen.FileDetail -> showTab(HomeTab.FILES)
             is Screen.FileSign -> screen.value = Screen.FileDetail(s.fileId)
@@ -1561,7 +1590,9 @@ class WalletModel(val platform: PlatformServices) {
     // ---------------------------------------------------------------- presentation
 
     fun holder() = Oid4vpHolder(
-        http, trust, source, environmentPolicy, PresentationPolicy(),
+        // A wallet verifying on the local network answers at an http address; only signed direct_post.jwt requests
+        // served from that same address are accepted (RequestValidator).
+        http, trust, source, environmentPolicy, PresentationPolicy(allowLanEndpoints = true),
         holderIdentities = holderIdentities,
         didTrust = didTrust,
         dialects = listOfNotNull(twdiwPresentation, msPresentation.takeIf { legal.enabled(Integration.MS_VERIFIED_ID) }),
@@ -1570,7 +1601,36 @@ class WalletModel(val platform: PlatformServices) {
         derivedSources = { files.holderDerivedSources() },
         derivedHolders = { files.holderHints() },
         federationAnchors = { activeFederationAnchors() },
+        lanHttp = platform.bondsLan?.let { lan ->
+            diw.wallet.core.document.sign.SignedDataHttp { url, body, type, accept -> lan.exchange(url, body, type, accept, LAN_TIMEOUT) }
+        },
     )
+
+    /**
+     * Verifies presentations this wallet receives as a verifier (docs/design/p5-verifier.md section 6.3), and the
+     * evidence presentations in another verifier's declaration.
+     */
+    fun presentationVerifier() = diw.wallet.core.verifier.PresentationVerifier(
+        trust, documentTypes, org.multipaz.revocation.CachingRevocationChecker(storage, http),
+        zkSystemRepository = proximity.longfellow.repository,
+        didResolver = didResolver(),
+        documentTrust = files.trustSource,
+        zkPdf = zkPdfContext,
+        didTrust = didTrust,
+    )
+
+    /** Checks verifier_info: registration certificates and DIW verifier declarations with their evidence. */
+    fun verifierInfoChecker(): diw.wallet.core.oid4vp.VerifierInfoChecker {
+        val verifier = presentationVerifier()
+        return diw.wallet.core.oid4vp.VerifierInfoChecker(
+            trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust),
+            diw.wallet.core.verifier.declaration.VerifierDeclarationCheck(
+                trust, didResolver(), didTrust,
+                { q, t, c, n -> verifier.verifyEvidence(q, t, c, n) },
+                diw.wallet.core.verifier.declaration.InspectorOpenPgpEvidenceVerifier(files.trustSource),
+            ),
+        )
+    }
 
     /** Test anchors take part only while the test environment is on, like test X.509 anchors. */
     private suspend fun activeFederationAnchors(): List<FederationAnchor> =
@@ -1775,8 +1835,7 @@ class WalletModel(val platform: PlatformServices) {
             }
         }
         val attestations = checkedAttestations ?: if (consent.request.verifierInfo.isEmpty()) emptyList() else {
-            diw.wallet.core.oid4vp.VerifierInfoChecker(trust, diw.wallet.core.status.CredentialStatusChecker(http, trust, didTrust = didTrust))
-                .check(consent.request)
+            verifierInfoChecker().check(consent.request)
         }
         // A failed attestation (wrong party, revoked, beyond its registration) makes the request high risk.
         val attestationRisk = if (attestations.any { it.verdict == diw.wallet.core.oid4vp.AttestationVerdict.INVALID || !it.outsideRegistration.isNullOrEmpty() }) RiskLevel.HIGH else RiskLevel.LOW
@@ -2111,24 +2170,40 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /** [chain] completed up to its root, with the evaluation for [role] at [at] (now when null; see [TrustRegistry.path]). */
+    suspend fun trustPath(chain: List<X509Cert>, role: TrustRole?, docType: String? = null, at: kotlin.time.Instant? = null): diw.wallet.core.trust.TrustPath =
+        withContext(Dispatchers.Default) { trust.path(chain, role, at ?: kotlin.time.Clock.System.now(), docType) }
+
     /**
-     * Trusts [der], a self-issued root shown in a document's chain, as the user's own anchor for document signatures
-     * and time stamps, after the user confirmed it. The document is checked again with the new anchor.
+     * Trusts [der], a self-issued root shown in a chain, as the user's own anchor (T2, never official) for [roles],
+     * after the user reviewed it and confirmed. Credentials and documents whose chain led to no anchor are checked
+     * again with the new anchor.
      */
-    fun trustRootCertificate(der: ByteArray, onDone: () -> Unit = {}) = scope.launch {
+    fun trustRootCertificate(
+        der: ByteArray,
+        roles: Set<TrustRole> = setOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT),
+        name: String? = null,
+        onDone: () -> Unit = {},
+    ) = scope.launch {
         try {
             val cert = X509Cert(kotlinx.io.bytestring.ByteString(der))
             if (!TrustRegistry.isRoot(cert)) throw ProtocolException("invalid_request", tr(Res.string.msg_not_root))
             if (cert.validityNotAfter < kotlin.time.Clock.System.now()) throw ProtocolException("invalid_request", tr(Res.string.msg_root_expired))
-            val name = BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
+            if (roles.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_root_needs_use))
+            val label = name?.trim()?.ifEmpty { null } ?: BuiltInPublicRoots.importableRoots.firstOrNull { it.certificate == cert }?.name ?: commonName(cert)
             var added = 0
-            for (role in listOf(TrustRole.DOCUMENT, TrustRole.TSA, TrustRole.CONTENT)) {
-                if (trust.addAnchor(role, TrustEnvironment.USER, cert, name, official = false, source = "document")) added++
+            for (role in roles) {
+                if (trust.addAnchor(role, TrustEnvironment.USER, cert, label, official = false, source = "chain-review")) added++
             }
-            message.value = if (added == 0) tr(Res.string.msg_already_anchor, name) else tr(Res.string.msg_root_trusted, name)
+            message.value = if (added == 0) tr(Res.string.msg_already_anchor, label) else tr(Res.string.msg_root_trusted, label)
             loadAnchors()
-            status.reevaluateIssuers(tr(Res.string.files_trust_root_named, name), affected = { it.anchorName == null }, accept = { it.environment != null })
+            if (added > 0) {
+                status.reevaluateIssuers(tr(Res.string.files_trust_root_named, label), affected = { it.anchorName == null }, accept = { it.environment != null })
+                files.reinspectUnanchored()
+            }
             onDone()
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             message.value = tr(Res.string.msg_cannot_trust) + describe(e)
         }
@@ -2256,6 +2331,9 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     companion object {
+        /** One clear-text exchange with a wallet verifying on the local network. */
+        private val LAN_TIMEOUT = kotlin.time.Duration.parse("30s")
+
         /** The credential offer of a DC API create request as an offer URI the OpenID4VCI client reads. */
         internal fun dcApiOfferUri(data: JsonObject): String {
             val uri = (data["credential_offer_uri"] as? JsonPrimitive)?.takeIf { it.isString }?.content
