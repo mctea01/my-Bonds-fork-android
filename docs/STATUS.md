@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-20（main 到 PR #150：P5 驗證者透明與主動查驗、信任鏈完整顯示到根憑證、Linux 原生程式庫相容版；PR #146 原生桌面版的輸入修正與電腦版版面、鍵盤操作）。
+最後更新：2026-11-20（版本線升到 0.5、穩定版發佈流程與 Release 頁下載指引；main 到 PR #154）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -8,7 +8,7 @@
 
 ## 1. 一眼看完
 
-- 版本線 `0.4`（[version.properties](../version.properties)），main 每次更新由 CI 發佈 nightly。
+- 版本線 `0.5`（[version.properties](../version.properties)，對應 P5），main 每次更新由 CI 發佈 nightly；穩定版由手動的 `Stable release` workflow 發佈為 `v<版本>` 標籤，見 [release.md](release.md#穩定版發佈)。workflow 檔已由使用者貼上，還沒有發過穩定版。
 - P1 到 P4 與其後的延伸功能都已合併進 main；P5（驗證者透明與主動驗證）已完成並合併（PR #152），P6（iOS）尚未開始。
 - 平台：Android（API 29 以上）與 Windows、Linux 桌面版為正式發佈；macOS 只提供 jar。
 - 正式服務端在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，狀態見該 repo 的 `docs/STATUS.md`。
@@ -43,9 +43,11 @@ P4 之後合併的工作：
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
-| Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟 | [native/README.md](../native/README.md) |
+| Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
+| 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
+| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 | 電腦版版面與鍵盤操作（PR #146） | 可用：寬視窗改側邊導覽列、內容限寬置中、按鈕列自動換行、捲軸、視窗大小記憶；Esc／Alt+左鍵／滑鼠側鍵返回、Ctrl+1 至 5 切分頁、Ctrl+, 設定、PIN 欄 Enter | [guides/desktop-usage.md](guides/desktop-usage.md) |
-| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行。2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact；2026-11-20 使用者在實體 Windows 確認原生版可輸入、右鍵與中文輸入法正常；2026-11-20 使用者回報原生版讀卡機顯示 TerminalFactory 無法初始化：native-image 把 javax.smartcardio 的 j2pcsc 當成自己會連結的 JDK 函式庫，System.loadLibrary 不會開啟任何檔案，第一次呼叫即 UnsatisfiedLinkError；改為隨執行檔附上 j2pcsc，由 PcscReaders 以完整路徑載入，並補 PC/SC 提供者的反射與 JNI 註冊，CI 比對 JVM 與原生版的 PC/SC 自我檢查結果須相同；同日修正原生版 Ctrl+V 貼上時 AssertionError（剪貼簿排序資料格式時以反射取 java.rmi.MarshalledObject 建構子），自我檢查加入剪貼簿來回測試 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 桌面版原生執行檔修正（PR #146） | 2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact；2026-11-20 使用者在實體 Windows 確認原生版可輸入、右鍵與中文輸入法正常；2026-11-20 使用者回報原生版讀卡機顯示 TerminalFactory 無法初始化：native-image 把 javax.smartcardio 的 j2pcsc 當成自己會連結的 JDK 函式庫，System.loadLibrary 不會開啟任何檔案，第一次呼叫即 UnsatisfiedLinkError；改為隨執行檔附上 j2pcsc，由 PcscReaders 以完整路徑載入，並補 PC/SC 提供者的反射與 JNI 註冊，CI 比對 JVM 與原生版的 PC/SC 自我檢查結果須相同；同日修正原生版 Ctrl+V 貼上時 AssertionError（剪貼簿排序資料格式時以反射取 java.rmi.MarshalledObject 建構子），自我檢查加入剪貼簿來回測試 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 
 ## 3. 功能狀態
 
@@ -116,6 +118,7 @@ P4 之後合併的工作：
 | 項目 | 說明 | 等待 |
 |---|---|---|
 | P6 iOS | | 排程 |
+| 穩定版發佈 workflow | `stable-release.yml` 與 CI 的標籤發佈已貼上；`minor`、`major` 另需 `RELEASE_TOKEN`；尚未實際發佈過穩定版 | 第一次以 `Stable release` 發佈並確認 Release 頁 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作（appHash 為 `tw.gov.moda.diw`，簽章金鑰是本錢包自己的應用配對），官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |
 | zkPDF 手機效能 | 一次實測在 611 秒逾時、峰值約 2.5 GB；完整時間未量到 | 實機量測（可選） |
