@@ -34,6 +34,10 @@ import kotlin.coroutines.CoroutineContext
 object PcscReaders {
     @Volatile private var configured = false
 
+    /** The last failure of [list] with every cause and its class, for the self-check and error reports. */
+    @Volatile var lastDetail: String? = null
+        private set
+
     /** The PC/SC readers connected now, or why there are none. */
     fun list(): NfcReaderList {
         configure()
@@ -42,6 +46,7 @@ object PcscReaders {
                 .let { if (it.readers.isEmpty()) it.copy(problem = tr(Res.string.pcsc_none)) else it }
         } catch (e: Throwable) {
             if (e is VirtualMachineError) throw e
+            lastDetail = generateSequence(e) { it.cause }.joinToString(" <- ") { "${it::class.java.name}: ${it.message}" }
             NfcReaderList(emptyList(), reason(e))
         }
     }

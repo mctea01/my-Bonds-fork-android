@@ -95,6 +95,7 @@ object SelfCheck {
             // Optional: a CI runner has no PC/SC service or reader; the call itself must not crash.
             val readers = runCatching { PcscReaders.list() }
             report("pcsc", true, readers.fold({ r -> "${r.readers.size} readers" + (r.problem?.let { ", $it" } ?: "") }, { "unavailable: ${it::class.java.name}: ${it.message}" }))
+            PcscReaders.lastDetail?.let { report("pcsc-detail", true, it) }
         } catch (e: Throwable) {
             report("self-check", false, "${e::class.java.name}: ${e.message}")
         } finally {

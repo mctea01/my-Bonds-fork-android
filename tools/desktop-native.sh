@@ -96,7 +96,7 @@ esac
 awt=$work/awt-jni
 mkdir -p "$awt"
 libs=()
-for name in awt awt_xawt fontmanager jawt lcms mlib_image javajpeg; do
+for name in awt awt_xawt fontmanager jawt lcms mlib_image javajpeg j2pcsc; do
     for f in "$graal/bin/$name.dll" "$graal/lib/lib$name.so"; do
         [ -f "$f" ] && libs+=("$([ "$os" = windows ] && cygpath -w "$f" || echo "$f")")
     done
@@ -105,14 +105,22 @@ done
 "$java" tools/NativeAwtJni.java "$awt/reachability-metadata.json" "${libs[@]}"
 
 # What the agent sees only by chance: AWT's toolkit thread looks up Thread.yield through JNI only when its event loop
-# has to wait, so a run may or may not record it, and without it the window's toolkit thread dies.
+# has to wait, so a run may or may not record it, and without it the window's toolkit thread dies. The PC/SC provider
+# (javax.smartcardio) is created reflectively and only when a run reaches it with a working PC/SC service, and
+# PcscReaders resets its cached context through a private field.
 extra=$work/extra
 mkdir -p "$extra"
 cat > "$extra/reachability-metadata.json" <<'JSON'
 {
   "reflection": [
     { "type": "java.lang.Thread", "jniAccessible": true,
-      "methods": [ { "name": "yield", "parameterTypes": [] }, { "name": "currentThread", "parameterTypes": [] } ] }
+      "methods": [ { "name": "yield", "parameterTypes": [] }, { "name": "currentThread", "parameterTypes": [] } ] },
+    { "type": "sun.security.smartcardio.SunPCSC", "methods": [ { "name": "<init>", "parameterTypes": [] } ] },
+    { "type": "sun.security.smartcardio.SunPCSC$Factory",
+      "methods": [ { "name": "<init>", "parameterTypes": [ "java.lang.Object" ] } ] },
+    { "type": "sun.security.smartcardio.PCSCTerminals", "fields": [ { "name": "contextId" } ] },
+    { "type": "sun.security.smartcardio.PCSCException", "jniAccessible": true,
+      "methods": [ { "name": "<init>", "parameterTypes": [ "int" ] } ] }
   ]
 }
 JSON
@@ -159,12 +167,26 @@ case $os in
     linux) mkdir -p "$out/lib" && cp "$graal/lib/libjawt.so" "$out/lib/" ;;
     windows) mkdir -p "$out/bin" && cp "$graal/bin/jawt.dll" "$out/bin/" && cp "$graal/bin/jawt.dll" "$out/" ;;
 esac
+# javax.smartcardio loads its JNI library with System.loadLibrary, which native-image does not bundle; the executable
+# finds it in its own folder (Windows, where it calls winscard.dll) or beside it on Linux (it opens libpcsclite).
+case $os in
+    linux) cp "$graal/lib/libj2pcsc.so" "$out/" ;;
+    windows) cp "$graal/bin/j2pcsc.dll" "$out/" ;;
+esac
 
 echo "== native executable"
 code=0
 with_display "$out/$exe" --self-check "$work/self-check-native.txt" || code=$?
 cat "$work/self-check-native.txt" || true
 [ "$code" = 0 ] || { echo "The native self-check failed (exit $code)" >&2; exit 1; }
+# PC/SC never fails the self-check (a runner may have no service), but the native executable must reach it exactly as
+# the JVM did on the same machine: a different result means a library or registration the image lacks.
+jvm_pcsc=$(grep "^self-check pcsc ok" "$work/self-check-jvm.txt" | tr -d '\r' || true)
+native_pcsc=$(grep "^self-check pcsc ok" "$work/self-check-native.txt" | tr -d '\r' || true)
+if [ "$jvm_pcsc" != "$native_pcsc" ]; then
+    echo "PC/SC differs from the JVM: JVM \"$jvm_pcsc\", native \"$native_pcsc\"" >&2
+    exit 1
+fi
 code=0
 DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-30}" DIW_EXERCISE_INPUT=$exercise \
     with_display "$out/$exe" 2> "$work/smoke-stderr.txt" || code=$?
