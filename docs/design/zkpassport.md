@@ -342,6 +342,7 @@ Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：�
 - 以 Multipaz `multipaz-facenet` 0.102.0 比對：BlazeFace 找臉、MobileFaceNet（Qualcomm AI Hub 的模型，隨 App 放在 `assets/facenet`）算 128 維特徵、MiniFASNetV2 做單張的被動活體判定。相機畫面是 Multipaz 的 `FaceMatcherPromptDialog`，參考照片是晶片讀出的 DG2（JPEG 或 JPEG 2000）。比對通過的條件是餘弦相似度達 0.63 且被動活體分數達 0.5（Multipaz 的預設值）。
 - `regular`：一次相機比對。`strict`：比對通過後再做一次轉頭檢查（正面、左、右，左右順序隨機），那一次拍到的正面照也要與 DG2 相符。
 - 比對在同意之後、向請求方回覆接受之前進行；沒有通過、取消或讀不到照片時不回覆接受，請求方收不到任何證明。相機影像、特徵與分數只在記憶體，不保存、不傳送、不寫入紀錄。
+- 2026-11-21 實機回報（台灣護照）：比對畫面的提示是英文，且不論戴不戴眼鏡都比對失敗（zkPassport 官方 App 也失敗），紀錄卻寫「已取消」。原因與處理：Multipaz FaceNet 0.102.0 的提示文字寫死在 session 裡（`FaceNetSessionBase`、`FaceNetLivenessSessionBase`），錢包以包裝的 session 逐字換成 App 的語言（`FaceMatchText`）；比對失敗時 Multipaz 的畫面兩秒後自行關閉，對錢包來說與持有者按關閉相同，現在依 session 狀態區分，並回報原因：不符（附最高相似度與門檻）、活體檢查、逾時、護照照片找不到人臉。JPEG 2000 的護照照片改由錢包自己的解碼器（hayro-jpeg2000，即文件詳情顯示照片所用）轉成 PNG 再交給 Multipaz，不再走 Multipaz 的 jj2000 備援解碼。門檻與模型不變；比對失敗的真正原因（照片與現在的樣貌、門檻或解碼）要看重測顯示的相似度才能判斷。相機權限的提示仍是 Multipaz 內建的英文（它只有簡體中文翻譯）。
 - Multipaz 明說這個模組不保證比對準確度與防偽能力；被動活體擋得住的是翻拍照片與螢幕，擋不住的攻擊（高品質面具、注入相機畫面）不在保證範圍。這項限制寫在專門聲明裡。
 
 金鑰證明與種類的選擇：
