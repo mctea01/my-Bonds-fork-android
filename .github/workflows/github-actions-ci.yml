@@ -686,8 +686,9 @@ jobs:
 
   # Experimental: the desktop app as a GraalVM Community 25 native executable (tools/desktop-native.sh: tracing agent
   # over the desktop tests, the self-check and the window; native-image; then the executable's own self-check and a
-  # timed start of its window). A failure never blocks the JVM packages or the nightly release; the executables are
-  # kept as artifacts only. Not macOS: GraalVM's AWT support there cannot load libawt (see tools/desktop-native.sh).
+  # timed start of its window). A failure never blocks the JVM packages or the release; when it passes, the release
+  # job attaches the executables as experimental files. Not macOS: GraalVM's AWT support there cannot load libawt (see
+  # tools/desktop-native.sh).
   desktop-native:
     needs: [native-linux, native-windows]
     if: ${{ !cancelled() }}
@@ -744,12 +745,15 @@ jobs:
           retention-days: 14
 
   # Every push to main replaces the "nightly" pre-release; a v* tag publishes the stable release of that tag (marked
-  # latest, without the debug builds). Release files are downloaded as-is, not zipped. The body comes from
-  # tools/release-notes.py: the download guide once at the top, then the changes since the previous stable tag.
-  # Published only when the tests passed too; drop "test" from needs to publish regardless.
+  # latest, without the debug builds). Release files are downloaded as-is, not zipped, except the experimental native
+  # executables, which are folders. The body comes from tools/release-notes.py: the download guide once at the top,
+  # then the changes since the previous stable tag. Published only when the tests passed too; desktop-native is
+  # waited for but may fail (its files are then left out).
   release:
-    if: (github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v')
-    needs: [test, build, desktop]
+    if: >-
+      !cancelled() && needs.test.result == 'success' && needs.build.result == 'success' && needs.desktop.result == 'success' &&
+      ((github.event_name == 'push' && github.ref == 'refs/heads/main') || startsWith(github.ref, 'refs/tags/v'))
+    needs: [test, build, desktop, desktop-native]
     runs-on: ubuntu-latest
     timeout-minutes: 15
     permissions:
@@ -769,6 +773,28 @@ jobs:
           pattern: "{android,windows,linux,macos,zk-templates}"
           path: dist
           merge-multiple: true
+      # The experimental native executables, one folder per system; missing when desktop-native failed.
+      - uses: actions/download-artifact@9000827ccba6bdab643e8b6fd33ac0654aef8333 # v8.0.2
+        continue-on-error: true
+        with:
+          pattern: desktop-native-*
+          path: native
+      # One archive per system with a top folder of the same name. Artifacts drop the executable bit, so it is set
+      # again on Linux.
+      - name: Native executables
+        run: |
+          for os in linux windows; do
+            src=native/desktop-native-$os
+            [ -d "$src" ] || { echo "No $os native executable (desktop-native failed or was skipped)"; continue; }
+            name=DIW-MY-WALLET-$APP_VERSION-$os-x64-native
+            mkdir -p "pkg/$name" && cp -a "$src"/. "pkg/$name/"
+            if [ "$os" = linux ]; then
+              chmod +x "pkg/$name/diw-desktop"
+              tar -C pkg -czf "dist/$name.tar.gz" "$name"
+            else
+              (cd pkg && zip -qr "../dist/$name.zip" "$name")
+            fi
+          done
       - name: Publish
         env:
           GH_TOKEN: ${{ github.token }}
