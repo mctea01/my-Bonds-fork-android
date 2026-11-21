@@ -113,9 +113,13 @@ private fun OnlineSetup(model: WalletModel) {
     var risk by remember { mutableStateOf(RiskLevel.MEDIUM) }
     var accepted by remember { mutableStateOf(VerificationPolicy.DEFAULT) }
     var requireZk by remember { mutableStateOf(false) }
-    val server = model.verifier.serverRoute()
+    val configured = model.verifier.serverRoute()
+    // A server without the oid4vp feature (relay alone) cannot carry the response; null while /info is read.
+    val mailbox by produceState<Boolean?>(null, configured) { value = configured?.let { model.verifier.serverOffersMailbox(it) } }
+    val server = configured?.takeIf { mailbox != false }
     val lan = model.platform.bondsLan != null
     var route by remember { mutableStateOf(if (server != null) OnlineRoute.SERVER else OnlineRoute.LAN) }
+    LaunchedEffect(mailbox) { if (mailbox == false && route == OnlineRoute.SERVER && lan) route = OnlineRoute.LAN }
     var keys by remember(profileId) { mutableStateOf(VerifierKeys()) }
     ScreenColumn(spacing = 12.dp) {
         Card(
@@ -166,7 +170,15 @@ private fun OnlineSetup(model: WalletModel) {
             RadioButton(selected = route == OnlineRoute.SERVER, onClick = { route = OnlineRoute.SERVER }, enabled = server != null)
             Column {
                 Text(stringResource(Res.string.ov_route_server_title), style = MaterialTheme.typography.bodyLarge)
-                Text(server?.let { stringResource(Res.string.ov_route_server_text, it) } ?: stringResource(Res.string.ov_no_server), style = MaterialTheme.typography.bodySmall)
+                Text(
+                    when {
+                        configured == null -> stringResource(Res.string.ov_no_server)
+                        mailbox == false -> stringResource(Res.string.ov_server_no_mailbox, configured)
+                        else -> stringResource(Res.string.ov_route_server_text, configured)
+                    },
+                    style = MaterialTheme.typography.bodySmall,
+                    color = if (mailbox == false) MaterialTheme.colorScheme.error else androidx.compose.ui.graphics.Color.Unspecified,
+                )
             }
         }
         Row(Modifier.fillMaxWidth().clickable(enabled = lan) { route = OnlineRoute.LAN }, verticalAlignment = Alignment.CenterVertically) {

@@ -727,6 +727,25 @@ class TrustRegistry(
         }
         return TrustPath(steps, presented.filter { it !in certs }.distinct(), decision, listings)
     }
+
+    /**
+     * The chain to send with a signature made by [chain]'s leaf (an x5c header): the leaf, then each issuer found as
+     * [path] finds it (the certificates given, the built-in and user intermediates, known roots, AIA caIssuers),
+     * as long as each signature verifies, without the self-signed root at the top: OpenID4VP 1.0 and HAIP leave the
+     * trust anchor out, and a receiver that has it as an anchor already holds it. A self-signed leaf is sent alone.
+     * Sending intermediates does not change how this wallet rates the chain.
+     */
+    suspend fun chainToSend(chain: List<X509Cert>): List<X509Cert> {
+        if (chain.isEmpty()) return chain
+        val steps = path(chain).steps
+        val out = mutableListOf(steps.first().certificate)
+        for (i in 1 until steps.size) {
+            if (steps[i - 1].signatureValid != true) break
+            out.add(steps[i].certificate)
+        }
+        if (out.size > 1 && out.last().selfIssuedRoot) out.removeAt(out.lastIndex)
+        return out
+    }
 }
 
 /** An imported VICAL or RICAL. [expired] lists no longer take part in verification. */

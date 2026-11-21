@@ -7,6 +7,7 @@ import kotlinx.serialization.json.JsonArray
 import kotlinx.serialization.json.JsonElement
 import kotlinx.serialization.json.JsonObject
 import kotlinx.serialization.json.JsonPrimitive
+import kotlinx.serialization.json.add
 import kotlinx.serialization.json.booleanOrNull
 import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.contentOrNull
@@ -17,6 +18,7 @@ import kotlinx.serialization.json.longOrNull
 import kotlinx.serialization.json.put
 import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
+import io.ktor.http.encodeURLParameter
 import kotlin.io.encoding.Base64
 
 /** Data a zkPassport request can ask the holder to disclose (the SDK's query keys). */
@@ -108,6 +110,150 @@ data class ZkPassportFaceMatch(
 )
 
 /**
+ * DIW extension of a zkPassport request link (docs/design/zkpassport.md 5.7): a room on the relay of a
+ * diw-wallet-server (`/zktls/relay/{room}`, binary frames between two connections) where the requester, this
+ * wallet, listens besides zkPassport's bridge. Another copy of this wallet answering the link exchanges the same
+ * bridge messages there; the relay forwards end-to-end encrypted bytes only. The link's standard parameters do not
+ * change, so zkPassport's app reads it as before and answers over the bridge.
+ */
+data class ZkPassportDiwRelay(
+    /** The relay's ws or wss address, ending in /zktls/relay. */
+    val url: String,
+    /** 16 random bytes, unpadded base64url. */
+    val room: String,
+) {
+    /** The address to connect to. */
+    val address: String get() = "${url.trimEnd('/')}/$room"
+
+    /**
+     * The relay's web origin (https for wss), what the holder shows in place of the origin zkPassport's bridge reports:
+     * the request reached it through that server.
+     */
+    val origin: String get() {
+        val u = io.ktor.http.Url(url)
+        val scheme = if (u.protocol.name == "wss") "https" else "http"
+        return "$scheme://${u.host.lowercase()}"
+    }
+
+    companion object {
+        const val URL_PARAM = "diw_relay"
+        const val ROOM_PARAM = "diw_room"
+
+        /** A new room for the relay at [url]. */
+        fun open(url: String, random: ByteArray): ZkPassportDiwRelay =
+            ZkPassportDiwRelay(url.trimEnd('/'), Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).encode(random))
+
+        /**
+         * The extension read from a link, or null when either part is missing or malformed: only wss addresses of a
+         * relay path (ws on the loopback for tests) and well-formed rooms. A malformed one is ignored, not refused, as
+         * the request itself is still zkPassport's.
+         */
+        fun parse(url: String?, room: String?): ZkPassportDiwRelay? {
+            if (url == null || room == null) return null
+            val u = runCatching { io.ktor.http.Url(url) }.getOrNull() ?: return null
+            val loopback = u.host == "127.0.0.1" || u.host == "localhost" || u.host == "[::1]"
+            val schemeOk = u.protocol.name == "wss" || (u.protocol.name == "ws" && loopback)
+            if (!schemeOk || u.host.isEmpty() || !u.encodedPath.trimEnd('/').endsWith("/zktls/relay")) return null
+            if (u.encodedQuery.isNotEmpty() || u.encodedFragment.isNotEmpty() || u.user != null) return null
+            val bytes = runCatching { Base64.UrlSafe.withPadding(Base64.PaddingOption.ABSENT).decode(room) }.getOrNull()
+            if (room.length != 22 || bytes?.size != 16) return null
+            return ZkPassportDiwRelay(url.trimEnd('/'), room)
+        }
+    }
+}
+
+/**
+ * DIW extension of a zkPassport request link (docs/design/zkpassport.md 5.8): ways a requester of this wallet nearby
+ * takes the whole answer in one exchange, without the Internet: plain http addresses on its local networks ([lan],
+ * the BondsLanPresentation rules) and the one-time service of the Bonds BLE link ([ble]). The answer is the bridge
+ * frames the holder would have sent, end-to-end encrypted to the requester's bridge key, so the network and the
+ * radio carry ciphertext only. zkPassport's app ignores these parameters.
+ */
+data class ZkPassportDiwNearby(val lan: List<String> = emptyList(), val ble: String? = null) {
+    val isEmpty: Boolean get() = lan.isEmpty() && ble == null
+
+    companion object {
+        const val LAN_PARAM = "diw_lan"
+        const val BLE_PARAM = "diw_ble"
+        /** The most addresses a link names: as many as a Bonds local network request. */
+        const val MAX_LAN = diw.wallet.core.profile.bonds.MAX_LAN_URLS
+        /** The largest answer either way takes: the Bonds BLE link's own limit. */
+        const val MAX_PAYLOAD = 1024 * 1024
+        private val UUID_RE = Regex("^[0-9A-Fa-f]{8}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{4}-[0-9A-Fa-f]{12}$")
+
+        /** A fresh one-time BLE service id, as a Bonds request makes one. */
+        fun newServiceId(): String = diw.wallet.core.profile.bonds.BondsPresentationRequest.randomUuid().lowercase()
+
+        /** A fresh unguessable path for a local network listener. */
+        fun newPath(): String = "/zkpassport/" + diw.wallet.core.profile.bonds.BondsPresentationRequest.randomUuid().lowercase()
+
+        /**
+         * The extension read from a link, or null when it names neither way. Addresses that are not plain http to a
+         * private address, and a malformed service id, are left out rather than refused: the request is still zkPassport's.
+         */
+        fun parse(lan: String?, ble: String?): ZkPassportDiwNearby? {
+            val urls = lan?.split(',')?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+                .filter { diw.wallet.core.profile.bonds.BondsLanPresentation.acceptableUrl(it) }.distinct().take(MAX_LAN)
+            val service = ble?.trim()?.takeIf { UUID_RE.matches(it) }?.lowercase()
+            return ZkPassportDiwNearby(urls, service).takeUnless { it.isEmpty }
+        }
+    }
+}
+
+/**
+ * The one message of a nearby answer (DIW extension, [ZkPassportDiwNearby]): the holder's bridge frames in sending
+ * order, starting with its handshake, and the requester's reply once it has read them.
+ */
+object ZkPassportNearbyPayload {
+    const val TYPE = "diw-zkpassport-nearby"
+    const val VERSION = 1
+
+    fun encode(frames: List<String>): ByteArray = buildJsonObject {
+        put("t", TYPE)
+        put("v", VERSION)
+        putJsonArray("frames") { frames.forEach { add(JsonPrimitive(it)) } }
+    }.toString().encodeToByteArray()
+
+    /** The frames of a payload; null for anything else (another device on the network). */
+    fun decode(bytes: ByteArray): List<String>? {
+        if (bytes.size > ZkPassportDiwNearby.MAX_PAYLOAD) return null
+        val o = runCatching { Json.parseToJsonElement(bytes.decodeToString()) as? JsonObject }.getOrNull() ?: return null
+        if ((o["t"] as? JsonPrimitive)?.contentOrNull != TYPE || (o["v"] as? JsonPrimitive)?.contentOrNull != VERSION.toString()) return null
+        val frames = (o["frames"] as? JsonArray)?.map { (it as? JsonPrimitive)?.takeIf { p -> p.isString }?.content ?: return null } ?: return null
+        return frames.takeIf { it.isNotEmpty() && it.size <= MAX_FRAMES }
+    }
+
+    /** The requester's reply: received, or the reason it was not. */
+    fun reply(error: String? = null): ByteArray = buildJsonObject {
+        put("t", TYPE)
+        put("v", VERSION)
+        if (error == null) put("received", true) else put("error", error)
+    }.toString().encodeToByteArray()
+
+    /** Null when the reply says the answer was received, otherwise its reason. */
+    fun replyError(bytes: ByteArray): String? {
+        val o = runCatching { Json.parseToJsonElement(bytes.decodeToString()) as? JsonObject }.getOrNull() ?: return "reply"
+        if ((o["t"] as? JsonPrimitive)?.contentOrNull != TYPE) return "reply"
+        if ((o["received"] as? JsonPrimitive)?.booleanOrNull == true) return null
+        return (o["error"] as? JsonPrimitive)?.contentOrNull?.filter { it in 'a'..'z' || it == '_' }?.take(40)?.ifEmpty { null } ?: "reply"
+    }
+
+    private const val MAX_FRAMES = 512
+}
+
+/**
+ * A nearby requester of this wallet as the holder's app reaches it (DIW extension, [ZkPassportDiwNearby]): its local
+ * network addresses or its BLE link.
+ */
+interface ZkPassportNearbyLink {
+    /** The way the answer would go now (`lan` or `ble`), or null when neither reaches the requester. */
+    suspend fun probe(): String?
+
+    /** Delivers [payload] and returns the requester's reply; throws when it cannot be delivered. */
+    suspend fun deliver(payload: ByteArray, onProgress: (String) -> Unit = {}): ByteArray
+}
+
+/**
  * A zkPassport request this wallet answers as the holder (Z3, docs/design/zkpassport.md 5.3), read from the
  * `https://zkpassport.id/r` link. [domain] is what the link claims; only the bridge's report of the creator's origin
  * says where it came from, and the service name, logo and purpose are the requester's own words.
@@ -123,6 +269,13 @@ data class ZkPassportIncoming(
     val sdkVersion: String?,
     val devMode: Boolean,
     val link: String,
+    /**
+     * A room on a diw-wallet-server relay the requester also listens in, when the requester is this wallet (DIW
+     * extension, [ZkPassportDiwRelay]); zkPassport's app ignores it and uses the bridge as before.
+     */
+    val diwRelay: ZkPassportDiwRelay? = null,
+    /** The requester's nearby ways (DIW extension, [ZkPassportDiwNearby]); zkPassport's app ignores them. */
+    val diwNearby: ZkPassportDiwNearby? = null,
 ) {
     private fun text(key: String) = (service[key] as? JsonPrimitive)?.contentOrNull?.trim()?.takeIf { it.isNotEmpty() }
     val name: String? get() = text("name")
@@ -200,12 +353,17 @@ sealed interface ZkPassportAnswerProgress {
 /** Why an answer stopped; [code] names the step (bridge_origin, connection, native_unavailable, crs_missing, inputs, ...). */
 class ZkPassportAnswerFailure(val code: String) : Exception(code)
 
+/** How an answer reaches the requester: zkPassport's bridge, or between two copies of this wallet a DIW relay or nearby. */
+enum class ZkPassportChannel { BRIDGE, DIW_RELAY, DIW_LAN, DIW_BLE }
+
 /** This wallet answering one zkPassport request (Z3): the bridge is open and the requester's origin known. */
 interface ZkPassportAnswer {
-    /** The requester's origin as zkPassport's bridge reports it. */
+    /** The requester's origin as zkPassport's bridge reports it (the relay's origin over a DIW relay; empty nearby). */
     val origin: String
     /** Whether [origin] is the https origin of the link's domain; otherwise the link may be relayed (5.3). */
     val originMatches: Boolean
+    /** Which way the answer goes. */
+    val channel: ZkPassportChannel get() = ZkPassportChannel.BRIDGE
     suspend fun reject()
     /**
      * Accepts, proves [chip] against the request where [target] says and sends the proofs from this device; throws
@@ -242,8 +400,19 @@ interface ZkPassportPairedProver {
 
 /** Answers zkPassport requests with proofs made on this device or on the owner's prover. */
 interface ZkPassportHolder {
-    /** Opens the bridge for [incoming]; [rpc] is the Ethereum node for the registries, null for the built-in one. */
-    suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer
+    /**
+     * Opens the bridge for [incoming]; [rpc] is the Ethereum node for the registries, null for the built-in one. When
+     * the link is this wallet's, its DIW relay is tried first and then [nearby], the app's way to the requester's
+     * local network addresses or BLE link; zkPassport's bridge last.
+     */
+    suspend fun connect(incoming: ZkPassportIncoming, rpc: String?, nearby: ZkPassportNearbyLink? = null): ZkPassportAnswer
+    /**
+     * Downloads, checks and keeps the registry files and circuits answering this wallet's requests with [chip] takes,
+     * so a nearby request can be answered offline; returns the number of circuits. Throws [ZkPassportAnswerFailure].
+     */
+    suspend fun prepareOffline(chip: ZkPassportChip, devMode: Boolean, rpc: String?, progress: (ZkPassportAnswerProgress) -> Unit = {}): Int =
+        throw ZkPassportAnswerFailure("offline_unsupported")
+
     /** Pairs with a temporary prover from its one-time code (`diw-prover://v1?...`); throws [ZkPassportAnswerFailure]. */
     suspend fun pair(link: String): ZkPassportPairedProver = throw ZkPassportAnswerFailure("pairing_unsupported")
 
@@ -283,6 +452,17 @@ data class ZkPassportConfig(
     val oprfKeyHash: String? = null,
     /** The current [verifierApi] setting, read when the proofs arrive, so a change during a request still applies. */
     val verifierApiNow: (() -> Boolean)? = null,
+    /**
+     * The ws or wss relay address of the user's diw-wallet-server (ZkTlsTransport.relayAddress): the request link
+     * also names a room there, so another copy of this wallet can answer through it ([ZkPassportDiwRelay]). Null
+     * listens on zkPassport's bridge only.
+     */
+    val diwRelay: String? = null,
+    /**
+     * Nearby ways the requester also takes an answer of this wallet (DIW extension, [ZkPassportDiwNearby]): the local
+     * network addresses it listens on and its BLE service id. The app listens; [ZkPassportSession.nearby] reads what arrives.
+     */
+    val diwNearby: ZkPassportDiwNearby? = null,
 ) {
     fun verifierApiAllowed(): Boolean = verifierApiNow?.invoke() ?: verifierApi
 }
@@ -348,6 +528,11 @@ data class ZkPassportResult(
     val csca: ZkPassportCscaCheck? = null,
     /** The FaceMatch proof of the answer; null when it has none. */
     val faceMatch: ZkPassportFaceMatch? = null,
+    /**
+     * When the registry could not be reached and a root was taken from this device's record of an earlier check:
+     * the time (Unix seconds) of the oldest such check, "registry state as of". Null when every root was checked now.
+     */
+    val registryAsOf: Long? = null,
 )
 
 sealed interface ZkPassportState {
@@ -366,12 +551,46 @@ sealed interface ZkPassportState {
 
 interface ZkPassportSession {
     val state: StateFlow<ZkPassportState>
+
+    /**
+     * An answer that arrived nearby (DIW extension, [ZkPassportNearbyPayload]); returns the reply for the holder. The
+     * proofs are then verified as if they had come over the bridge.
+     */
+    suspend fun nearby(payload: ByteArray): ByteArray = ZkPassportNearbyPayload.reply("unsupported")
+
     fun close()
 }
+
+/**
+ * What this device keeps for zkPassport without the Internet (docs/design/zkpassport.md 5.8): the latest certificate
+ * root it read and when, whether that root's certificate package is here, the manifest versions kept and the
+ * registry files (certificate packages, manifests, packaged circuits) with their size.
+ */
+data class ZkPassportOfflineState(
+    val certificateRoot: String?,
+    val certificateRootAt: Long?,
+    val certificates: Boolean,
+    val versions: List<String>,
+    val files: Int,
+    val bytes: Long,
+)
 
 /** Asks a zkPassport holder over zkPassport's bridge and verifies the proofs on this device. */
 interface ZkPassportVerifier {
     fun open(request: ZkPassportRequest, config: ZkPassportConfig, scope: CoroutineScope): ZkPassportSession
+
+    /**
+     * Reads and keeps what verifying offline takes: the manifest of the current circuit version and the validity of
+     * its root, the latest certificate root, its validity and its package. Throws [ZkPassportAnswerFailure].
+     */
+    suspend fun prepareOffline(devMode: Boolean, config: ZkPassportConfig): ZkPassportOfflineState =
+        throw ZkPassportAnswerFailure("offline_unsupported")
+
+    /** What is kept now; null when nothing is. */
+    fun offlineState(devMode: Boolean): ZkPassportOfflineState? = null
+
+    /** Deletes every registry file and record kept on this device. */
+    fun clearOffline() {}
 }
 
 object ZkPassport {
@@ -463,12 +682,24 @@ object ZkPassport {
         request.scope?.takeIf { it.isNotEmpty() }?.let { put("scope", it) }
     }
 
-    /** The `https://zkpassport.id/r` link the holder's app opens; [bridgeId] is the bridge's public key in hex. */
-    fun url(request: ZkPassportRequest, bridgeId: String, nowSeconds: Long): String {
+    /**
+     * The `https://zkpassport.id/r` link the holder's app opens; [bridgeId] is the bridge's public key in hex. With
+     * [relay] the DIW extension is appended after the SDK's parameters, which stay as they are.
+     */
+    fun url(
+        request: ZkPassportRequest,
+        bridgeId: String,
+        nowSeconds: Long,
+        relay: ZkPassportDiwRelay? = null,
+        nearby: ZkPassportDiwNearby? = null,
+    ): String {
         val config = Base64.encode(Json.encodeToString(JsonObject.serializer(), query(request)).encodeToByteArray())
         val service = Base64.encode(Json.encodeToString(JsonObject.serializer(), service(request)).encodeToByteArray())
         return "https://zkpassport.id/r?d=${normalizeDomain(request.domain)}&t=$bridgeId&c=${encode(config)}&s=${encode(service)}" +
-            "&p=$bridgeId&m=fast&v=$SDK_VERSION&dt=${nowSeconds - request.validitySeconds}&dev=${if (request.devMode) 1 else 0}"
+            "&p=$bridgeId&m=fast&v=$SDK_VERSION&dt=${nowSeconds - request.validitySeconds}&dev=${if (request.devMode) 1 else 0}" +
+            (relay?.let { "&${ZkPassportDiwRelay.URL_PARAM}=${uriComponent(it.url)}&${ZkPassportDiwRelay.ROOM_PARAM}=${it.room}" } ?: "") +
+            (nearby?.lan?.takeIf { it.isNotEmpty() }?.let { "&${ZkPassportDiwNearby.LAN_PARAM}=${uriComponent(it.joinToString(","))}" } ?: "") +
+            (nearby?.ble?.let { "&${ZkPassportDiwNearby.BLE_PARAM}=$it" } ?: "")
     }
 
     /**
@@ -539,6 +770,8 @@ object ZkPassport {
         return ZkPassportIncoming(
             domain = domain, verifierPublicKey = key, query = query, service = json("s") ?: JsonObject(emptyMap()),
             mode = p["m"]?.takeIf { it.isNotBlank() } ?: "fast", sdkVersion = p["v"], devMode = p["dev"] == "1", link = https,
+            diwRelay = ZkPassportDiwRelay.parse(p[ZkPassportDiwRelay.URL_PARAM], p[ZkPassportDiwRelay.ROOM_PARAM]),
+            diwNearby = ZkPassportDiwNearby.parse(p[ZkPassportDiwNearby.LAN_PARAM], p[ZkPassportDiwNearby.BLE_PARAM]),
         )
     }
 
@@ -547,6 +780,9 @@ object ZkPassport {
 
     /** encodeURIComponent for the base64 alphabet. */
     private fun encode(s: String): String = s.replace("+", "%2B").replace("/", "%2F").replace("=", "%3D")
+
+    /** encodeURIComponent for an address. */
+    private fun uriComponent(s: String): String = s.encodeURLParameter()
 
     private fun JsonElement?.text(): String? = (this as? JsonPrimitive)?.contentOrNull
     private fun JsonElement?.countries(): List<String> =

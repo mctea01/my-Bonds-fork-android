@@ -70,6 +70,12 @@ interface BondsLinkCentral {
     suspend fun unavailableReason(): String?
 
     /**
+     * Whether a permission the link needs is still missing while the device could otherwise scan, so that the request
+     * [unavailableReason] made may still be granted. Asks for nothing.
+     */
+    suspend fun permissionPending(): Boolean = false
+
+    /**
      * Runs until a holder delivered a payload of at most [maxPayload] bytes and, with [answer], the reply went out;
      * without one (a Bonds presentation) "received" ends it. Cancel to stop waiting.
      */

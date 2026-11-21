@@ -142,6 +142,9 @@ class ServerModel(private val model: WalletModel) {
 
     private fun features(o: JsonObject) = (o["features"] as? JsonArray).orEmpty().mapNotNull { (it as? JsonPrimitive)?.content }
 
+    /** Whether the server [url] lists [feature] at /info, read fresh; throws when /info cannot be read. */
+    suspend fun offers(url: String, feature: String): Boolean = feature in features(info(url))
+
     /**
      * The TW FidO service [url]'s SP account signs with, read fresh from `/info`: the server must list the `twfido`
      * feature and name a known environment. Null when it offers no mobile citizen certificate signing. This is the
@@ -408,6 +411,8 @@ class ServerModel(private val model: WalletModel) {
         const val SOURCE_PREFIX = "server:"
         const val FEATURE_TWFIDO = "twfido"
         const val FEATURE_OPRF = "oprf"
+        /** The OpenID4VP mailbox for a phone verifier (server repo, Oid4vpMailboxHost); not part of relay. */
+        const val FEATURE_OID4VP = diw.wallet.core.verifier.Oid4vpMailbox.FEATURE
         private val OPRF_HASH = Regex("^0x[0-9a-fA-F]{1,64}$")
         /** The OpenID Federation entity type diw-wallet-server publishes its signing root and verifier DID under. */
         const val SERVER_TYPE = "diw_wallet_server"

@@ -142,6 +142,16 @@ class ZkPassportResponder(
     private val bridgeUrl: String = ZkPassportBridgeProtocol.URL,
     /** How long each connection waits for the origin before it is opened again. */
     private val originWaitMs: Long = ORIGIN_MS,
+    /**
+     * Answers in the room the link names on a diw-wallet-server relay when it names one (DIW extension: the requester
+     * is this wallet), falling back to the bridge when the room does not answer.
+     */
+    private val useRelay: Boolean = true,
+    /**
+     * The app's way to the requester's local network or BLE link, when the link names them (DIW extension): the answer
+     * is then collected and delivered in one exchange once it is complete.
+     */
+    private val nearby: ZkPassportNearbyLink? = null,
 ) {
     class Failure(val code: String) : Exception(code)
 
@@ -154,11 +164,37 @@ class ZkPassportResponder(
     private var originKnown = CompletableDeferred<String>()
     private val received = ArrayList<String>()
 
-    /** The requester's origin as the bridge reports it. */
-    val origin: String? get() = bridge.origin
+    /** The relay room the answer goes through, once its requester said hello there; null over the bridge. */
+    @Volatile private var relay: ZkPassportDiwRelay? = null
+    @Volatile private var relaySocket: WebSocketSession? = null
 
-    /** Whether the bridge's origin is the https origin of the link's domain (5.3; a relay attack otherwise). */
-    val originMatches: Boolean get() = bridge.origin == incoming.expectedOrigin
+    /** The way a nearby answer goes (`lan` or `ble`) once chosen; null over a relay or the bridge. */
+    @Volatile private var nearbyWay: String? = null
+    /** A nearby answer's frames, the handshake first, until the last message completes it. */
+    private val pending = ArrayList<String>()
+
+    /**
+     * The requester's origin as the bridge reports it, or over the DIW relay the relay's own origin, shown for
+     * reference only: the relay pairs a room by its id alone, so it proves who runs the server, not who is in the room.
+     * Nearby nothing reports one.
+     */
+    val origin: String? get() = relay?.origin ?: if (nearbyWay != null) null else bridge.origin
+
+    /**
+     * Whether the bridge reported the https origin of the link's domain (5.3; a relay attack otherwise). Over the DIW
+     * relay or nearby nothing vouches for the requester, so it never matches there.
+     */
+    val originMatches: Boolean get() = relay == null && nearbyWay == null && origin == incoming.expectedOrigin
+
+    /** Whether the answer goes through the DIW relay rather than zkPassport's bridge. */
+    val viaRelay: Boolean get() = relay != null
+
+    val channel: ZkPassportChannel get() = when {
+        relay != null -> ZkPassportChannel.DIW_RELAY
+        nearbyWay == NEARBY_BLE -> ZkPassportChannel.DIW_BLE
+        nearbyWay != null -> ZkPassportChannel.DIW_LAN
+        else -> ZkPassportChannel.BRIDGE
+    }
 
     /**
      * Connects and waits for the bridge's report of the requester's origin; returns it. The bridge reports it only
@@ -166,6 +202,24 @@ class ZkPassportResponder(
      * connection is opened again a few times before giving up.
      */
     suspend fun connect(): String {
+        incoming.diwRelay?.takeIf { useRelay }?.let { r -> if (openRelay(r)) return r.origin }
+        if (nearby != null && incoming.diwNearby != null) {
+            val way = try {
+                nearby.probe()
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                null
+            }
+            if (way != null) {
+                lock.withLock {
+                    nearbyWay = way
+                    pending.clear()
+                    pending.add(bridge.handshake())
+                }
+                return ""
+            }
+        }
         repeat(ORIGIN_ATTEMPTS) {
             lock.withLock { open(bridge.connectUrl(bridgeUrl)) }
             withTimeoutOrNull(originWaitMs) { originKnown.await() }?.let { return it }
@@ -184,6 +238,35 @@ class ZkPassportResponder(
     /** Sends [messages] in order (method and params; null params for a bare method), reconnecting once if needed. */
     suspend fun send(messages: List<Pair<String, JsonElement?>>) = lock.withLock {
         val frames = messages.flatMap { (method, params) -> bridge.frames(method, params) }
+        val link = nearby
+        if (nearbyWay != null && link != null) {
+            pending.addAll(frames)
+            if (messages.none { it.first in LAST }) return@withLock
+            val payload = ZkPassportNearbyPayload.encode(pending.toList())
+            pending.clear()
+            if (payload.size > ZkPassportDiwNearby.MAX_PAYLOAD) throw Failure("nearby_too_large")
+            val reply = try {
+                link.deliver(payload)
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                throw Failure("nearby_$nearbyWay")
+            }
+            ZkPassportNearbyPayload.replyError(reply)?.let { throw Failure("nearby_reply:$it") }
+            return@withLock
+        }
+        if (relay != null) {
+            // A relay room ends when either side leaves, so it cannot be opened again.
+            val socket = relaySocket ?: throw Failure("connection")
+            try {
+                frames.forEach { socket.send(Frame.Binary(true, it.encodeToByteArray())) }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                throw Failure("connection")
+            }
+            return@withLock
+        }
         var attempt = 0
         var index = 0
         while (index < frames.size) {
@@ -204,15 +287,78 @@ class ZkPassportResponder(
         }
     }
 
-    /** The proofs of [proved] and the query result, after `accept` was sent. */
-    suspend fun send(proved: ZkPassportProver.Proved) =
-        send(proved.messages.filter { it.first != "accept" }.map { it.first to it.second })
+    /**
+     * The proofs of [proved] and the query result, after `accept` was sent. To another copy of this wallet (a DIW
+     * relay or nearby) each proof also carries its verification key, so a requester without the Internet need not
+     * download it; its checker hashes the key against the manifest before using it. zkPassport's bridge gets the
+     * standard messages.
+     */
+    suspend fun send(proved: ZkPassportProver.Proved) {
+        val diw = channel != ZkPassportChannel.BRIDGE
+        val keys = proved.proofs.associate { it.name to it.vkey }
+        send(
+            proved.messages.filter { it.first != "accept" }.map { (method, params) ->
+                val o = params as? JsonObject
+                val name = (o?.get("name") as? JsonPrimitive)?.contentOrNull
+                val key = name?.let { keys[it] }?.takeIf { it.isNotEmpty() }
+                method to if (diw && method == "proof" && o != null && key != null && "vkey" !in o) JsonObject(o + ("vkey" to JsonPrimitive(key))) else params
+            },
+        )
+    }
 
     fun close() {
         reader?.cancel()
         val socket = ws
         ws = null
-        scope.launch { runCatching { socket?.close() } }.invokeOnCompletion { scope.cancel() }
+        val inRoom = relaySocket
+        relaySocket = null
+        scope.launch { runCatching { socket?.close() }; runCatching { inRoom?.close() } }.invokeOnCompletion { scope.cancel() }
+    }
+
+    /**
+     * Joins the requester's room on the DIW relay and sends the handshake there; true once the requester answered
+     * it with its encrypted hello, false (and the room left) when the relay cannot be reached or nobody answers.
+     */
+    private suspend fun openRelay(r: ZkPassportDiwRelay): Boolean {
+        val socket = try {
+            withTimeout(CONNECT_MS) { client.webSocketSession(r.address) }
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            if (e is kotlinx.coroutines.TimeoutCancellationException) return false else throw e
+        } catch (_: Exception) {
+            return false
+        }
+        val hello = CompletableDeferred<Unit>()
+        val roomReader = scope.launch {
+            try {
+                for (frame in socket.incoming) {
+                    if (frame !is Frame.Binary) continue
+                    val (_, events) = bridge.receive(frame.data.decodeToString())
+                    if (events.any { it is ZkPassportHolderBridge.Event.Message && it.method == "hello" }) hello.complete(Unit)
+                }
+            } catch (e: kotlinx.coroutines.CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The next send reports the lost room.
+            } finally {
+                if (relaySocket === socket) relaySocket = null
+            }
+        }
+        val answered = try {
+            socket.send(Frame.Binary(true, bridge.handshake().encodeToByteArray()))
+            withTimeoutOrNull(RELAY_HELLO_MS) { hello.await() } != null
+        } catch (e: kotlinx.coroutines.CancellationException) {
+            throw e
+        } catch (_: Exception) {
+            false
+        }
+        if (!answered) {
+            roomReader.cancel()
+            runCatching { socket.close() }
+            return false
+        }
+        relaySocket = socket
+        relay = r
+        return true
     }
 
     private suspend fun open(url: String) {
@@ -271,6 +417,10 @@ class ZkPassportResponder(
 
     companion object {
         private val METHOD = Regex("^[A-Za-z_]{1,24}$")
+        /** Messages after which a nearby answer is complete and goes out. */
+        private val LAST = setOf("done", "reject", "error")
+        const val NEARBY_LAN = "lan"
+        const val NEARBY_BLE = "ble"
         private const val OOC_NONE = "ooc:none"
         private const val MAX_RECORDED = 8
         private const val CONNECT_MS = 15_000L
@@ -278,6 +428,8 @@ class ZkPassportResponder(
         private const val ORIGIN_ATTEMPTS = 3
         private const val PING_MS = 25_000L
         private const val MAX_RECONNECTS = 3
+        /** How long the requester has to answer the handshake in its relay room before the bridge is tried. */
+        private const val RELAY_HELLO_MS = 15_000L
         private const val PING = """{"method":"ping","params":{},"nocache":true}"""
     }
 }
@@ -290,8 +442,8 @@ class JvmZkPassportHolder(
     /** The socket factory of the local network that reaches a paired prover (Android); null for the default route. */
     private val network: (String) -> javax.net.SocketFactory? = { null },
 ) : ZkPassportHolder {
-    override suspend fun connect(incoming: ZkPassportIncoming, rpc: String?): ZkPassportAnswer {
-        val responder = ZkPassportResponder(http, incoming, bridgeUrl)
+    override suspend fun connect(incoming: ZkPassportIncoming, rpc: String?, nearby: ZkPassportNearbyLink?): ZkPassportAnswer {
+        val responder = ZkPassportResponder(http, incoming, bridgeUrl, nearby = nearby)
         val origin = try {
             responder.connect()
         } catch (e: ZkPassportResponder.Failure) {
@@ -299,6 +451,22 @@ class JvmZkPassportHolder(
             throw ZkPassportAnswerFailure(e.code)
         }
         return Answer(responder, incoming, origin, rpc)
+    }
+
+    override suspend fun prepareOffline(chip: ZkPassportChip, devMode: Boolean, rpc: String?, progress: (ZkPassportAnswerProgress) -> Unit): Int = try {
+        prover.prepare(ZkPassportProver.Chip(chip.sod, chip.dg1, chip.dg2), devMode, rpc) { p ->
+            progress(
+                when (p) {
+                    ZkPassportProver.Progress.Registry -> ZkPassportAnswerProgress.Registry
+                    is ZkPassportProver.Progress.Circuits -> ZkPassportAnswerProgress.Circuits(p.count)
+                    is ZkPassportProver.Progress.Proving -> ZkPassportAnswerProgress.Proving(p.index, p.total, p.name)
+                },
+            )
+        }.circuits
+    } catch (e: ZkPassportProver.Failure) {
+        throw ZkPassportAnswerFailure(e.code)
+    } catch (e: ZkPassportRegistry.Unreachable) {
+        throw ZkPassportAnswerFailure(e.code)
     }
 
     override suspend fun pair(link: String): ZkPassportPairedProver = try {
@@ -350,6 +518,8 @@ class JvmZkPassportHolder(
         private val rpc: String?,
     ) : ZkPassportAnswer {
         override val originMatches: Boolean get() = responder.originMatches
+
+        override val channel: ZkPassportChannel get() = responder.channel
 
         override suspend fun reject() = bridged { responder.reject() }
 

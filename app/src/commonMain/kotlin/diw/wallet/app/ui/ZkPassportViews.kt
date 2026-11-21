@@ -40,6 +40,7 @@ import diw.wallet.app.ZkPassportFlow
 import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import diw.wallet.core.zkpassport.ZkPassport
+import diw.wallet.core.zkpassport.ZkPassportChannel
 import diw.wallet.core.zkpassport.ZkPassportAnswerProgress
 import diw.wallet.core.zkpassport.ZkPassportFaceMatchKind
 import diw.wallet.core.zkpassport.ZkPassportFaceMatchRequest
@@ -238,6 +239,9 @@ internal fun ZkPassportWaitingView(model: WalletModel, s: OfflineUi.ZkPassportWa
             }
         }
         Text(ZkPassport.normalizeDomain(s.request.domain) + stringResource(Res.string.zkp_unverified_suffix), style = MaterialTheme.typography.bodySmall)
+        if (showQr && s.routes.isNotEmpty()) {
+            Text(stringResource(Res.string.zkp_routes, s.routes.joinToString(stringResource(Res.string.sep_list))), style = MaterialTheme.typography.bodySmall)
+        }
         when (val st = s.state) {
             is ZkPassportState.Receiving -> LinearProgressIndicator(
                 progress = { if (st.total <= 0) 0f else st.received.toFloat() / st.total }, modifier = Modifier.fillMaxWidth(),
@@ -257,7 +261,7 @@ internal fun ZkPassportWaitingView(model: WalletModel, s: OfflineUi.ZkPassportWa
             },
             style = MaterialTheme.typography.titleSmall,
         )
-        TechDetails(listOfNotNull(s.url), "zkpassport-request")
+        TechDetails(listOfNotNull(s.url) + s.lanUrls, "zkpassport-request")
         OutlinedButton(onClick = { model.back() }) { Text(stringResource(Res.string.action_cancel)) }
     }
 }
@@ -278,6 +282,7 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
                 val caveats = buildList {
                     if (r.devMode) add(stringResource(Res.string.zkp_test_caveat))
                     if (r.viaVerifierApi) add(stringResource(Res.string.zkp_api_caveat))
+                    r.registryAsOf?.let { add(stringResource(Res.string.zkp_registry_as_of, isoDate(it))) }
                     add(ZkPassportFlow.trust(r.csca))
                     r.faceMatch?.let { addAll(ZkPassportFlow.faceCaveats(it)) }
                     add(stringResource(Res.string.zkp_domain_caveat, domain))
@@ -287,7 +292,7 @@ internal fun ZkPassportResultView(model: WalletModel, s: OfflineUi.ZkPassportVer
                     it.kind == ZkPassportFaceMatchKind.SELF || (it.kind == ZkPassportFaceMatchKind.KEY_ATTESTATION && it.environment != "production")
                 } == true
                 VerdictCard(
-                    if (r.devMode || r.viaVerifierApi || r.csca?.allAnchored != true || faceCaution) Verdict.CAUTION else Verdict.PASS,
+                    if (r.devMode || r.viaVerifierApi || r.registryAsOf != null || r.csca?.allAnchored != true || faceCaution) Verdict.CAUTION else Verdict.PASS,
                     if (r.devMode) stringResource(Res.string.zkp_passed_test) else stringResource(Res.string.zkp_passed),
                     caveats,
                 )
@@ -359,9 +364,16 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
     val unverified = stringResource(Res.string.zkp_answer_unverified)
     ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
+        // Nearby nothing reports where the request comes from, and the DIW relay pairs a room by its id alone, so on
+        // either the requester is not vouched for: the person showing the code is the requester.
+        val nearby = s.channel != ZkPassportChannel.BRIDGE
         // Another page of the same site (zkPassport's demo answers through verify.zkpassport.id) is a caution only.
-        val sameSite = !s.originMatches && incoming.sameSite(s.origin)
-        if (sameSite) {
+        val sameSite = !nearby && !s.originMatches && incoming.sameSite(s.origin)
+        if (s.channel == ZkPassportChannel.DIW_RELAY) {
+            VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_relay), listOf(stringResource(Res.string.zkp_answer_relay_detail, s.origin, incoming.domain)))
+        } else if (nearby) {
+            VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_nearby), listOf(stringResource(Res.string.zkp_answer_nearby_detail, incoming.domain)))
+        } else if (sameSite) {
             VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_origin_same_site), listOf(stringResource(Res.string.zkp_answer_origin_same_site_detail, s.origin, incoming.expectedOrigin)))
         } else if (!s.originMatches) {
             VerdictCard(Verdict.FAIL, stringResource(Res.string.zkp_answer_origin_mismatch), listOf(stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)))
@@ -428,7 +440,8 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         TechDetails(
             listOf(
                 stringResource(Res.string.zkp_tech_domain, incoming.domain),
-                stringResource(Res.string.zkp_answer_tech_origin, s.origin),
+                stringResource(Res.string.zkp_answer_tech_origin, s.origin.ifEmpty { "-" }),
+                stringResource(Res.string.zkp_answer_tech_channel, s.channel.name.lowercase()),
                 stringResource(Res.string.zkp_answer_tech_mode, incoming.mode, incoming.sdkVersion ?: "-"),
             ) + listOfNotNull(incoming.scope?.let { stringResource(Res.string.zkp_tech_scope, it) }) + incoming.query.toString(),
             "zkpassport-answer",
@@ -438,7 +451,7 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
             Button(
                 // Another origin, or passport data leaving for a prover, each needs the strong confirmation first.
                 onClick = {
-                    if ((s.originMatches || sameSite) && ZkPassportFlow.targetAddress(target) == null) model.taiwan.zkPassport.accept(file!!, target)
+                    if ((s.originMatches || sameSite) && !nearby && ZkPassportFlow.targetAddress(target) == null) model.taiwan.zkPassport.accept(file!!, target)
                     else risk = true
                 },
                 enabled = s.unsupported == null && file != null,
@@ -447,12 +460,18 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         }
     }
     if (risk) {
-        val otherOrigin = !(s.originMatches || incoming.sameSite(s.origin))
+        val nearby = s.channel != ZkPassportChannel.BRIDGE
+        val otherOrigin = nearby || !(s.originMatches || incoming.sameSite(s.origin))
         val address = ZkPassportFlow.targetAddress(target)
         RiskConfirmDialog(
             stringResource(if (otherOrigin) Res.string.zkp_answer_risk_title else Res.string.zkp_answer_remote_risk_title),
             listOfNotNull(
-                if (otherOrigin) stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin) else null,
+                when {
+                    s.channel == ZkPassportChannel.DIW_RELAY -> stringResource(Res.string.zkp_answer_relay_detail, s.origin, incoming.domain)
+                    nearby -> stringResource(Res.string.zkp_answer_nearby_detail, incoming.domain)
+                    otherOrigin -> stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)
+                    else -> null
+                },
                 address?.let { stringResource(Res.string.zkp_answer_where_note, it) },
             ),
             stringResource(if (otherOrigin) Res.string.zkp_answer_risk_confirm else Res.string.zkp_answer_remote_risk_confirm),
@@ -554,6 +573,39 @@ internal fun ZkPassportSettingsSection(model: WalletModel) {
         Column {
             Text(stringResource(Res.string.zkp_verifier_api))
             Text(stringResource(Res.string.zkp_verifier_api_note), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    ZkPassportOfflineSection(model)
+}
+
+/**
+ * Two copies of this wallet without the Internet (docs/design/zkpassport.md 5.8): whether requests also listen
+ * nearby, and the registry files, roots and circuits kept for offline use, which can be fetched ahead or deleted.
+ */
+@Composable
+private fun ZkPassportOfflineSection(model: WalletModel) {
+    val settings by model.settingsFlow.collectAsState()
+    val busy by model.taiwan.zkPassport.offlineProgress.collectAsState()
+    val stamp by model.taiwan.zkPassport.offlineStamp.collectAsState()
+    val summary = remember(stamp, busy) { model.taiwan.zkPassport.offlineSummary() }
+    SectionTitle(stringResource(Res.string.zkp_offline_title))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Switch(checked = settings.zkPassportNearby, onCheckedChange = { on -> model.updateSettings { it.copy(zkPassportNearby = on) } })
+        Column {
+            Text(stringResource(Res.string.zkp_nearby))
+            Text(stringResource(Res.string.zkp_nearby_note), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    Text(stringResource(Res.string.zkp_offline_text), style = MaterialTheme.typography.bodySmall)
+    Text(summary ?: stringResource(Res.string.zkp_offline_none), style = MaterialTheme.typography.bodyMedium)
+    busy?.let {
+        LinearProgressIndicator(Modifier.fillMaxWidth())
+        Text(it, style = MaterialTheme.typography.bodySmall)
+    }
+    WrapRow() {
+        OutlinedButton(onClick = { model.taiwan.zkPassport.prepareOffline() }, enabled = busy == null) { Text(stringResource(Res.string.zkp_offline_prepare)) }
+        if (summary != null) OutlinedButton(onClick = { model.taiwan.zkPassport.clearOffline() }, enabled = busy == null) {
+            Text(stringResource(Res.string.zkp_offline_clear))
         }
     }
 }

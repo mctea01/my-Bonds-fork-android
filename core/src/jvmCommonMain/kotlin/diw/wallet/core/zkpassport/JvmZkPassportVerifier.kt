@@ -24,6 +24,9 @@ import io.ktor.websocket.readText
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.sync.Mutex
+import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -70,17 +73,34 @@ class JvmZkPassportVerifier(
     private val registry = ZkPassportRegistry(client, cache)
 
     override fun open(request: ZkPassportRequest, config: ZkPassportConfig, scope: CoroutineScope): ZkPassportSession {
-        val session = Session(request, config)
+        val session = Session(request, config, scope)
         session.job = scope.launch(Dispatchers.IO) { session.run() }
         return session
     }
 
-    private inner class Session(private val request: ZkPassportRequest, private val config: ZkPassportConfig) : ZkPassportSession {
+    private inner class Session(
+        private val request: ZkPassportRequest,
+        private val config: ZkPassportConfig,
+        private val scope: CoroutineScope,
+    ) : ZkPassportSession {
         override val state = MutableStateFlow<ZkPassportState>(ZkPassportState.Connecting)
         var job: Job? = null
         private val protocol = ZkPassportBridgeProtocol()
+        /** One protocol, two connections (bridge and DIW relay): frames are handled one at a time. */
+        private val protocolLock = Mutex()
         private val domain = ZkPassport.normalizeDomain(request.domain)
-        private val url = ZkPassport.url(request, protocol.bridgeId, System.currentTimeMillis() / 1000)
+        /** The room on the user's relay a copy of this wallet can answer in (DIW extension); null without a relay. */
+        private val relay = config.diwRelay?.let { url ->
+            runCatching { ZkPassportDiwRelay.open(url, ByteArray(16).also { java.security.SecureRandom().nextBytes(it) }) }.getOrNull()
+        }
+        /** The local network addresses and BLE service the app listens on for a nearby answer (DIW extension). */
+        private val nearby = config.diwNearby?.takeUnless { it.isEmpty }
+        private val url = ZkPassport.url(request, protocol.bridgeId, System.currentTimeMillis() / 1000, relay, nearby)
+        /** Ways that gave up; with none left and nothing nearby, the session fails. */
+        @Volatile private var bridgeDown = false
+        @Volatile private var relayDown = relay == null
+        /** Which connection the holder's handshake came over; the other one is then left alone. */
+        @Volatile private var via: String? = null
         private val proofs = ArrayList<JsonObject>()
         private var total = -1
         private var failedProofs = 0
@@ -97,9 +117,43 @@ class JvmZkPassportVerifier(
             state.value = s
         }
 
-        suspend fun run() {
+        suspend fun run() = coroutineScope {
+            // A nearby holder needs no connection of this device, so the code can be shown at once, even offline.
+            if (nearby != null) state.value = ZkPassportState.Waiting(url)
+            val relayJob = relay?.let { r -> launch { runRelay(r) } }
+            runBridge()
+            // A holder answering over the relay, or one who may still come over it, keeps the session after the bridge gave up.
+            if (via == VIA_BRIDGE || finished) relayJob?.cancel()
+        }
+
+        /** Fails the session once no way is left for a holder to answer. */
+        private fun noWayLeft() {
+            if (!finished && via == null && bridgeDown && relayDown && nearby == null) finish(ZkPassportState.Failed("connection"))
+        }
+
+        override suspend fun nearby(payload: ByteArray): ByteArray {
+            val frames = ZkPassportNearbyPayload.decode(payload) ?: return ZkPassportNearbyPayload.reply("payload")
+            if (nearby == null) return ZkPassportNearbyPayload.reply("unsupported")
+            // The same answer delivered again (a reply lost on the way back) is acknowledged as before.
+            if (via == VIA_NEARBY) return ZkPassportNearbyPayload.reply()
+            if (finished || via != null) return ZkPassportNearbyPayload.reply("busy")
+            val events = protocolLock.withLock {
+                // Another connection may have taken the holder's handshake meanwhile.
+                if (via != null) return ZkPassportNearbyPayload.reply("busy")
+                val now = System.currentTimeMillis()
+                val read = frames.flatMap { protocol.receive(it, now).second }
+                if (read.none { it == ZkPassportBridgeProtocol.Event.Handshake }) return ZkPassportNearbyPayload.reply("handshake")
+                via = VIA_NEARBY
+                read
+            }
+            // Verifying takes a while; the holder's link only waits for the receipt.
+            scope.launch(Dispatchers.IO) { for (event in events) if (!finished) handle(event) }
+            return ZkPassportNearbyPayload.reply()
+        }
+
+        private suspend fun runBridge() {
             var attempts = 0
-            while (!finished && attempts <= MAX_RECONNECTS) {
+            while (!finished && (via == null || via == VIA_BRIDGE) && attempts <= MAX_RECONNECTS) {
                 val ws = try {
                     withTimeout(CONNECT_MS) {
                         client.webSocketSession("$bridgeUrl?id=${protocol.bridgeId}&v=1") {
@@ -120,12 +174,69 @@ class JvmZkPassportVerifier(
                     continue
                 }
                 if (state.value == ZkPassportState.Connecting) state.value = ZkPassportState.Waiting(url)
+                if (via != null && via != VIA_BRIDGE) {
+                    runCatching { ws.close() }
+                    break
+                }
                 if (attempts > 0) protocol.replay()?.let { ws.send(Frame.Text(it)) }
                 attempts = 0
                 serve(ws)
                 if (!finished) attempts++
             }
-            if (!finished) finish(ZkPassportState.Failed("connection"))
+            bridgeDown = true
+            if (!finished && via == VIA_BRIDGE) finish(ZkPassportState.Failed("connection")) else noWayLeft()
+        }
+
+        /**
+         * The room on the user's relay (DIW extension): the same bridge messages as binary frames, without the
+         * bridge's own control messages. A room holds two connections and is gone when one leaves, so it is opened
+         * again while no holder has come, and the session fails when the holder that came over it leaves early.
+         */
+        private suspend fun runRelay(r: ZkPassportDiwRelay) {
+            var failures = 0
+            while (!finished && (via == null || via == VIA_RELAY)) {
+                val ws = try {
+                    withTimeout(CONNECT_MS) { client.webSocketSession(r.address) }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    if (e is kotlinx.coroutines.TimeoutCancellationException) null else throw e
+                } catch (_: Exception) {
+                    null
+                }
+                if (ws == null) {
+                    if (via == VIA_RELAY) return finish(ZkPassportState.Failed("connection"))
+                    // The bridge still serves zkPassport's app; the relay is tried again a few times only.
+                    if (++failures > MAX_RECONNECTS) {
+                        relayDown = true
+                        return noWayLeft()
+                    }
+                    delay(1000L shl minOf(failures, 4))
+                    continue
+                }
+                if (state.value == ZkPassportState.Connecting) state.value = ZkPassportState.Waiting(url)
+                failures = 0
+                try {
+                    for (frame in ws.incoming) {
+                        if (frame !is Frame.Binary) continue
+                        val (replies, events) = protocolLock.withLock {
+                            protocol.receive(frame.data.decodeToString(), System.currentTimeMillis())
+                        }
+                        if (events.any { it == ZkPassportBridgeProtocol.Event.Handshake }) {
+                            if (via != null && via != VIA_RELAY) continue
+                            via = VIA_RELAY
+                        }
+                        replies.forEach { ws.send(Frame.Binary(true, it.encodeToByteArray())) }
+                        for (event in events) handle(event)
+                        if (finished) break
+                    }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    // Opened again below while no holder has come.
+                } finally {
+                    runCatching { ws.close() }
+                }
+                if (via == VIA_RELAY && !finished) return finish(ZkPassportState.Failed("connection"))
+            }
         }
 
         private suspend fun serve(ws: WebSocketSession) {
@@ -138,10 +249,14 @@ class JvmZkPassportVerifier(
             try {
                 for (frame in ws.incoming) {
                     if (frame !is Frame.Text) continue
-                    val (replies, events) = protocol.receive(frame.readText(), System.currentTimeMillis())
+                    val (replies, events) = protocolLock.withLock { protocol.receive(frame.readText(), System.currentTimeMillis()) }
+                    if (events.any { it == ZkPassportBridgeProtocol.Event.Handshake }) {
+                        if (via != null && via != VIA_BRIDGE) continue
+                        via = VIA_BRIDGE
+                    }
                     replies.forEach { ws.send(Frame.Text(it)) }
                     for (event in events) handle(event)
-                    if (finished) break
+                    if (finished || (via != null && via != VIA_BRIDGE)) break
                 }
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
@@ -192,6 +307,43 @@ class JvmZkPassportVerifier(
         }
     }
 
+    override suspend fun prepareOffline(devMode: Boolean, config: ZkPassportConfig): ZkPassportOfflineState = withContext(Dispatchers.IO) {
+        if (!nativeReady()) throw ZkPassportAnswerFailure("native_unavailable")
+        val chain = ZkPassport.chain(devMode)
+        val rpc = if (chain == ZkPassport.MAINNET) config.mainnetRpc else config.sepoliaRpc
+        val now = System.currentTimeMillis() / 1000
+        try {
+            val version = ZkPassport.CIRCUIT_VERSION
+            val manifest = registry.manifest(chain, version)
+            val circuitRoot = try {
+                zkpassportCircuitRoot(manifest.toString())
+            } catch (e: ZkException) {
+                registry.forget(chain, version)
+                throw ZkPassportAnswerFailure("manifest_root")
+            }
+            val circuits = registry.rootStatus(chain, rpc, ZkPassportRegistry.CIRCUIT_REGISTRY, circuitRoot, now)
+            if (!circuits.value) throw ZkPassportAnswerFailure("circuit_root")
+            // Kept only once its root is valid, as after a verification.
+            registry.remember(chain, version, manifest, emptyMap(), emptyMap())
+            val latest = registry.latestRootStatus(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY)
+            if (!registry.rootStatus(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY, latest.value, now).value) {
+                throw ZkPassportAnswerFailure("certificate_root")
+            }
+            runCatching { registry.certificates(chain, latest.value) { zkpassportCertificates(it) } }
+        } catch (e: ZkPassportRegistry.Unreachable) {
+            throw ZkPassportAnswerFailure(e.code)
+        }
+        offlineState(devMode) ?: throw ZkPassportAnswerFailure("offline_record")
+    }
+
+    override fun offlineState(devMode: Boolean): ZkPassportOfflineState? {
+        val r = registry.offlineRecord(ZkPassport.chain(devMode))
+        if (r.latestRoot == null && r.manifests.isEmpty() && r.files == 0) return null
+        return ZkPassportOfflineState(r.latestRoot, r.latestAt, r.certificates, r.manifests, r.files, r.bytes)
+    }
+
+    override fun clearOffline() = registry.clear()
+
     /** Checks [proofs] against [request]; never throws. */
     suspend fun verify(request: ZkPassportRequest, config: ZkPassportConfig, proofs: List<JsonObject>, queryResult: JsonElement): ZkPassportResult =
         withContext(Dispatchers.IO) {
@@ -213,22 +365,28 @@ class JvmZkPassportVerifier(
                     return@withContext ZkPassport.failure("manifest_root", dev)
                 }
                 val rpc = if (chain == ZkPassport.MAINNET) config.mainnetRpc else config.sepoliaRpc
-                val certificateValid = registry.rootValid(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY, certificateRoot, timestamp)
-                val circuitValid = registry.rootValid(chain, rpc, ZkPassportRegistry.CIRCUIT_REGISTRY, circuitRoot, timestamp)
+                // Offline, roots this device found valid before count, and the result says as of when.
+                val certificateStatus = registry.rootStatus(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY, certificateRoot, timestamp)
+                val circuitStatus = registry.rootStatus(chain, rpc, ZkPassportRegistry.CIRCUIT_REGISTRY, circuitRoot, timestamp)
+                val certificateValid = certificateStatus.value
+                val circuitValid = circuitStatus.value
+                val asOf = listOfNotNull(certificateStatus.asOf, circuitStatus.asOf).minOrNull()
                 val circuits = manifest["circuits"]?.jsonObject ?: JsonObject(emptyMap())
                 val pinned = runCatching { Json.parseToJsonElement(zkpassportFacematchCircuits()).jsonObject["circuits"]?.jsonObject }.getOrNull()
                 val hashes = names.associateWith { name ->
                     (if (name.startsWith(PROJECT_FACEMATCH)) pinned?.get(name) else circuits[name]?.jsonObject?.get("hash"))?.jsonPrimitive?.content
                         ?: return@withContext ZkPassport.failure("vkey:$name", dev)
                 }
-                // This project's FaceMatch circuits are in no manifest: the proof brings its key, which the checker
-                // hashes against the list built into the native library.
-                val own = proofs.mapNotNull { p ->
-                    val name = (p["name"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.startsWith(PROJECT_FACEMATCH) }
+                // A proof may bring its key: this project's FaceMatch circuits are in no manifest, and another copy of this
+                // wallet sends every key so a requester offline need not download them. The checker hashes each key
+                // against the manifest's hash (the list built into the native library for FaceMatch) before using it.
+                val carried = proofs.mapNotNull { p ->
+                    val name = (p["name"] as? JsonPrimitive)?.contentOrNull
                     val key = (p["vkey"] as? JsonPrimitive)?.contentOrNull?.takeIf { it.length in 1..MAX_VKEY }
                     if (name != null && key != null) name to key else null
                 }.toMap()
-                val vkeys = hashes.mapValues { (name, hash) -> own[name] ?: registry.vkey(chain, hash) }
+                val own = carried.filterKeys { it.startsWith(PROJECT_FACEMATCH) }
+                val vkeys = hashes.mapValues { (name, hash) -> carried[name] ?: registry.vkey(chain, hash) }
                 val requestJson = buildJsonObject {
                     put("proofs", JsonArray(proofs))
                     put("query", ZkPassport.query(request))
@@ -269,7 +427,8 @@ class JvmZkPassportVerifier(
                         it.copy(errors = listOf("backend_legacy:$version") + it.errors)
                     } else it
                 }
-                if (decided.verified && !dev) decided.copy(csca = csca(chain, certificateRoot, decided, config.cscaAnchors)) else decided
+                (if (decided.verified && !dev) decided.copy(csca = csca(chain, certificateRoot, decided, config.cscaAnchors)) else decided)
+                    .copy(registryAsOf = asOf)
             } catch (e: ZkPassportRegistry.Unreachable) {
                 ZkPassport.failure(e.code, dev)
             } catch (e: ZkException) {
@@ -336,5 +495,8 @@ class JvmZkPassportVerifier(
         private const val MAX_PROOFS = 32
         private const val PROJECT_FACEMATCH = "diw_facematch_"
         private const val MAX_VKEY = 16 * 1024
+        private const val VIA_BRIDGE = "bridge"
+        private const val VIA_RELAY = "relay"
+        private const val VIA_NEARBY = "nearby"
     }
 }

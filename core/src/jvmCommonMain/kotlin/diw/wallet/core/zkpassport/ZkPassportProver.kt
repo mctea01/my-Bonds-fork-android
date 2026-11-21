@@ -142,26 +142,14 @@ class ZkPassportProver(
             val command = Json.parseToJsonElement(session.next()).jsonObject
             when (command.text("action")) {
                 "fetch" -> {
-                    val requests = command["requests"] as? kotlinx.serialization.json.JsonArray ?: throw Failure("driver")
-                    if (requests.any { (it as? JsonObject)?.text("id")?.toIntOrNull() != null }) {
-                        total = requests.size + if (job.faceMatch != null) 1 else 0
+                    val fetched = fetch(session, command, job, chain, certificateRoot)
+                    if (fetched.circuits > 0) {
+                        total = fetched.circuits + if (job.faceMatch != null) 1 else 0
                         progress(Progress.Circuits(total))
                     }
-                    for (r in requests) {
-                        val o = r as? JsonObject ?: throw Failure("driver")
-                        val id = o.text("id") ?: throw Failure("driver")
-                        val url = o.text("url") ?: throw Failure("driver")
-                        val body = when (id) {
-                            "certs" -> certificates(url, certificateRoot)
-                            "manifest" -> {
-                                val (text, circuits, v) = manifest(url, chain, job)
-                                hashes = circuits
-                                version = v
-                                text
-                            }
-                            else -> registry.file(url, "circuit_unavailable")
-                        }
-                        provide(session, id, body)
+                    fetched.manifest?.let { (circuits, v) ->
+                        hashes = circuits
+                        version = v
                     }
                 }
                 "prove" -> {
@@ -217,6 +205,82 @@ class ZkPassportProver(
             }
         }
         throw Failure("driver")
+    }
+
+    /** What one `fetch` command brought: the manifest's key hashes and version when it was asked for, and the circuits. */
+    private class Fetched(val manifest: Pair<Map<String, String>, String>?, val circuits: Int)
+
+    /** Answers the driver's `fetch` [command] from the registries (or this device's copies), each file checked first. */
+    private suspend fun fetch(session: ZkPassportProofSession, command: JsonObject, job: Job, chain: Long, certificateRoot: String): Fetched {
+        val requests = command["requests"] as? kotlinx.serialization.json.JsonArray ?: throw Failure("driver")
+        var manifest: Pair<Map<String, String>, String>? = null
+        val circuits = requests.count { (it as? JsonObject)?.text("id")?.toIntOrNull() != null }
+        for (r in requests) {
+            val o = r as? JsonObject ?: throw Failure("driver")
+            val id = o.text("id") ?: throw Failure("driver")
+            val url = o.text("url") ?: throw Failure("driver")
+            val body = when (id) {
+                "certs" -> certificates(url, certificateRoot)
+                "manifest" -> {
+                    val (text, hashes, v) = manifest(url, chain, job)
+                    manifest = hashes to v
+                    text
+                }
+                else -> registry.file(url, "circuit_unavailable")
+            }
+            provide(session, id, body)
+        }
+        return Fetched(manifest, circuits)
+    }
+
+    /** What [prepare] keeps on this device: the circuit version, the number of packaged circuits and the certificate root. */
+    data class Prepared(val version: String, val circuits: Int, val certificateRoot: String)
+
+    /**
+     * Downloads, checks and keeps what answering this wallet's requests with [chip] takes, so a request of another
+     * copy of this wallet nearby can be answered offline (docs/design/zkpassport.md 5.8): the latest certificate
+     * root and its package, the manifest and the packaged circuits of every check those requests can ask for (each
+     * disclosed field, an age, nationality and issuing country lists, bound data). The driver plans them as for a
+     * real request; nothing is proved. Without the proof parameters (the CRS shared with zkPDF) it stops at once with
+     * `crs_missing`, as no answer could be proved. Throws [Failure] or [ZkPassportRegistry.Unreachable].
+     */
+    suspend fun prepare(chip: Chip, devMode: Boolean, rpc: String?, progress: (Progress) -> Unit = {}): Prepared = withContext(Dispatchers.IO) {
+        if (!nativeReady()) throw Failure("native_unavailable")
+        // Proving needs the proof parameters as well; without them nothing here could answer offline.
+        crsDirectory() ?: throw Failure("crs_missing")
+        val chain = ZkPassport.chain(devMode)
+        progress(Progress.Registry)
+        val certificateRoot = registry.latestRoot(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY)
+        val job = Job(query = ZkPassport.query(BROAD.copy(devMode = devMode)), domain = BROAD.domain, devMode = devMode, rpc = rpc)
+        val session = try {
+            ZkPassportProofSession(config(chip, job, chain, certificateRoot, salt()).toString())
+        } catch (e: ZkException) {
+            throw Failure("session")
+        }
+        session.use {
+            var version = job.circuitVersion
+            var circuits = 0
+            repeat(MAX_COMMANDS) {
+                ensureActive()
+                val command = Json.parseToJsonElement(session.next()).jsonObject
+                when (command.text("action")) {
+                    "fetch" -> {
+                        val fetched = fetch(session, command, job, chain, certificateRoot)
+                        fetched.manifest?.let { version = it.second }
+                        if (fetched.circuits > 0) {
+                            circuits += fetched.circuits
+                            progress(Progress.Circuits(circuits))
+                        }
+                    }
+                    // Every circuit is here once the first proof is asked for.
+                    "prove", "done" -> return@withContext Prepared(version, circuits, certificateRoot)
+                    "bridge_send" -> {}
+                    "error" -> throw Failure("driver:" + command.text("message").orEmpty().take(120))
+                    else -> throw Failure("driver")
+                }
+            }
+            throw Failure("driver")
+        }
     }
 
     /**
@@ -437,6 +501,15 @@ class ZkPassportProver(
         private val random = SecureRandom()
 
         private val REASON = Regex("^[a-z0-9_]{1,40}$")
+
+        /** A request asking for everything this wallet's requests can ask, so [prepare] fetches every circuit they use. */
+        private val BROAD = ZkPassportRequest(
+            domain = "offline.diw-wallet.invalid", name = "", purpose = "",
+            disclose = ZkPassportField.entries.toSet(), minAge = 18,
+            nationalityIn = listOf("TWN"), nationalityOut = listOf("PRK"),
+            issuingCountryIn = listOf("TWN"), issuingCountryOut = listOf("PRK"),
+            customData = "offline",
+        )
         private const val ID_DATA = "sig_check_id_data"
         private const val FACEMATCH = "facematch"
 
