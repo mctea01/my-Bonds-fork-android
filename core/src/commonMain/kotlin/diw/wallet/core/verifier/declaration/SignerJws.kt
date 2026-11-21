@@ -47,18 +47,26 @@ class DidJwsSigner(private val key: AsymmetricKey, val did: String, private val 
 /**
  * Signs with a [DocumentSigner]: RS256 for RSA keys, ES256 for P-256 keys (the DER signature is converted to the JWS
  * form). SM2 keys are only used for OFD and cannot sign a JWS. The client identifier is x509_hash of the leaf.
+ * [chain] is what x5c carries, leaf first: the signer's own chain unless the caller completed it with the
+ * intermediates (TrustRegistry.chainToSend), since a card or key store often returns the leaf alone.
  */
-class CertificateJwsSigner(private val signer: DocumentSigner) : JwsSigner {
+class CertificateJwsSigner(
+    private val signer: DocumentSigner,
+    chain: List<ByteArray> = signer.certificateChain,
+) : JwsSigner {
     init {
         if (signer.keyType == SignerKeyType.SM2) throw ProtocolException("unsupported_key", "SM2 keys cannot sign a JWS")
         if (signer.certificateChain.isEmpty()) throw ProtocolException("unsupported_key", "The signer has no certificate")
+        if (chain.isEmpty() || !chain.first().contentEquals(signer.certificateChain.first())) {
+            throw ProtocolException("unsupported_key", "The chain must start with the signer's certificate")
+        }
     }
 
     override val alg: String get() = if (signer.keyType == SignerKeyType.RSA) "RS256" else "ES256"
-    override val certificateChain: List<ByteArray> get() = signer.certificateChain
+    override val certificateChain: List<ByteArray> = chain
     override val keyHeader: Map<String, JsonElement>
-        get() = mapOf("x5c" to kotlinx.serialization.json.buildJsonArray { signer.certificateChain.forEach { add(it.toBase64()) } })
-    override val clientId: String get() = x509HashClientId(signer.certificateChain.first())
+        get() = mapOf("x5c" to kotlinx.serialization.json.buildJsonArray { certificateChain.forEach { add(it.toBase64()) } })
+    override val clientId: String get() = x509HashClientId(certificateChain.first())
 
     override suspend fun sign(input: ByteArray): ByteArray {
         val signature = signer.sign(input)

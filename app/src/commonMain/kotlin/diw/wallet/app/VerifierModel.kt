@@ -250,12 +250,21 @@ class VerifierModel(private val model: WalletModel) {
         return DidJwsSigner(k.signingKey(), did, DidKeys.verificationMethod(did))
     }
 
-    /** Reads the X.509 key [choice] (a card is tapped here); SM2 keys and keys without a certificate are refused. */
+    /**
+     * Reads the X.509 key [choice] (a card is tapped here); SM2 keys and keys without a certificate are refused. The
+     * x5c it sends is completed with the intermediates up to, not including, the root ([TrustRegistry.chainToSend]):
+     * cards, key stores and PKCS#12 files often hold the leaf alone, and other wallets do not fetch the rest.
+     */
     suspend fun readX509(choice: SignerChoice): CertificateJwsSigner = try {
-        CertificateJwsSigner(model.files.signer(choice, tr(Res.string.ov_sign_hint)))
+        val signer = model.files.signer(choice, tr(Res.string.ov_sign_hint))
+        CertificateJwsSigner(signer, chainToSend(signer.certificateChain))
     } finally {
         model.files.busy.value = null
     }
+
+    private suspend fun chainToSend(chain: List<ByteArray>): List<ByteArray> = runCatching {
+        model.trust.chainToSend(chain.map { X509Cert(ByteString(it)) }).map { it.encoded.toByteArray() }
+    }.getOrNull()?.takeIf { it.isNotEmpty() } ?: chain
 
     /** The key that signs as [p]: its did:key, or the X.509 key in [keys] (whose certificate is remembered in [p]). */
     private suspend fun signer(p: VerifierProfile?, keys: VerifierKeys): JwsSigner {
@@ -333,8 +342,15 @@ class VerifierModel(private val model: WalletModel) {
         model.platform.keepScreenOn(false)
     }
 
-    /** Whether the configured server can relay (feature oid4vp), as far as the last check of it showed. */
+    /** The configured server, the one the mailbox route uses; whether it offers the mailbox is [serverOffersMailbox]. */
     fun serverRoute(): String? = model.server.base()
+
+    /**
+     * Whether [base] lists the OpenID4VP mailbox (feature oid4vp) at /info. The relay feature alone does not carry
+     * it, so a server set up before P5 answers 404 to the mailbox. Null when /info cannot be read.
+     */
+    suspend fun serverOffersMailbox(base: String): Boolean? =
+        runCatching { model.server.offers(base, ServerModel.FEATURE_OID4VP) }.getOrNull()
 
     fun start(ask: OnlineAsk, profile: VerifierProfile?, purpose: String, risk: RiskLevel, policy: VerificationPolicy, route: OnlineRoute, keys: VerifierKeys) {
         stop()
@@ -477,6 +493,9 @@ class VerifierModel(private val model: WalletModel) {
         verifierInfo: suspend (String, String) -> List<JsonObject>,
     ): Pair<OnlineRequest, Map<String, String>>? {
         val base = model.server.base() ?: throw ProtocolException("no_server", tr(Res.string.ov_no_server))
+        if (!model.server.offers(base, ServerModel.FEATURE_OID4VP)) {
+            throw ProtocolException("no_mailbox", tr(Res.string.ov_server_no_mailbox, hostOf(base)))
+        }
         val mailbox = Oid4vpMailboxClient(model.http, base, model.server.tokenFor(base))
         val session = mailbox.open()
         try {

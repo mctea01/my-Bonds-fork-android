@@ -2757,7 +2757,7 @@
     <string name="national_id_missing">This ID card cannot be found</string>
     <string name="national_id_missing_text">The card or its source file may have been deleted.</string>
     <string name="national_id_mobile_moica">Use the mobile citizen digital certificate instead</string>
-    <string name="national_id_mobile_moica_text">Sending a signing request needs a service provider (SP) account issued by the Ministry of the Interior; only the physical card can be used for now</string>
+    <string name="national_id_mobile_moica_text">Signs through a service provider (SP) account of the Ministry of the Interior: your server's, the built-in one or one you enter; you confirm twice in the mobile citizen certificate app</string>
     <string name="national_id_name_match">The name on the citizen digital certificate must match the name above; the verifier compares them.</string>
     <string name="national_id_number">National ID number</string>
     <string name="national_id_number_text">The MyData ID card PDF is encrypted with your national ID number. The number is only used to open this file and is never kept or logged.</string>
@@ -2773,6 +2773,7 @@
     <string name="national_id_sign_moica">Sign with a citizen digital certificate</string>
     <string name="national_id_signed">Signed with a citizen digital certificate, vc+moica</string>
     <string name="national_id_source">Source file</string>
+    <string name="national_id_use_card">Use the physical card instead</string>
     <string name="nfc_no_hce">This device does not support NFC card emulation</string>
     <string name="nfc_none">This device has no NFC</string>
     <string name="nfc_off">NFC is off. Turn it on in the system settings</string>
@@ -4882,6 +4883,7 @@
     <string name="ov_route_server_text">Your server %1$s keeps only the encrypted response until it is fetched</string>
     <string name="ov_route_server_title">Through your server</string>
     <string name="ov_scan">Ask the holder to scan this code with their wallet</string>
+    <string name="ov_server_no_mailbox">%1$s does not offer the online verification mailbox (feature oid4vp). Add oid4vp to DIW_FEATURES in its server.conf and restart it; the mailbox takes the token in oid4vp_token_sha256, or zktls_token_sha256 when that is unset. The local network route still works.</string>
     <string name="ov_start">Show the request</string>
     <string name="ov_summary">Asked for %1$s; accepted %2$s</string>
     <string name="ov_text">The request is signed with this wallet's key and can carry who you are and why you ask. The holder's wallet checks it before showing it.</string>

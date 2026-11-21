@@ -429,7 +429,7 @@ private enum class MobileMoicaSource(val title: org.jetbrains.compose.resources.
  * run only (kept in memory, never stored).
  */
 @Composable
-private fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
+internal fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> Unit) {
     val settings by model.settingsFlow.collectAsState()
     val manual = settings.manualMobileMoicaSp
     val builtIn = model.files.builtInMobileMoicaSp

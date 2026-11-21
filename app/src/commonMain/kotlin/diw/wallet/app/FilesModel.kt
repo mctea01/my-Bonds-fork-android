@@ -2816,6 +2816,13 @@ class FilesModel(private val model: WalletModel) {
     fun issueNationalId(draft: NationalIdDraft, card: SignerChoice.Card) =
         issueNationalId(draft, if (card.reader.external) tr(Res.string.step_signing) else tr(Res.string.step_sign_tap_again)) { cardSigner(card) }
 
+    /**
+     * Signs with the mobile citizen certificate through an SP account (the user's server, the built-in one or one typed
+     * in): the certificate is read with one approval in the app, the card is signed with a second.
+     */
+    fun issueNationalId(draft: NationalIdDraft, mobile: SignerChoice.MobileMoica) =
+        issueNationalId(draft, tr(Res.string.step_signing)) { mobileMoicaSigner(mobile, tr(Res.string.step_make_national_id)) }
+
     /** Signs with the RSA certificate [signer] gives (the card, read with its first tap); tests pass their own. */
     internal fun issueNationalId(draft: NationalIdDraft, signing: String, signer: suspend () -> DocumentSigner) = run(tr(Res.string.step_make_national_id)) {
         val f = file(draft.fileId) ?: throw SigningException(tr(Res.string.msg_id_file_missing))

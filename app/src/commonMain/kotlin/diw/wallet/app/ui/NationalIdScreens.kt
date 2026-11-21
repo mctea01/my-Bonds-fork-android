@@ -110,6 +110,8 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
     val draft by model.files.nationalIdDraft.collectAsState()
     var idNumber by remember { mutableStateOf("") }
     var card by remember { mutableStateOf<SignerChoice.Card?>(null) }
+    var useMobile by remember { mutableStateOf(false) }
+    var mobile by remember { mutableStateOf<SignerChoice.MobileMoica?>(null) }
     LaunchedEffect(screen.fileId) {
         if (model.files.nationalIdDraft.value?.fileId != screen.fileId) model.files.nationalIdDraft.value = null
         // An ID number the wallet already knows (a national ID card, the saved MyData details) opens it at once.
@@ -149,11 +151,22 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
             ),
         )
         SectionTitle(stringResource(Res.string.national_id_sign_moica))
-        CardPicker(model) { card = it }
-        ActionRow(WalletIcons.Phone, stringResource(Res.string.national_id_mobile_moica), stringResource(Res.string.national_id_mobile_moica_text), enabled = false) {}
+        if (!useMobile) {
+            CardPicker(model) { card = it }
+            ActionRow(WalletIcons.Phone, stringResource(Res.string.national_id_mobile_moica), stringResource(Res.string.national_id_mobile_moica_text)) { useMobile = true }
+        } else {
+            // The same choice of SP account as signing a file: the user's server, the built-in account or one typed in.
+            MobileMoicaPicker(model) { mobile = it as? SignerChoice.MobileMoica }
+            TextButton(onClick = { useMobile = false; mobile = null }) { Text(stringResource(Res.string.national_id_use_card)) }
+        }
         BusyLine(busy, error)
         WrapRow() {
-            Button(onClick = { card?.let { model.files.issueNationalId(d, it) } }, enabled = busy == null && card != null) { Text(stringResource(Res.string.national_id_sign_make)) }
+            Button(
+                onClick = {
+                    if (useMobile) mobile?.let { model.files.issueNationalId(d, it) } else card?.let { model.files.issueNationalId(d, it) }
+                },
+                enabled = busy == null && (if (useMobile) mobile != null else card != null),
+            ) { Text(stringResource(Res.string.national_id_sign_make)) }
             OutlinedButton(onClick = { model.files.nationalIdDraft.value = null }, enabled = busy == null) { Text(stringResource(Res.string.national_id_reenter)) }
         }
     }

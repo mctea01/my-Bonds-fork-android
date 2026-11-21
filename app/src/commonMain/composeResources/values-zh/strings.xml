@@ -2757,7 +2757,7 @@
     <string name="national_id_missing">找不到這張身分證卡</string>
     <string name="national_id_missing_text">卡片或它的來源檔案可能已刪除。</string>
     <string name="national_id_mobile_moica">改用行動自然人憑證</string>
-    <string name="national_id_mobile_moica_text">需要內政部核發的服務提供者（SP）帳號才能發出簽章請求，目前只能使用實體卡</string>
+    <string name="national_id_mobile_moica_text">經內政部服務提供者（SP）帳號簽署：你的服務端、App 內建或自行輸入的帳號；需在行動自然人憑證 App 確認兩次</string>
     <string name="national_id_name_match">自然人憑證上的姓名必須與上面的姓名相同，查驗方會比對。</string>
     <string name="national_id_number">身分證統一編號</string>
     <string name="national_id_number_text">MyData 的身分證資料 PDF 以你的身分證統一編號加密。編號只用來開啟這份檔案，不會保存或記錄。</string>
@@ -2773,6 +2773,7 @@
     <string name="national_id_sign_moica">以自然人憑證簽署</string>
     <string name="national_id_signed">自然人憑證簽署、vc+moica</string>
     <string name="national_id_source">來源檔案</string>
+    <string name="national_id_use_card">改用實體卡</string>
     <string name="nfc_no_hce">此裝置不支援 NFC 卡片模擬</string>
     <string name="nfc_none">此裝置沒有 NFC</string>
     <string name="nfc_off">NFC 未開啟，請到系統設定開啟</string>
@@ -4882,6 +4883,7 @@
     <string name="ov_route_server_text">你的服務端 %1$s 只暫存加密的回應，取回即刪除</string>
     <string name="ov_route_server_title">經服務端轉送</string>
     <string name="ov_scan">請持卡人用錢包掃描這個 QR Code</string>
+    <string name="ov_server_no_mailbox">%1$s 沒有開啟線上查驗轉送（oid4vp 功能）：請在它的 server.conf 的 DIW_FEATURES 加上 oid4vp 後重新啟動；轉送使用 oid4vp_token_sha256 的權杖，未設定時沿用 zktls_token_sha256。區網直連仍可使用。</string>
     <string name="ov_start">產生請求</string>
     <string name="ov_summary">要求：%1$s；接受：%2$s</string>
     <string name="ov_text">請求以本錢包的金鑰簽署，可附上你的身分與目的；持卡人的錢包會先驗證再顯示。</string>
