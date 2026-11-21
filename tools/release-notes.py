@@ -100,6 +100,18 @@ def main():
         "",
     ]
 
+    native = [
+        (f"DIW-MY-WALLET-{v}-windows-x64-native.zip", "Windows 10、11 x64：解壓後執行 `diw-desktop.exe`"),
+        (f"DIW-MY-WALLET-{v}-linux-x64-native.tar.gz", "Linux x86_64：解壓後執行 `diw-desktop`，需要與建置主機（GitHub ubuntu-latest）同樣新或更新的系統"),
+    ]
+    rows = [(link(n), what) for n, what in native if n in files]
+    if rows:
+        out += ["<details><summary>實驗版：原生執行檔（不需要 Java，啟動較快）</summary>", "",
+                "GraalVM 編成的原生執行檔，尚在實驗，問題請以上方的安裝檔為準；不需要安裝，資料與安裝版共用（兩者不能同時開啟）。", "",
+                "| 檔案 | 說明 |", "|---|---|"]
+        out += [f"| {f} | {what} |" for f, what in rows]
+        out += ["", "</details>", ""]
+
     others = [
         (f"DIW-MY-WALLET-{v}.apks", "分割 APK 組（與 Google Play 相同的分割），用 `bundletool install-apks` 或 SAI 安裝"),
         (f"DIW-MY-WALLET-{v}.aab", "Google Play 用的 App Bundle，不能直接安裝"),
