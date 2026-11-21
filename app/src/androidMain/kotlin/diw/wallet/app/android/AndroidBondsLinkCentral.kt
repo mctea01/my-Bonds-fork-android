@@ -59,6 +59,9 @@ class AndroidBondsLinkCentral(private val context: Context, private val activity
         return null
     }
 
+    override suspend fun permissionPending(): Boolean =
+        manager?.adapter != null && permissions.any { context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED }
+
     private sealed interface Event {
         class Found(val device: BluetoothDevice) : Event
         data class ScanFailed(val code: Int) : Event

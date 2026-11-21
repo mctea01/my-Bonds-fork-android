@@ -304,10 +304,18 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         } else {
             urls.complete(emptyList())
         }
-        val central = model.platform.bondsLinkCentral?.takeIf { runCatching { it.unavailableReason() }.getOrNull() == null }
+        // A permission asked for just now may still be granted during the request: the link names the service anyway,
+        // and the scan starts once the person allowed it.
+        val central = model.platform.bondsLinkCentral?.let { c ->
+            val usable = runCatching { c.unavailableReason() }.getOrNull() == null
+            c.takeIf { usable || runCatching { c.permissionPending() }.getOrDefault(false) }
+        }
         val service = central?.let { ZkPassportDiwNearby.newServiceId() }
         if (central != null && service != null) {
             launch {
+                while (runCatching { central.permissionPending() }.getOrDefault(false)) delay(1000)
+                // Denied, or Bluetooth is off once allowed: the link's other ways remain.
+                if (runCatching { central.unavailableReason() }.getOrNull() != null) return@launch
                 // The holder advertises only once its answer is ready; a failed or foreign exchange starts the scan again.
                 while (isActive) {
                     try {

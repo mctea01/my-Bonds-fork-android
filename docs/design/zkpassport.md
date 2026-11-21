@@ -384,7 +384,7 @@ Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：�
 
 傳輸（兩支本錢包之間，擴充參數）：
 
-- 查驗端在請求期間於本機所有區網位址監聽（`BondsLanLink.serve`，與 Bonds 區網相同的規則：純 http、私有 IPv4、最多 4 個位址、隨機路徑），Android 另以 Bonds BLE central 掃描一次性的服務 UUID。連結附上 `diw_lan`（以逗號分隔的位址）與 `diw_ble`（UUID）。有附近的方式時 QR 立即顯示，不必等 bridge 連上；bridge 與 relay 都放棄時，只要附近還在等待就不判定失敗。
+- 查驗端在請求期間於本機所有區網位址監聽（`BondsLanLink.serve`，與 Bonds 區網相同的規則：純 http、私有 IPv4、最多 4 個位址、隨機路徑），Android 另以 Bonds BLE central 掃描一次性的服務 UUID（藍牙權限剛被請求、尚未回覆時連結照樣附上 UUID，使用者允許後才開始掃描；拒絕或藍牙關閉時只剩其他方式）。連結附上 `diw_lan`（以逗號分隔的位址）與 `diw_ble`（UUID）。有附近的方式時 QR 立即顯示，不必等 bridge 連上；bridge 與 relay 都放棄時，只要附近還在等待就不判定失敗。
 - 持有端的順序：relay、附近、bridge。附近先探測區網位址（任何 HTTP 回覆都算到得了，每個 3 秒），都不行再看藍牙是否可用；選定後同意畫面標示「近距離請求：無法由連線確認查驗方網域」，接受前一律要強提示確認，因為沒有來源可比對。
 - 一次交換：持有端把要送的 bridge 訊框（先 handshake，再 `accept`、各個 `proof`、`done`，或 `reject`、`error`）全部收齊，包成 `{"t":"diw-zkpassport-nearby","v":1,"frames":[...]}` 一次送出（區網 POST，或 BLE 的 Bonds 分段），上限 1 MB（BLE 連結的上限）。查驗端逐框交給同一個 bridge 協定物件解密，回 `{"received":true}` 後在背景驗證；同一份再送一次照樣回收到，不是這個請求的內容回 `error`。區網送不出去時改走藍牙。內容以請求的金鑰端到端加密，網路與無線電只看到密文。
 - 設定的「接受附近本錢包的回應」（預設開啟）關閉時，查驗端不監聽區網也不掃描藍牙。
