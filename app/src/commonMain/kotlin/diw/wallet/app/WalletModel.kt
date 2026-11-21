@@ -245,6 +245,11 @@ data class WalletSettings(
     /** Let zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
     val zkPassportVerifierApi: Boolean = false,
     /**
+     * zkPassport requests also take an answer of another copy of this wallet nearby, over the local network and
+     * (Android) BLE, without the Internet (docs/design/zkpassport.md 5.8).
+     */
+    val zkPassportNearby: Boolean = true,
+    /**
      * Apps whose key attested FaceMatch proofs zkPassport checks accept, one per line: the package name, then the
      * SHA-256 (hex) of its signing certificates, separated by spaces.
      */

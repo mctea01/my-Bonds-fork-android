@@ -330,6 +330,10 @@ sealed class OfflineUi {
         val request: diw.wallet.core.zkpassport.ZkPassportRequest,
         val url: String?,
         val state: diw.wallet.core.zkpassport.ZkPassportState,
+        /** Ways another copy of this wallet can answer besides zkPassport's bridge (relay, local network, BLE). */
+        val routes: List<String> = emptyList(),
+        /** The local network addresses listened on, for the technical details. */
+        val lanUrls: List<String> = emptyList(),
     ) : OfflineUi()
 
     /** The zkPassport check's outcome, or why there is none ([error]). */
@@ -352,6 +356,7 @@ sealed class OfflineUi {
         val originMatches: Boolean,
         val passports: List<StoredFile>,
         val unsupported: String?,
+        val channel: diw.wallet.core.zkpassport.ZkPassportChannel = diw.wallet.core.zkpassport.ZkPassportChannel.BRIDGE,
     ) : OfflineUi()
 
     /**

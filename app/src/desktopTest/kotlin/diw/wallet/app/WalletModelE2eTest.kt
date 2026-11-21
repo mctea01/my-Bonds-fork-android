@@ -2842,7 +2842,7 @@ class WalletModelE2eTest {
         var rejected = 0
         var origin = "https://verify.example.org"
         var failure: String? = null
-        override suspend fun connect(incoming: diw.wallet.core.zkpassport.ZkPassportIncoming, rpc: String?): diw.wallet.core.zkpassport.ZkPassportAnswer {
+        override suspend fun connect(incoming: diw.wallet.core.zkpassport.ZkPassportIncoming, rpc: String?, nearby: diw.wallet.core.zkpassport.ZkPassportNearbyLink?): diw.wallet.core.zkpassport.ZkPassportAnswer {
             this.incoming.add(incoming)
             failure?.let { throw diw.wallet.core.zkpassport.ZkPassportAnswerFailure(it) }
             val from = origin

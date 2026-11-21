@@ -30,7 +30,21 @@ import diw.wallet.core.zkpassport.ZkPassportResult
 import diw.wallet.core.zkpassport.ZkPassportSession
 import diw.wallet.core.zkpassport.ZkPassportState
 import io.ktor.http.Url
+import diw.wallet.core.zkpassport.ZkPassportChannel
+import diw.wallet.core.zkpassport.ZkPassportDiwNearby
+import diw.wallet.core.zkpassport.ZkPassportNearbyLink
+import diw.wallet.core.zkpassport.ZkPassportResponder
+import diw.wallet.core.zktls.ZkTlsTransport
+import diw.wallet.core.profile.bonds.postFirstFrom
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CompletableDeferred
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.cancelChildren
+import kotlinx.coroutines.coroutineScope
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.withTimeoutOrNull
+import kotlin.time.Duration.Companion.seconds
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -89,6 +103,78 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         model.scope.launch { runCatching { prover.end() } }
     }
 
+    /** What preparing offline use is doing now; null when idle. */
+    val offlineProgress = MutableStateFlow<String?>(null)
+    /** Changes whenever what is kept for offline use may have changed, so the settings read it again. */
+    val offlineStamp = MutableStateFlow(0)
+
+    /**
+     * What this device keeps for offline zkPassport checks, in one line: the registry state's date and the files kept;
+     * null when nothing is kept.
+     */
+    fun offlineSummary(): String? {
+        val state = model.platform.zk?.zkPassport?.offlineState(false) ?: return null
+        val date = state.certificateRootAt?.let { kotlin.time.Instant.fromEpochSeconds(it).toString().substringBefore('T') } ?: "-"
+        val megabytes = ((state.bytes + 524_288) / 1_048_576).toString()
+        return tr(Res.string.zkp_offline_summary, date, state.files, megabytes, state.versions.joinToString(", ").ifEmpty { "-" })
+    }
+
+    /**
+     * Fetches ahead what checks and answers without the Internet take (5.8): the registry state and the current
+     * manifest for verifying (mainnet, and Sepolia in the test environment), then for each stored passport the
+     * packaged circuits answering this wallet's requests with it takes, when this device proves itself.
+     */
+    fun prepareOffline() {
+        if (!model.legal.enabled(Integration.ZKPASSPORT)) {
+            model.message.value = model.legal.disabledMessage(Integration.ZKPASSPORT)
+            return
+        }
+        val verifier = model.platform.zk?.zkPassport ?: run {
+            model.message.value = tr(Res.string.zkp_no_engine)
+            return
+        }
+        if (offlineProgress.value != null) return
+        val settings = model.settings
+        val config = ZkPassportConfig(
+            mainnetRpc = settings.zkPassportMainnetRpc.trim().ifEmpty { null },
+            sepoliaRpc = settings.zkPassportSepoliaRpc.trim().ifEmpty { null },
+        )
+        offlineProgress.value = tr(Res.string.zkp_offline_registry)
+        model.scope.launch {
+            try {
+                for (dev in listOf(false) + listOfNotNull(true.takeIf { settings.testEnvironment })) verifier.prepareOffline(dev, config)
+                val holder = model.platform.zk?.zkPassportHolder
+                var circuits = 0
+                var passports = 0
+                if (holder != null && deviceCanProve() != false) {
+                    for (file in passports()) {
+                        val chip = chip(file) ?: continue
+                        offlineProgress.value = tr(Res.string.zkp_offline_passport, file.name)
+                        circuits = maxOf(circuits, holder.prepareOffline(chip, false, config.mainnetRpc) { p ->
+                            if (p is ZkPassportAnswerProgress.Circuits) offlineProgress.value = tr(Res.string.zkp_offline_circuits, file.name, p.count)
+                        })
+                        passports++
+                    }
+                }
+                model.message.value = if (passports > 0) tr(Res.string.zkp_offline_done_passports, passports, circuits) else tr(Res.string.zkp_offline_done)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                model.message.value = tr(Res.string.zkp_offline_failed, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"))
+            } finally {
+                offlineProgress.value = null
+                offlineStamp.value++
+            }
+        }
+    }
+
+    /** Deletes what is kept for offline use; requests download it again when online. */
+    fun clearOffline() {
+        model.platform.zk?.zkPassport?.clearOffline()
+        offlineStamp.value++
+        model.message.value = tr(Res.string.zkp_offline_cleared)
+    }
+
     /** Where an answer can be proved: this device, the self-hosted prover when set, the paired one when paired. */
     fun targets(): List<ZkPassportProverTarget> = buildList {
         add(ZkPassportProverTarget.Device)
@@ -138,30 +224,95 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         model.screen.value = Screen.Offline
         ui.value = OfflineUi.ZkPassportWaiting(request, null, ZkPassportState.Connecting)
         model.platform.keepScreenOn(true)
+        // Another copy of this wallet may answer through the user's relay (DIW extension, 5.7).
+        val relay = model.server.relaysForVerifier().firstOrNull()?.let { runCatching { ZkTlsTransport.relayAddress(it) }.getOrNull() }
         job = model.scope.launch {
-            val opened = engine.open(request, config.copy(cscaAnchors = cscaAnchors(), oprfKeyHash = oprfKeyHash()), model.scope)
-            session = opened
-            try {
-                var url: String? = null
-                opened.state.takeWhile { s ->
-                    when (s) {
-                        is ZkPassportState.Waiting -> url = s.url
-                        is ZkPassportState.Scanned -> url = s.url
-                        else -> {}
-                    }
-                    when (s) {
-                        is ZkPassportState.Done -> show(request, s.result, null)
-                        ZkPassportState.Rejected -> show(request, null, tr(Res.string.zkp_rejected))
-                        is ZkPassportState.Failed -> show(request, null, failure(s.code, s.detail))
-                        else -> ui.value = OfflineUi.ZkPassportWaiting(request, url, s)
-                    }
-                    s !is ZkPassportState.Done && s != ZkPassportState.Rejected && s !is ZkPassportState.Failed
-                }.collect {}
-            } finally {
-                opened.close()
-                model.platform.keepScreenOn(false)
+            coroutineScope {
+                val ready = CompletableDeferred<ZkPassportSession>()
+                val nearby = if (settings.zkPassportNearby) listenNearby(ready) else null
+                val routes = listOfNotNull(
+                    relay?.let { tr(Res.string.zkp_route_relay, hostOf(it)) },
+                    nearby?.lan?.takeIf { it.isNotEmpty() }?.let { tr(Res.string.zkp_route_lan) },
+                    nearby?.ble?.let { tr(Res.string.zkp_route_ble) },
+                )
+                val opened = engine.open(
+                    request,
+                    config.copy(cscaAnchors = cscaAnchors(), oprfKeyHash = oprfKeyHash(), diwRelay = relay, diwNearby = nearby),
+                    model.scope,
+                )
+                session = opened
+                ready.complete(opened)
+                try {
+                    var url: String? = null
+                    opened.state.takeWhile { s ->
+                        when (s) {
+                            is ZkPassportState.Waiting -> url = s.url
+                            is ZkPassportState.Scanned -> url = s.url
+                            else -> {}
+                        }
+                        when (s) {
+                            is ZkPassportState.Done -> show(request, s.result, null)
+                            ZkPassportState.Rejected -> show(request, null, tr(Res.string.zkp_rejected))
+                            is ZkPassportState.Failed -> show(request, null, failure(s.code, s.detail))
+                            else -> ui.value = OfflineUi.ZkPassportWaiting(request, url, s, routes, nearby?.lan.orEmpty())
+                        }
+                        s !is ZkPassportState.Done && s != ZkPassportState.Rejected && s !is ZkPassportState.Failed
+                    }.collect {}
+                } finally {
+                    opened.close()
+                    model.platform.keepScreenOn(false)
+                    // The local network listener and the BLE scan end with the request.
+                    coroutineContext.cancelChildren()
+                }
             }
         }
+    }
+
+    /**
+     * Starts listening for a nearby answer of another copy of this wallet (DIW extension, 5.8): on this device's local
+     * network addresses (every card, as the holder's phone may share any of them) and, where the platform has the
+     * Bonds BLE central and it can be used now, on a one-time BLE service. Whatever arrives goes to the session once
+     * [ready]. Returns what the request link names, or null when neither way is open.
+     */
+    private suspend fun CoroutineScope.listenNearby(ready: CompletableDeferred<ZkPassportSession>): ZkPassportDiwNearby? {
+        val lan = model.platform.bondsLan
+        val interfaces = lan?.let { runCatching { it.localInterfaces() }.getOrNull() }.orEmpty().take(ZkPassportDiwNearby.MAX_LAN)
+        val urls = CompletableDeferred<List<String>>()
+        if (lan != null && interfaces.isNotEmpty()) {
+            launch {
+                try {
+                    lan.serve(interfaces.map { it.address }, ZkPassportDiwNearby.newPath(), ZkPassportDiwNearby.MAX_PAYLOAD, onListening = { urls.complete(it) }) { body ->
+                        val reply = ready.await().nearby(body)
+                        // Anything that is not this request's answer (another device on the network) keeps the listener open.
+                        reply to (diw.wallet.core.zkpassport.ZkPassportNearbyPayload.replyError(reply) == null)
+                    }
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (_: Exception) {
+                    urls.complete(emptyList())
+                }
+            }
+        } else {
+            urls.complete(emptyList())
+        }
+        val central = model.platform.bondsLinkCentral?.takeIf { runCatching { it.unavailableReason() }.getOrNull() == null }
+        val service = central?.let { ZkPassportDiwNearby.newServiceId() }
+        if (central != null && service != null) {
+            launch {
+                // The holder advertises only once its answer is ready; a failed or foreign exchange starts the scan again.
+                while (isActive) {
+                    try {
+                        central.receive(service, ZkPassportDiwNearby.MAX_PAYLOAD, onProgress = {}) { body -> ready.await().nearby(body) }
+                    } catch (e: CancellationException) {
+                        throw e
+                    } catch (_: Exception) {
+                        delay(1000)
+                    }
+                }
+            }
+        }
+        val lanUrls = withTimeoutOrNull(5_000) { urls.await() }.orEmpty()
+        return ZkPassportDiwNearby(lanUrls, service).takeUnless { it.isEmpty }
     }
 
     /** This wallet's CSCA anchors (production and the user's own), as DER. */
@@ -194,9 +345,15 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             return
         }
         ui.value = OfflineUi.ZkPassportAnswerConnecting(incoming)
+        // Under "own server only" a relay on another server is not used; the bridge or a nearby way still are.
+        val own = model.server.base()
+        val allowed = incoming.diwRelay?.takeIf { r ->
+            model.server.policy != ServerPolicy.OWN_ONLY || (own != null && ZkTlsTransport.sameRelay(r.url, own))
+        }
+        val routed = incoming.copy(diwRelay = allowed)
         job = model.scope.launch {
             val opened = try {
-                holder.connect(incoming, rpc(incoming))
+                holder.connect(routed, rpc(incoming), routed.diwNearby?.let { nearbyLink(it) })
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -206,7 +363,54 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             answer = opened
             ui.value = OfflineUi.ZkPassportAnswerConsent(
                 incoming, opened.origin, opened.originMatches, passports(), unsupported(incoming, model.platform.faceMatch != null),
+                opened.channel,
             )
+        }
+    }
+
+    /**
+     * The holder's way to a requester of this wallet nearby (5.8): one of its local network addresses this phone
+     * reaches (any HTTP reply counts), else its BLE service when this phone's Bonds BLE link can be used now. The
+     * answer goes the probed way, and over BLE when the network fails at delivery.
+     */
+    private fun nearbyLink(nearby: ZkPassportDiwNearby): ZkPassportNearbyLink = object : ZkPassportNearbyLink {
+        private var url: String? = null
+
+        override suspend fun probe(): String? {
+            val lan = model.platform.bondsLan
+            if (lan != null && nearby.lan.isNotEmpty()) {
+                for (u in lan.preferred(nearby.lan)) {
+                    val reached = runCatching { lan.exchange(u, null, null, null, PROBE_TIMEOUT) }.isSuccess
+                    if (reached) {
+                        url = u
+                        return ZkPassportResponder.NEARBY_LAN
+                    }
+                }
+            }
+            return if (ble()) ZkPassportResponder.NEARBY_BLE else null
+        }
+
+        private suspend fun ble(): Boolean = nearby.ble != null &&
+            model.platform.bondsLink?.let { runCatching { it.unavailableReason() }.getOrNull() == null } == true
+
+        override suspend fun deliver(payload: ByteArray, onProgress: (String) -> Unit): ByteArray {
+            val lan = model.platform.bondsLan
+            val first = url
+            if (lan != null && first != null) {
+                try {
+                    val (status, text, _) = lan.postFirstFrom(listOf(first) + (nearby.lan - first), payload, SEND_TIMEOUT)
+                    if (status in 200..299) return text.encodeToByteArray()
+                } catch (e: CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    if (!ble()) throw e
+                }
+            }
+            val link = model.platform.bondsLink ?: throw ZkPassportAnswerFailure("nearby_unavailable")
+            val service = nearby.ble ?: throw ZkPassportAnswerFailure("nearby_unavailable")
+            val reply = link.exchange(service, payload, onProgress) ?: throw ZkPassportAnswerFailure("nearby_ble")
+            // An empty reply is a receipt without a verdict.
+            return if (reply.isEmpty()) diw.wallet.core.zkpassport.ZkPassportNearbyPayload.reply() else reply
         }
     }
 
@@ -222,11 +426,11 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 // The comparison comes before the request is accepted, so a failed one sends the requester nothing.
                 val face = incoming.faceMatchMode?.let { faceEvidence(chip, incoming, it == "strict") }
                 a.answer(chip, target, face) { p -> ui.value = OfflineUi.ZkPassportAnswerProving(incoming, p) }
-                answered(incoming, a.origin, file, null, target)
+                answered(incoming, whereFrom(a), file, null, target)
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                answered(incoming, a.origin, file, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"), target)
+                answered(incoming, whereFrom(a), file, answerFailure((e as? ZkPassportAnswerFailure)?.code ?: "other"), target)
             } finally {
                 a.close()
                 if (answer === a) answer = null
@@ -279,7 +483,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             ui.value = OfflineUi.ZkPassportAnswerDone(incoming, false, null)
             model.record(
                 HistoryKind.DECLINED, incoming.domain, null, emptyList(), asks(incoming.query),
-                tr(Res.string.zkp_answer_history_note, a.origin),
+                tr(Res.string.zkp_answer_history_note, whereFrom(a)),
             )
         }
     }
@@ -292,6 +496,13 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 (targetAddress(target)?.let { tr(Res.string.zkp_answer_history_remote, it) } ?: ""),
             error,
         )
+    }
+
+    /** Where the request came from, for the history: the origin, or the nearby way, which reports none. */
+    private fun whereFrom(a: ZkPassportAnswer): String = when (a.channel) {
+        ZkPassportChannel.DIW_LAN -> tr(Res.string.zkp_route_lan)
+        ZkPassportChannel.DIW_BLE -> tr(Res.string.zkp_route_ble)
+        else -> a.origin
     }
 
     /** The Ethereum node for the registries of the request's chain; null uses the built-in one. */
@@ -353,7 +564,14 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         )
     }
 
+    private fun hostOf(url: String): String = runCatching { Url(url).host }.getOrDefault(url)
+
     companion object {
+        /** How long a local network address may take to answer before the next one, or BLE, is tried. */
+        private val PROBE_TIMEOUT = 3.seconds
+        /** The whole answer over the local network; a phone's Wi-Fi carries a few hundred kilobytes in seconds. */
+        private val SEND_TIMEOUT = 60.seconds
+
         /** Fields the setup screen offers; the document type and issuing country are always disclosed. */
         val OPTIONAL_FIELDS = listOf(
             ZkPassportField.FULLNAME, ZkPassportField.NATIONALITY, ZkPassportField.BIRTHDATE,
@@ -410,8 +628,8 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
         }.map { e ->
             when {
                 e == "native_unavailable" -> tr(Res.string.zkp_err_native)
-                e == "registry_unreachable" -> tr(Res.string.zkp_err_registry)
-                e == "manifest_unavailable" || e == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn)
+                e == "registry_unreachable" -> tr(Res.string.zkp_err_registry) + "\n" + tr(Res.string.zkp_offline_hint)
+                e == "manifest_unavailable" || e == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn) + "\n" + tr(Res.string.zkp_offline_hint)
                 e.startsWith("certificate_root") -> tr(Res.string.zkp_err_certificate_root)
                 e.startsWith("circuit_root") || e.startsWith("manifest") || e.startsWith("vkey:") -> tr(Res.string.zkp_err_circuit_root)
                 e.startsWith("backend_legacy:") -> tr(Res.string.zkp_err_backend_legacy, e.substringAfter(':'))
@@ -630,8 +848,9 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             code == "crs_missing" -> tr(Res.string.zkp_answer_err_crs)
             code == "inputs" -> tr(Res.string.zkp_answer_err_inputs)
             code.startsWith("inputs:") -> tr(Res.string.zkp_answer_err_inputs) + "\n" + tr(Res.string.zkp_answer_err_reason, code.substringAfter(':'))
-            code.startsWith("registry") -> tr(Res.string.zkp_err_registry)
-            code == "manifest_unavailable" || code == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn)
+            code.startsWith("nearby") -> tr(Res.string.zkp_answer_err_nearby, code)
+            code.startsWith("registry") -> tr(Res.string.zkp_err_registry) + "\n" + tr(Res.string.zkp_offline_hint)
+            code == "manifest_unavailable" || code == "circuit_unavailable" -> tr(Res.string.zkp_err_cdn) + "\n" + tr(Res.string.zkp_offline_hint)
             code == "certificates_unavailable" -> tr(Res.string.zkp_answer_err_certificates)
             code.endsWith("_root") || code.startsWith("vkey:") -> tr(Res.string.zkp_answer_err_circuit)
             else -> tr(Res.string.zkp_answer_err_other, code)

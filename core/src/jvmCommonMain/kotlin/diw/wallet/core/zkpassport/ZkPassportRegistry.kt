@@ -27,8 +27,10 @@ import java.util.zip.GZIPInputStream
 /**
  * zkPassport's registries: circuit manifests and packaged circuits from its CDN, and root validity from the root
  * registry contract over Ethereum JSON-RPC. Manifests and verification keys are cached under [cache] so a version
- * seen once verifies offline except for the registry calls; nothing fetched is trusted before the native checker
- * hashed it against the registry.
+ * seen once verifies offline; nothing fetched is trusted before the native checker hashed it against the registry.
+ * For offline use (docs/design/zkpassport.md 5.8) the registry's answers are recorded too: a root found valid, and
+ * the latest certificate root, with the time of the check. When the node cannot be reached, [rootStatus] and
+ * [latestRoot] fall back to that record and say how old it is; a root never found valid is never taken from it.
  */
 class ZkPassportRegistry(private val http: HttpClient, private val cache: File) {
     class Unreachable(val code: String) : IOException(code)
@@ -175,21 +177,93 @@ class ZkPassportRegistry(private val http: HttpClient, private val cache: File) 
         runCatching { fileFor(url).delete() }
     }
 
-    /** `latestRoot(registryId)` on the root registry, as 0x and 64 hex digits. */
-    suspend fun latestRoot(chain: Long, rpc: String?, registry: Int): String {
-        val result = call(chain, rpc, LATEST_ROOT + word(registry.toString(16)))
+    /** A registry answer and, when it came from this device's record because the node could not be reached, its time. */
+    data class Answer<T>(val value: T, val asOf: Long? = null)
+
+    /**
+     * `latestRoot(registryId)` on the root registry, as 0x and 64 hex digits. Offline, the latest root recorded
+     * here, with the time it was read.
+     */
+    suspend fun latestRoot(chain: Long, rpc: String?, registry: Int): String = latestRootStatus(chain, rpc, registry).value
+
+    suspend fun latestRootStatus(chain: Long, rpc: String?, registry: Int, nowSeconds: Long = now()): Answer<String> {
+        val record = cached("latest-$chain-$registry.txt")
+        val result = try {
+            call(chain, rpc, LATEST_ROOT + word(registry.toString(16)))
+        } catch (e: Unreachable) {
+            return recorded(record)?.let { (root, at) -> Answer(root, at) } ?: throw e
+        }
         val hex = result.removePrefix("0x").lowercase()
         if (hex.length != 64 || hex.any { it !in "0123456789abcdef" } || hex.all { it == '0' }) throw Unreachable("registry_unreachable")
-        return "0x$hex"
+        runCatching { record.writeText("0x$hex $nowSeconds") }
+        return Answer("0x$hex")
     }
 
     private fun word(hex: String) = hex.removePrefix("0x").lowercase().padStart(64, '0')
 
     /** `isRootValid(registryId, root, timestamp)` on the root registry. */
-    suspend fun rootValid(chain: Long, rpc: String?, registry: Int, root: String, timestamp: Long): Boolean {
+    suspend fun rootValid(chain: Long, rpc: String?, registry: Int, root: String, timestamp: Long): Boolean =
+        rootStatus(chain, rpc, registry, root, timestamp).value
+
+    /**
+     * [rootValid], recording a valid answer. When the node cannot be reached, a root this device found valid before
+     * counts as valid as of that check; any other root still fails as unreachable.
+     */
+    suspend fun rootStatus(chain: Long, rpc: String?, registry: Int, root: String, timestamp: Long, nowSeconds: Long = now()): Answer<Boolean> {
+        val name = root.lowercase().removePrefix("0x").takeIf { r -> r.length in 1..64 && r.all { it in "0123456789abcdef" } }
+        val record = name?.let { cached("valid-$chain-$registry-$it.txt") }
         val data = IS_ROOT_VALID + word(registry.toString(16)) + word(root) + word(timestamp.toString(16))
-        val result = call(chain, rpc, data)
-        return result.removePrefix("0x").toBigIntegerOrNull(16)?.let { it == java.math.BigInteger.ONE } == true
+        val result = try {
+            call(chain, rpc, data)
+        } catch (e: Unreachable) {
+            val at = record?.takeIf { it.isFile }?.let { runCatching { it.readText().trim().toLong() }.getOrNull() } ?: throw e
+            return Answer(true, at)
+        }
+        val valid = result.removePrefix("0x").toBigIntegerOrNull(16)?.let { it == java.math.BigInteger.ONE } == true
+        if (record != null) runCatching { if (valid) record.writeText(nowSeconds.toString()) else record.delete() }
+        return Answer(valid)
+    }
+
+    /** The recorded latest root and the time it was read. */
+    private fun recorded(file: File): Pair<String, Long>? = runCatching {
+        if (!file.isFile) return null
+        val (root, at) = file.readText().trim().split(' ').takeIf { it.size == 2 } ?: return null
+        if (!Regex("0x[0-9a-f]{64}").matches(root)) return null
+        root to at.toLong()
+    }.getOrNull()
+
+    private fun now() = System.currentTimeMillis() / 1000
+
+    /**
+     * What this device has recorded for offline use on [chain]: the latest certificate root and its time, whether
+     * that root's certificate package is here, the manifest versions kept and the number of packaged circuits.
+     */
+    fun offlineRecord(chain: Long): OfflineRecord {
+        val latest = recorded(cached("latest-$chain-$CERTIFICATE_REGISTRY.txt"))
+        val files = cache.listFiles().orEmpty()
+        return OfflineRecord(
+            latestRoot = latest?.first,
+            latestAt = latest?.second,
+            certificates = latest?.first?.let { File(cache, "certificates-$chain-$it.json").isFile } == true,
+            manifests = files.mapNotNull { f -> f.name.removePrefix("manifest-$chain-").takeIf { it != f.name }?.removeSuffix(".json") }.sorted(),
+            files = files.count { it.name.startsWith("file-") },
+            bytes = files.sumOf { it.length() },
+        )
+    }
+
+    data class OfflineRecord(
+        val latestRoot: String?,
+        val latestAt: Long?,
+        val certificates: Boolean,
+        val manifests: List<String>,
+        /** Registry files kept by address: certificate packages, manifests and packaged circuits. */
+        val files: Int,
+        val bytes: Long,
+    )
+
+    /** Deletes everything kept here, the offline record included. */
+    fun clear() {
+        cache.listFiles().orEmpty().forEach { runCatching { it.delete() } }
     }
 
     /** An `eth_call` to the root registry; the hex result. */
