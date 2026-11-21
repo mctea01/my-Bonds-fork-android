@@ -423,6 +423,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 e.startsWith("date_expired") -> tr(Res.string.zkp_err_date_expired)
                 e.startsWith("date_future") -> tr(Res.string.zkp_err_date_future)
                 e == "mock" -> tr(Res.string.zkp_err_mock)
+                e.startsWith("verification_method:") -> tr(Res.string.zkp_err_verification_method, e.substringAfter(':'))
                 e == "oprf_key" -> tr(Res.string.zkp_err_oprf_key)
                 e == "nullifier_mismatch" -> tr(Res.string.zkp_err_nullifier)
                 e.startsWith("facematch_level:") -> tr(Res.string.zkp_err_facematch_level, faceKind(e.substringAfter(':')))

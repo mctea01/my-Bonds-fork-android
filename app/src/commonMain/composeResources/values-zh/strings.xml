@@ -4412,6 +4412,7 @@
     <string name="zkp_err_date_expired">證明已超過允許的效期。</string>
     <string name="zkp_err_date_future">證明日期在未來。</string>
     <string name="zkp_err_mock">測試護照的證明，只在接受測試護照時採用。</string>
+    <string name="zkp_err_verification_method">證明顯示證件不是從晶片讀取（方式代碼 %1$s）；本 App 只接受晶片讀取的證件。</string>
     <string name="zkp_err_native">這個裝置沒有可驗證 zkPassport 證明的元件。</string>
     <string name="zkp_err_nullifier">證明中的識別碼不一致或屬不支援的類型。</string>
     <string name="zkp_err_oprf_key">加鹽識別碼只接受本錢包服務端的 OPRF 金鑰；證明使用其他金鑰，或尚未設定提供 OPRF 的服務端。</string>

@@ -199,6 +199,33 @@ fn valid_bundle_verifies_and_reports_only_proven_values() {
     assert_eq!(info["timestamp"], json!(DATE));
 }
 
+/// Circuits 0.23.0 and later: the integrity proof outputs the verification method after comm_out.
+fn case_0_23(method: u64) -> Request {
+    let mut c = case(0);
+    for p in &mut c.proofs {
+        if p.name.starts_with("data_check_integrity") {
+            *p = result(&p.name, vec![big(22), big(33), big(method)], Value::Null);
+        }
+        p.version = Some("0.23.0".into());
+    }
+    let mut req = request(&c);
+    req.manifest["version"] = json!("0.23.0");
+    req
+}
+
+#[test]
+fn integrity_proofs_from_0_23_carry_the_verification_method() {
+    let (out, calls) = run(&case_0_23(100));
+    assert_eq!(errors(&out), Vec::<String>::new());
+    assert_eq!(calls, 8);
+    let (out, _) = run(&case_0_23(201));
+    assert_eq!(errors(&out), vec!["verification_method:201".to_string()]);
+    assert!(zk::has_verification_method("0.23.0") && zk::has_verification_method("0.23.0-rc.1"));
+    assert!(zk::has_verification_method("1.0.0") && zk::has_verification_method("0.24.2"));
+    assert!(!zk::has_verification_method("0.22.9") && !zk::has_verification_method("0.21.1"));
+    assert!(!zk::has_verification_method("") && !zk::has_verification_method("0.23"));
+}
+
 #[test]
 fn every_check_rejects_its_tampering() {
     let expect = |req: Request, error: &str| {

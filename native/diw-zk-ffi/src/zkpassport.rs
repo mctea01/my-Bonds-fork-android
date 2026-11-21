@@ -353,6 +353,18 @@ mod tests {
     /// Opens the Barretenberg 5 library named by DIW_BB5_LIBRARY next to this library's Barretenberg 6 and runs a
     /// legacy verification: a bundle with no proofs is refused by the checks, not by either backend.
     #[test]
+    fn a_bare_date_disclosure_has_no_date_proof() {
+        // The SDK rejects a compare_expiry proof the query did not ask bounds for.
+        let q = serde_json::json!({
+            "expiry_date": {"disclose": true},
+            "birthdate": {"disclose": true, "lte": 946_684_800_000_i64},
+        });
+        assert!(zkpassport_core::query::resolve_date_bounds(&q, "expiry_date").is_none());
+        let b = zkpassport_core::query::resolve_date_bounds(&q, "birthdate").unwrap();
+        assert_eq!((b.min, b.max), (None, Some(946_684_800)));
+    }
+
+    #[test]
     #[ignore = "requires a zkpassport-bb5 build"]
     fn legacy_backend_loads_beside_barretenberg_6() {
         assert!(zkpassport_legacy_backend("/nonexistent/libdiw_bb5.so".into()).is_err());

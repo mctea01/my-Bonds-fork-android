@@ -4412,6 +4412,7 @@
     <string name="zkp_err_date_expired">The proofs are older than the validity allowed.</string>
     <string name="zkp_err_date_future">The proofs are dated in the future.</string>
     <string name="zkp_err_mock">Proofs of a test passport, accepted only with test passports allowed.</string>
+    <string name="zkp_err_verification_method">The proofs say the document was not read from its chip (method %1$s); this app accepts chip reads only.</string>
     <string name="zkp_err_native">This device has no component that can verify zkPassport proofs.</string>
     <string name="zkp_err_nullifier">The identifier in the proofs is inconsistent or of an unsupported kind.</string>
     <string name="zkp_err_oprf_key">Salted identifiers are accepted only under the OPRF key of this wallet's server; the proofs use another key, or no server with the OPRF is set.</string>
