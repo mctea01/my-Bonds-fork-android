@@ -14,7 +14,9 @@ class FaceKeyAttestation(val chain: List<ByteArray>, val signature: ByteArray, v
 
 /**
  * Why a comparison did not pass: `cancelled` (the holder closed the camera), `photo` (no usable face in the
- * document's photo), `no_match` (the face or the liveness check did not pass) or `unavailable` (no camera screen).
+ * document's photo), `mismatch:<best>:<threshold>` (the face did not reach the pass mark; the best similarity and the
+ * mark, two decimals), `liveness` (the passive or head turn liveness check did not pass), `timeout` (no steady frontal
+ * face in time), `no_match` (any other failed comparison) or `unavailable` (no camera screen).
  */
 class FaceMatchFailure(val code: String) : Exception(code)
 

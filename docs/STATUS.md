@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-20（版本線升到 0.5、穩定版發佈流程與 Release 頁下載指引、Windows 本機簽章腳本；main 到 PR #159；桌面版同一資料夾只允許一個 App 執行）。
+最後更新：2026-11-21（人臉比對的中文提示與失敗原因；zkPassport 0.23.0 完整性證明的公開輸入與單純揭露日期的證明；版本線升到 0.5、穩定版發佈流程與 Release 頁下載指引、Windows 本機簽章腳本；main 到 PR #159；桌面版同一資料夾只允許一個 App 執行）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -37,7 +37,7 @@ P4 之後合併的工作：
 | i18n：英文與繁體中文（PR #89） | 完成 | [i18n.md](design/i18n.md) |
 | Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |
-| zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；未經實機驗證 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
+| zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；比對能否通過待重測 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
 | 原生依賴跨平台：Windows zkPDF（無 GPL 執行階段）、Linux ARM64、Android 32 位元（PR #121） | 完成 | [native-dependencies](research/native-dependencies/README.md) |
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
@@ -102,7 +102,7 @@ P4 之後合併的工作：
 | 網站查驗證明（zkTLS，TLSNotary） | 可用 | 查驗頁：學信網學籍報告（中、英文）、移民署入出國日期證明書 |
 | mdoc 零知識出示（Longfellow） | 可用 | 只支援 P-256 發行端；Windows 沒有 Longfellow 函式庫 |
 | zkPDF | 可用；手機上很慢 | 版型：福州大學在學證明、國家移民管理局通行證關聯查詢結果；v1 只證明第 1 頁。手機建議改在電腦版或自架主機產生 |
-| zkPassport 查驗與回應 | 可用 | 回應可在手機、自架證明器或臨時證明器產生（人臉比對由手機比對並簽署後也可轉送，伺服器 PR #38）；揭露的生日與到期日以 ISO 日期放進查詢結果（官方 SDK 以日期讀取，2026-11-19 修正）；憑證包裡的 Aadhaar（UIDAI）憑證以自己的類型計入憑證樹（2026-11-16 起的憑證包含這類憑證，之前錢包算出的樹根與註冊表不符，證明停在 `certificates_root`，2026-11-20 修正）；人臉比對只在 Android 版回應，且只能用本專案電路（請求方須列出 `diw`），桌面版拒絕；查驗端接受官方與本專案的人臉比對證明並標示等級 |
+| zkPassport 查驗與回應 | 可用 | 回應可在手機、自架證明器或臨時證明器產生（人臉比對由手機比對並簽署後也可轉送，伺服器 PR #38）；揭露的生日與到期日以 ISO 日期放進查詢結果（官方 SDK 以日期讀取，2026-11-19 修正）；憑證包裡的 Aadhaar（UIDAI）憑證以自己的類型計入憑證樹（2026-11-16 起的憑證包含這類憑證，之前錢包算出的樹根與註冊表不符，證明停在 `certificates_root`，2026-11-20 修正）；0.23.0 起完整性證明多輸出驗證方式（公開輸入 3 個），查驗端改依電路版本切開並要求晶片讀取，單純揭露日期不再多產生 `compare_expiry`／`compare_birthdate`（官方查驗端拒收，本錢包查驗端顯示「證明組無法解讀」），2026-11-21 修正；人臉比對只在 Android 版回應，且只能用本專案電路（請求方須列出 `diw`），桌面版拒絕；查驗端接受官方與本專案的人臉比對證明並標示等級 |
 
 ### 3.5 平台
 

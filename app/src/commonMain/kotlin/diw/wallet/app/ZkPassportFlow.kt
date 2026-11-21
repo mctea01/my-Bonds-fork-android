@@ -423,6 +423,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 e.startsWith("date_expired") -> tr(Res.string.zkp_err_date_expired)
                 e.startsWith("date_future") -> tr(Res.string.zkp_err_date_future)
                 e == "mock" -> tr(Res.string.zkp_err_mock)
+                e.startsWith("verification_method:") -> tr(Res.string.zkp_err_verification_method, e.substringAfter(':'))
                 e == "oprf_key" -> tr(Res.string.zkp_err_oprf_key)
                 e == "nullifier_mismatch" -> tr(Res.string.zkp_err_nullifier)
                 e.startsWith("facematch_level:") -> tr(Res.string.zkp_err_facematch_level, faceKind(e.substringAfter(':')))
@@ -624,6 +625,9 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             code == "facematch_photo" -> tr(Res.string.zkp_answer_err_facematch_photo)
             code == "facematch_cancelled" -> tr(Res.string.zkp_answer_err_facematch_cancelled)
             code == "facematch_no_match" -> tr(Res.string.zkp_answer_err_facematch_no_match)
+            code.startsWith("facematch_mismatch:") -> code.split(':').let { tr(Res.string.zkp_answer_err_facematch_mismatch, it.getOrElse(1) { "-" }, it.getOrElse(2) { "-" }) }
+            code == "facematch_liveness" -> tr(Res.string.zkp_answer_err_facematch_liveness)
+            code == "facematch_timeout" -> tr(Res.string.zkp_answer_err_facematch_timeout)
             code == "facematch_attestation" -> tr(Res.string.zkp_answer_err_facematch_attestation)
             code.startsWith("facematch") -> tr(Res.string.zkp_answer_err_facematch, code)
             code == "native_unavailable" -> tr(Res.string.zkp_answer_no_engine)

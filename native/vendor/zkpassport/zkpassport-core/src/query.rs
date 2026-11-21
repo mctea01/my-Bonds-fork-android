@@ -137,15 +137,10 @@ pub fn build_disclosures(
     }
 
     // Date comparisons (birthdate / expiry)
+    // A bare `disclose` is proven by disclose_bytes alone: the SDK rejects a date proof whose bounds
+    // it did not ask for ("Minimum expiry date should be equal to default date value").
     for (field, is_birth, circuit) in [("birthdate", true, "compare_birthdate"), ("expiry_date", false, "compare_expiry")] {
-        // The passport's own value for this field, for a bare `disclose` (min=max=it).
-        let disclose_date = if is_birth {
-            dob_from_mrz(input.mrz).and_then(|d| parse_mrz_date(d, current_date))
-        } else {
-            parse_mrz_date(input.expiry_date, current_date)
-        };
-        let bounds = resolve_date_bounds(query, field, disclose_date);
-        if let Some(bounds) = bounds {
+        if let Some(bounds) = resolve_date_bounds(query, field) {
             let inputs = get_date_circuit_inputs(input, &bounds, is_birth, salts, z, ss, sub, current_date, None)?;
             let committed = json!({
                 "minDateTimestamp": inputs["min_date"], "maxDateTimestamp": inputs["max_date"],
@@ -242,9 +237,10 @@ pub fn build_query_result(query: &Value, disclosed: &Value, current_date: u64) -
 /// `disclose_date` = the passport's own value for this field (unix secs). For a bare
 /// `{ disclose: true }` the TS sets min=max to it (a tight range that reveals the date);
 /// omitting it would leave 0/0 which makes the circuit unsatisfiable.
-fn resolve_date_bounds(query: &Value, field: &str, disclose_date: Option<i64>) -> Option<DateBounds> {
-    let f = query.get(field)?;
-    if !f.is_object() || f.as_object()?.is_empty() {
+/// The bounds of the date proof the query asks for; none for a bare `disclose`.
+pub fn resolve_date_bounds(query: &Value, field: &str) -> Option<DateBounds> {
+    let f = query.get(field)?.as_object()?;
+    if !["gt", "gte", "lt", "lte", "eq", "range"].iter().any(|op| f.contains_key(*op)) {
         return None;
     }
     const DAY: i64 = 86400;
@@ -260,9 +256,6 @@ fn resolve_date_bounds(query: &Value, field: &str, disclose_date: Option<i64>) -
     } else if let Some(eq) = date_secs(query, field, "eq") {
         min = Some(eq);
         max = Some(eq);
-    } else if f.get("disclose").and_then(|d| d.as_bool()) == Some(true) {
-        min = disclose_date;
-        max = disclose_date;
     }
     if let Some(lt) = date_secs(query, field, "lt") {
         max = Some(lt - DAY);
@@ -328,12 +321,6 @@ fn parse_mrz_date(yymmdd: &str, current_date: u64) -> Option<i64> {
     let full_year = year
         + if year + current_century > current_year + 10 { current_century - 100 } else { current_century };
     Some(days_from_civil(full_year, month, day) * 86400)
-}
-
-/// Date-of-birth YYMMDD from the MRZ (TD1 line 2 start vs TD3 line 2 offset 13).
-fn dob_from_mrz(mrz: &str) -> Option<&str> {
-    let range = if mrz.len() == 90 { 30..36 } else { 57..63 };
-    mrz.get(range)
 }
 
 #[cfg(test)]

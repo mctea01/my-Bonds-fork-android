@@ -20,7 +20,7 @@ Changes from upstream, all in the `Cargo.toml` files only:
   and `repository` values taken from the upstream workspace manifest;
 - `[lib] crate-type` removed, so the crates build as plain Rust libraries.
 
-Changes in `src/`, two in `zkpassport-core/src/input_gen.rs`, one in `zkpassport-core/src/query.rs` and one in
+Changes in `src/`, two in `zkpassport-core/src/input_gen.rs`, two in `zkpassport-core/src/query.rs` and one in
 `zkpassport-core/src/registry.rs`:
 
 - `get_public_salt` reduces its SHA-256 digest modulo the BN254 scalar field. The
@@ -40,6 +40,12 @@ Changes in `src/`, two in `zkpassport-core/src/input_gen.rs`, one in `zkpassport
   of null (reading 'getFullYear')". Upstream main has the same change (it adds
   `current_date` to `build_query_result`); `input_gen.rs` passes
   `current_date_timestamp`.
+
+- `build_disclosures` makes no `compare_birthdate` or `compare_expiry` proof for a
+  bare `disclose` of that date (`resolve_date_bounds`, now public, returns none):
+  `disclose_bytes` proves the value, and the SDK's checker rejects a date proof
+  whose bounds the query did not set ("Minimum expiry date should be equal to
+  default date value").
 
 - Packaged certificates carry a `type` (`"uidai"` for Aadhaar signing keys,
   `@zkpassport/utils` 0.41). `get_certificate_leaf_hashes` hashes each leaf
