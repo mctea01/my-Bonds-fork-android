@@ -261,6 +261,16 @@ if ($Mode -eq "Native") {
             Write-Host "Wrote $state (jpackage $jdkVersion, main class $mainClass)"
         }
 
+        # app\.package holds the package name and is written by the installer build itself: jpackage 21 to 23 write it
+        # into the image, jpackage 24 and later add their own copy from the build's config folder, so a copy left in the
+        # image gives WiX two files with the same identifiers (WIX0091, WIX0092). The rebuild writes it again.
+        $packageFile = Join-Path $image "app\.package"
+        if (Test-Path -LiteralPath $packageFile) {
+            $content = ([IO.File]::ReadAllText($packageFile)).Trim()
+            if ($content -ne $PackageName) { Write-Warning "app\.package names `"$content`", expected $PackageName; jpackage writes $PackageName" }
+            Remove-Item -LiteralPath $packageFile -Force
+        }
+
         $libraries = 0
         foreach ($jar in Get-ChildItem (Join-Path $image "app") -Filter "*.jar") { $libraries += Sign-JarLibraries $jar.FullName }
         if ($libraries -eq 0) { Write-Warning "No zk/native/windows-*/ library found in the app's jars: the zero-knowledge library stays unsigned" }
@@ -270,7 +280,9 @@ if ($Mode -eq "Native") {
         Write-Host "Signing $($binaries.Count) files of the app image"
         foreach ($b in $binaries) { Sign-File $b.FullName }
 
+        # --temp keeps jpackage's WiX sources and logs in the work folder, for a build that fails.
         $arguments = @("--type", "msi", "--app-image", $image, "--dest", $output, "--name", $PackageName,
+            "--temp", (Join-Path $WorkDir "jpackage"), "--verbose",
             "--app-version", $version, "--vendor", $Vendor, "--description", $Description,
             "--win-menu", "--win-menu-group", $MenuGroup, "--win-shortcut", "--win-per-user-install", "--win-upgrade-uuid", $UpgradeUuid)
         $icon = Join-Path $PSScriptRoot "..\app\icons\app-icon.ico"
