@@ -1837,6 +1837,7 @@
     <string name="derive_zk_claim">zkPDF zero-knowledge proof (tick it along when presenting document fields)</string>
     <string name="derive_zk_opening">Zero-knowledge opening data of \"%1$s\"</string>
     <string name="derive_zk_suffix"> (zkPDF)</string>
+    <string name="desktop_already_running">DIW MY WALLET is already running and using the data folder %1$s (another window, or the other desktop edition). Close it first; if no window is open, end it in Task Manager.</string>
     <string name="desktop_error_log">The app stopped because of an error: %1$s\n\nDetails were saved to %2$s</string>
     <string name="desktop_error_title">DIW MY WALLET error</string>
     <string name="did_hint">DID (did:web, did:key, did:ion...)</string>

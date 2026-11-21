@@ -58,6 +58,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.coroutines.withContext
 import org.bouncycastle.jce.provider.BouncyCastleProvider
 import java.io.File
+import java.nio.channels.FileLock
 import java.awt.event.WindowEvent
 import java.security.Security
 import javax.swing.JOptionPane
@@ -125,6 +126,26 @@ private fun exitAfter(seconds: Long) {
     }, "timed-exit").apply { isDaemon = true; start() }
 }
 
+/** Held until the process ends; see [DataDirLock]. */
+private var dataDirLock: FileLock? = null
+
+/**
+ * Takes [DataDirLock] for the data folder. False, after telling the person, when another process holds it; true when
+ * the lock is held or cannot be taken at all (the app then starts as before).
+ */
+private fun lockDataDir(dir: File, language: DesktopLanguageStore): Boolean {
+    val lock = runCatching { DataDirLock.acquire(dir) }.getOrElse { return true }
+    if (lock != null) {
+        dataDirLock = lock
+        return true
+    }
+    val (title, message) = runCatching {
+        runBlocking { language.text(Res.string.desktop_error_title) to language.text(Res.string.desktop_already_running, dir.path) }
+    }.getOrElse { "DIW MY WALLET" to dir.path }
+    JOptionPane.showMessageDialog(null, message, title, JOptionPane.WARNING_MESSAGE)
+    return false
+}
+
 /**
  * Replaces Compose's default handler, which shows only "Error" and the exception's message (often empty): the error
  * is saved under the data folder, the dialog names the file, and the window closes as before. The strings are read
@@ -184,6 +205,7 @@ fun main(args: Array<String>) {
     Security.addProvider(BouncyCastleProvider())
     val startUri = args.firstOrNull()
     val language = DesktopLanguageStore()
+    if (!lockDataDir(dir, language)) exitProcess(0)
     application {
         var model by remember { mutableStateOf<WalletModel?>(null) }
         val icon = remember { appIcon() }

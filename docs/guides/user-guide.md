@@ -420,7 +420,7 @@ MyData 下載的壓縮檔會自動解壓、命名並解析。MyData 的 PDF 多�
 
 電腦版（Windows、Linux、macOS）與手機版共用大部分功能，差別如下：
 
-- **開啟**：每次開啟要輸入 App PIN。資料以 App PIN 加密，存在 Windows 的 `%APPDATA%\DIW-MY-WALLET`、Linux 的 `~/.local/share/diw-my-wallet`、macOS 的 `~/Library/Application Support/DIW-MY-WALLET`。刪除這個資料夾會清除電腦版的所有資料。
+- **開啟**：每次開啟要輸入 App PIN。資料以 App PIN 加密，存在 Windows 的 `%APPDATA%\DIW-MY-WALLET`、Linux 的 `~/.local/share/diw-my-wallet`、macOS 的 `~/Library/Application Support/DIW-MY-WALLET`。刪除這個資料夾會清除電腦版的所有資料。同一時間只能開一個電腦版（一般版與原生版共用這個資料夾）；再開一個時會提示「已經在執行」並結束。看不到視窗卻出現這個提示時，從工作管理員（Linux 用系統監視器）結束殘留的 DIW MY WALLET 再開啟。
 - **QR Code**：沒有相機時，從截圖或圖片讀取 QR Code，或在「使用」分頁最下方「貼上連結」貼上領卡連結或出示請求。電腦版不會自動接手瀏覽器中的連結。
 - **感應**：可以接 PC/SC 非接觸式讀卡機讀取對方的 mdoc（Linux 需安裝並啟動 `pcscd`），也可以讀取自然人憑證卡或 PIV 卡來簽署；電腦不能以 NFC 出示證件。
 - **取件網站**：在系統瀏覽器開啟，下載後回到「文件」用「匯入文件」保存。
