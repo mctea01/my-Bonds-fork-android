@@ -155,8 +155,10 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
             CardPicker(model) { card = it }
             ActionRow(WalletIcons.Phone, stringResource(Res.string.national_id_mobile_moica), stringResource(Res.string.national_id_mobile_moica_text)) { useMobile = true }
         } else {
-            // The same choice of SP account as signing a file: the user's server, the built-in account or one typed in.
-            MobileMoicaPicker(model) { mobile = it as? SignerChoice.MobileMoica }
+            // The same choice of SP account as signing a file: the user's server, the built-in account or one typed in;
+            // as there, the service's statement comes first.
+            if (model.legal.enabled(diw.wallet.app.legal.Integration.MOBILE_MOICA)) MobileMoicaPicker(model) { mobile = it as? SignerChoice.MobileMoica }
+            else IntegrationOffRow(model, diw.wallet.app.legal.Integration.MOBILE_MOICA)
             TextButton(onClick = { useMobile = false; mobile = null }) { Text(stringResource(Res.string.national_id_use_card)) }
         }
         BusyLine(busy, error)
