@@ -123,7 +123,7 @@ P4 之後合併的工作：
 | P6 iOS | | 排程 |
 | 穩定版發佈 workflow | `stable-release.yml` 與 CI 的標籤發佈已貼上；`minor`、`major` 另需 `RELEASE_TOKEN`；尚未實際發佈過穩定版 | 第一次以 `Stable release` 發佈並確認 Release 頁 |
 | Windows 程式碼簽章 | `tools/windows-sign.ps1` 在本機以 YubiKey（或 `-SignCommand` 的 jsign 等命令）簽署 MSI、其中的程式與 jar 內的零知識原生程式庫（改寫 `.sha256`），或實驗原生版，並傳回 Release；2026-11-21 使用者在 Windows 實跑：exe、dll 簽章成功，以 WiX 7 重建 MSI 時的 WIX0091 已由 PR #165 修正 | 使用者重跑確認 MSI 能產生、安裝與零知識功能正常，見 [release.md](release.md#windows-程式碼簽章) |
-| Release 附上原生桌面版 | `release` 工作打包 `desktop-native` 的 Windows 與 Linux 執行檔附到 nightly 與穩定版，下載指引列在「實驗版」；改過的 `github-actions-ci.yml` 待使用者貼上 | 使用者貼上 workflow 後確認下一次 nightly 有這兩個檔案 |
+| Release 附上原生桌面版 | `release` 工作打包 `desktop-native` 的 Windows 與 Linux 執行檔附到 nightly 與穩定版，下載指引列在「實驗版」，README 與使用教程補上解壓與執行步驟；改過的 `github-actions-ci.yml` 已由使用者貼上（PR #168） | 合併後確認下一次 nightly 有這兩個檔案 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作（appHash 為 `tw.gov.moda.diw`，簽章金鑰是本錢包自己的應用配對），官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |
 | zkPDF 手機效能 | 一次實測在 611 秒逾時、峰值約 2.5 GB；完整時間未量到 | 實機量測（可選） |
