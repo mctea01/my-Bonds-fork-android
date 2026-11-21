@@ -11,9 +11,10 @@
 # light.exe) with any of them, or WiX 4 and later (wix.exe) with jpackage from JDK 24 or later and the
 # WixToolset.Util.wixext extension. Only jpackage is taken from that JDK: the MSI keeps the Java runtime of the image.
 # MsiOnly: sign the MSI as it is; the launcher and the native libraries inside stay unsigned. Needs only signtool.
-# Native: the experimental GraalVM executable (the desktop-native-windows artifact of a CI run, as its .zip or
-# unpacked folder): sign diw-desktop.exe and every unsigned .exe and .dll beside it (the JDK libraries native-image
-# copies there, jawt.dll), then zip the folder as DIW-MY-WALLET-<version>-windows-x64-native.zip. The ZK libraries are
+# Native: the experimental GraalVM executable (DIW-MY-WALLET-<version>-windows-x64-native.zip of the release, or with
+# -Path a local copy or the desktop-native-windows artifact of a CI run): sign diw-desktop.exe and every unsigned .exe
+# and .dll beside it (the JDK libraries native-image copies there, jawt.dll, j2pcsc.dll), then zip it again with the
+# release archive's name and layout. The ZK libraries are
 # compiled into the executable as resources and cannot be signed afterwards; the executable unpacks them only when
 # their SHA-256, pinned inside the signed executable, matches.
 # Third-party libraries that jars unpack at run time (Skiko, SQLite, JNA) are left as they are: their loaders check
@@ -27,7 +28,7 @@
 #   .\tools\windows-sign.ps1 -Tag v0.5.3 -SignCommand C:\tools\jsign-yubikey.cmd,"{file}"
 #   .\tools\windows-sign.ps1 -Tag v0.5.3 -Thumbprint 0123ABCD... -Mode MsiOnly
 #   .\tools\windows-sign.ps1 -Msi .\DIW-MY-WALLET-0.5.3.msi -NoUpload
-#   .\tools\windows-sign.ps1 -Mode Native -Path .\desktop-native-windows.zip -Tag v0.5.3
+#   .\tools\windows-sign.ps1 -Mode Native -Tag v0.5.3
 [CmdletBinding()]
 param(
     [string]$Tag,
@@ -163,7 +164,16 @@ New-Item -ItemType Directory -Path $output | Out-Null
 if ($Tag -eq "nightly") { Write-Warning "nightly is replaced by every push to main; the signed files last until then" }
 
 if ($Mode -eq "Native") {
-    if (-not $Path) { throw "Native needs -Path: the desktop-native-windows artifact of a CI run (.zip or its folder)" }
+    # The release's own archive (CI attaches it when desktop-native passed), or a local .zip or folder (-Path), for
+    # example the desktop-native-windows artifact of a CI run.
+    if (-not $Path) {
+        if (-not $Tag) { throw "Native needs -Tag (a release with the native archive) or -Path (an archive or folder)" }
+        $nativeDownload = Join-Path $WorkDir "native-download"
+        Invoke-Checked "gh" @("release", "download", $Tag, "--repo", $Repo, "--pattern", "$PackageName-*-windows-x64-native.zip", "--dir", $nativeDownload)
+        $found = @(Get-ChildItem $nativeDownload -Filter "*.zip" -ErrorAction SilentlyContinue)
+        if ($found.Count -ne 1) { throw "Release $Tag has $($found.Count) Windows native archives, expected one (desktop-native may have failed)" }
+        $Path = $found[0].FullName
+    }
     $Path = (Resolve-Path $Path).Path
     $folder = Join-Path $WorkDir "native"
     if (Test-Path $Path -PathType Leaf) {
@@ -171,15 +181,25 @@ if ($Mode -eq "Native") {
     } else {
         Copy-Item $Path $folder -Recurse
     }
-    $exe = Get-ChildItem $folder -Recurse -Filter "diw-desktop.exe" | Select-Object -First 1
+    $exe = Get-ChildItem $folder -Recurse -Filter "diw-desktop.exe" | Sort-Object { $_.FullName.Length } | Select-Object -First 1
     if (-not $exe) { throw "diw-desktop.exe not found in $Path" }
     $root = $exe.Directory.FullName
     $binaries = @(Get-ChildItem $root -Recurse -Include "*.exe", "*.dll" | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
     Write-Host "Signing $($binaries.Count) files of the native executable folder"
     foreach ($b in $binaries) { Sign-File $b.FullName }
-    $zipName = if ($Tag -match "^v(\d+\.\d+\.\d+)$") { "$PackageName-$($Matches[1])-windows-x64-native.zip" } else { "$PackageName-windows-x64-native.zip" }
+
+    # The same name and layout as the release archive (one top folder named like the archive), so the upload
+    # replaces it: the name of the archive given, else the version of the tag.
+    $leaf = [IO.Path]::GetFileName($Path)
+    $zipName = if ($leaf -match "^$PackageName-.+-windows-x64-native\.zip$") { $leaf }
+        elseif ($Tag -match "^v(\d+\.\d+\.\d+)$") { "$PackageName-$($Matches[1])-windows-x64-native.zip" }
+        else { throw "Cannot tell the version: pass -Tag v<version>, or -Path with the release archive" }
+    $base = [IO.Path]::GetFileNameWithoutExtension($zipName)
+    $stage = Join-Path $WorkDir "native-stage\$base"
+    New-Item -ItemType Directory -Path (Split-Path $stage) | Out-Null
+    Move-Item $root $stage
     $signed = Join-Path $output $zipName
-    [IO.Compression.ZipFile]::CreateFromDirectory($root, $signed, [IO.Compression.CompressionLevel]::Optimal, $false)
+    [IO.Compression.ZipFile]::CreateFromDirectory($stage, $signed, [IO.Compression.CompressionLevel]::Optimal, $true)
     $uploads = @($signed)
     $what = "Windows 原生版（實驗，$zipName）的執行檔與其旁的程式庫"
 } else {

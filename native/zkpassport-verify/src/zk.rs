@@ -79,12 +79,26 @@ pub fn vkey_fields(vkey: &[u8]) -> Vec<BigUint> {
 }
 
 /// `getNumberOfPublicInputs`.
-pub fn num_public_inputs(name: &str) -> usize {
-    if ["data_check_integrity", "sig_check_id_data", "sig_check_dsc"].iter().any(|p| name.starts_with(p)) {
+pub fn num_public_inputs(name: &str, version: &str) -> usize {
+    if name.starts_with("data_check_integrity") {
+        // From 0.23.0 the integrity proof also outputs the verification method (utils 0.41).
+        2 + usize::from(has_verification_method(version))
+    } else if ["sig_check_id_data", "sig_check_dsc"].iter().any(|p| name.starts_with(p)) {
         2
     } else {
         8
     }
+}
+
+/// The first circuit version whose integrity proofs carry the verification method.
+const VERIFICATION_METHOD_VERSION: [u64; 3] = [0, 23, 0];
+
+/// Whether circuits of `version` (major.minor.patch, a pre-release counting as its release) carry the
+/// verification method, as the SDK's `hasVerificationMethod`.
+pub fn has_verification_method(version: &str) -> bool {
+    let core = version.split('-').next().unwrap_or("");
+    let parts: Vec<u64> = core.split('.').map_while(|p| p.parse().ok()).collect();
+    parts.len() == 3 && parts.as_slice() >= VERIFICATION_METHOD_VERSION.as_slice()
 }
 
 /// Root of a binary Poseidon2 tree of `height` whose empty leaves are 0.

@@ -64,6 +64,21 @@ macOS（Apple 晶片，14 以上）與其他系統下載 `.jar` 檔，安裝 Jav
 java -jar DIW-MY-WALLET-<平台>-<版本>-release.jar
 ```
 
+### 實驗版：原生執行檔（Windows、Linux）
+
+Release 頁「實驗版：原生執行檔」裡的壓縮檔是不需要 Java、啟動較快的版本，尚在實驗，遇到問題請改用上面的安裝檔。不需要安裝，資料與安裝版共用同一個資料夾，但兩者不能同時開啟。
+
+- **Windows 10、11 x64**：下載 `DIW-MY-WALLET-<版本>-windows-x64-native.zip`，解壓到任一資料夾後執行裡面的 `diw-desktop.exe`。請保留資料夾內的其他檔案，執行檔需要它們。
+- **Linux x86_64**：下載 `DIW-MY-WALLET-<版本>-linux-x64-native.tar.gz`，在終端機執行：
+
+```bash
+tar xzf DIW-MY-WALLET-<版本>-linux-x64-native.tar.gz
+cd DIW-MY-WALLET-<版本>-linux-x64-native
+./diw-desktop
+```
+
+Linux 原生版需要與建置主機（GitHub 的 ubuntu-latest）同樣新或更新的系統；較舊的系統請改用 `.deb` 或 `.jar`。
+
 ## 2. 第一次啟動
 
 電腦版會先要求設定 **App PIN**（至少 6 位數字），用來加密這台電腦上的錢包資料；之後每次開啟都要輸入。請記好這組 PIN：忘記時無法解開錢包。手機版的資料由系統的金鑰保護，不需要這一步。

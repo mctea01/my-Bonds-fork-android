@@ -16,11 +16,13 @@ mod zk;
 pub mod certificates;
 mod facematch;
 pub use facematch::{diw_circuits_json, expected_commitment as facematch_commitment, FaceMatchApp, FaceMatchPolicy};
-use zk::{merkle_root, num_public_inputs, pack_be_bits, pack_be_bytes, poseidon2_hash, vkey_fields, CIRCUIT_REGISTRY_HEIGHT};
+use zk::{has_verification_method, merkle_root, num_public_inputs, pack_be_bits, pack_be_bytes, poseidon2_hash, vkey_fields, CIRCUIT_REGISTRY_HEIGHT};
 
 /// The SDK's default validity of the proven current date, in seconds.
 pub const DEFAULT_VALIDITY: u64 = 7 * 24 * 60 * 60;
 const FUTURE_TOLERANCE: i64 = 24 * 60 * 60;
+/// The SDK's `VerificationMethod.ICAO_CHIP`: an eMRTD chip signed by the issuing country.
+const ICAO_CHIP: u32 = 100;
 const CHAIN: [&str; 3] = ["sig_check_dsc", "sig_check_id_data", "data_check_integrity"];
 /// The disclosure circuits this verifier asks for, in the SDK's order.
 const DISCLOSURES: [&str; 7] = [
@@ -88,7 +90,7 @@ fn rank(name: &str) -> Option<usize> {
 fn parse(p: &ProofResult) -> Result<Proof, String> {
     let rank = rank(&p.name).ok_or_else(|| format!("unsupported:{}", p.name))?;
     let bytes = hex::decode(p.proof.strip_prefix("0x").unwrap_or(&p.proof)).map_err(|_| format!("encoding:{}", p.name))?;
-    let n = num_public_inputs(&p.name);
+    let n = num_public_inputs(&p.name, p.version.as_deref().unwrap_or(""));
     if bytes.len() % 32 != 0 || bytes.len() <= n * 32 {
         return Err(format!("encoding:{}", p.name));
     }
@@ -569,6 +571,14 @@ pub fn verify(req: &Request, mut bb: impl FnMut(&[u8], &[u8], &[u8]) -> Result<(
     }
     if req.manifest.get("version").and_then(Value::as_str) != Some(bundle.version.as_str()) {
         errors.push("manifest_version".into());
+    }
+
+    // Passports and ID cards are read from their chip; the integrity proof of 0.23.0 and later says so.
+    if has_verification_method(&bundle.version) {
+        let integrity = &proofs[CHAIN.len() - 1];
+        if integrity.input(2) != &BigUint::from(ICAO_CHIP) {
+            errors.push(format!("verification_method:{}", integrity.input(2)));
+        }
     }
 
     // The commitment chain: certificate -> document signature -> integrity -> every disclosure.
