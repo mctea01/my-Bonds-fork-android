@@ -146,17 +146,26 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
                 val holder = model.platform.zk?.zkPassportHolder
                 var circuits = 0
                 var passports = 0
+                // Answering also needs the proof parameters; without them the passports are not called ready.
+                var note: String? = null
                 if (holder != null && deviceCanProve() != false) {
-                    for (file in passports()) {
-                        val chip = chip(file) ?: continue
-                        offlineProgress.value = tr(Res.string.zkp_offline_passport, file.name)
-                        circuits = maxOf(circuits, holder.prepareOffline(chip, false, config.mainnetRpc) { p ->
-                            if (p is ZkPassportAnswerProgress.Circuits) offlineProgress.value = tr(Res.string.zkp_offline_circuits, file.name, p.count)
-                        })
-                        passports++
+                    try {
+                        for (file in passports()) {
+                            val chip = chip(file) ?: continue
+                            offlineProgress.value = tr(Res.string.zkp_offline_passport, file.name)
+                            circuits = maxOf(circuits, holder.prepareOffline(chip, false, config.mainnetRpc) { p ->
+                                if (p is ZkPassportAnswerProgress.Circuits) offlineProgress.value = tr(Res.string.zkp_offline_circuits, file.name, p.count)
+                            })
+                            passports++
+                        }
+                    } catch (e: ZkPassportAnswerFailure) {
+                        if (e.code != "crs_missing") throw e
+                        passports = 0
+                        note = tr(Res.string.zkp_answer_err_crs)
                     }
                 }
-                model.message.value = if (passports > 0) tr(Res.string.zkp_offline_done_passports, passports, circuits) else tr(Res.string.zkp_offline_done)
+                model.message.value = (if (passports > 0) tr(Res.string.zkp_offline_done_passports, passports, circuits) else tr(Res.string.zkp_offline_done)) +
+                    (note?.let { "\n" + it } ?: "")
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {

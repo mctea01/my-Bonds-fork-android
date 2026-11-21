@@ -241,10 +241,13 @@ class ZkPassportProver(
      * copy of this wallet nearby can be answered offline (docs/design/zkpassport.md 5.8): the latest certificate
      * root and its package, the manifest and the packaged circuits of every check those requests can ask for (each
      * disclosed field, an age, nationality and issuing country lists, bound data). The driver plans them as for a
-     * real request; nothing is proved. Throws [Failure] or [ZkPassportRegistry.Unreachable].
+     * real request; nothing is proved. Without the proof parameters (the CRS shared with zkPDF) it stops at once with
+     * `crs_missing`, as no answer could be proved. Throws [Failure] or [ZkPassportRegistry.Unreachable].
      */
     suspend fun prepare(chip: Chip, devMode: Boolean, rpc: String?, progress: (Progress) -> Unit = {}): Prepared = withContext(Dispatchers.IO) {
         if (!nativeReady()) throw Failure("native_unavailable")
+        // Proving needs the proof parameters as well; without them nothing here could answer offline.
+        crsDirectory() ?: throw Failure("crs_missing")
         val chain = ZkPassport.chain(devMode)
         progress(Progress.Registry)
         val certificateRoot = registry.latestRoot(chain, rpc, ZkPassportRegistry.CERTIFICATE_REGISTRY)
