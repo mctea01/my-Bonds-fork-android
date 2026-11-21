@@ -364,11 +364,14 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
     val unverified = stringResource(Res.string.zkp_answer_unverified)
     ScreenColumn(spacing = 10.dp) {
         Text(stringResource(Res.string.zkp_answer_title), style = MaterialTheme.typography.titleMedium)
+        // Nearby nothing reports where the request comes from, and the DIW relay pairs a room by its id alone, so on
+        // either the requester is not vouched for: the person showing the code is the requester.
+        val nearby = s.channel != ZkPassportChannel.BRIDGE
         // Another page of the same site (zkPassport's demo answers through verify.zkpassport.id) is a caution only.
-        val sameSite = !s.originMatches && incoming.sameSite(s.origin)
-        // Nearby nothing reports where the request comes from: the person showing the code is the requester.
-        val nearby = s.channel == ZkPassportChannel.DIW_LAN || s.channel == ZkPassportChannel.DIW_BLE
-        if (nearby) {
+        val sameSite = !nearby && !s.originMatches && incoming.sameSite(s.origin)
+        if (s.channel == ZkPassportChannel.DIW_RELAY) {
+            VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_relay), listOf(stringResource(Res.string.zkp_answer_relay_detail, s.origin, incoming.domain)))
+        } else if (nearby) {
             VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_nearby), listOf(stringResource(Res.string.zkp_answer_nearby_detail, incoming.domain)))
         } else if (sameSite) {
             VerdictCard(Verdict.CAUTION, stringResource(Res.string.zkp_answer_origin_same_site), listOf(stringResource(Res.string.zkp_answer_origin_same_site_detail, s.origin, incoming.expectedOrigin)))
@@ -457,13 +460,14 @@ internal fun ZkPassportAnswerConsentView(model: WalletModel, s: OfflineUi.ZkPass
         }
     }
     if (risk) {
-        val nearby = s.channel == ZkPassportChannel.DIW_LAN || s.channel == ZkPassportChannel.DIW_BLE
+        val nearby = s.channel != ZkPassportChannel.BRIDGE
         val otherOrigin = nearby || !(s.originMatches || incoming.sameSite(s.origin))
         val address = ZkPassportFlow.targetAddress(target)
         RiskConfirmDialog(
             stringResource(if (otherOrigin) Res.string.zkp_answer_risk_title else Res.string.zkp_answer_remote_risk_title),
             listOfNotNull(
                 when {
+                    s.channel == ZkPassportChannel.DIW_RELAY -> stringResource(Res.string.zkp_answer_relay_detail, s.origin, incoming.domain)
                     nearby -> stringResource(Res.string.zkp_answer_nearby_detail, incoming.domain)
                     otherOrigin -> stringResource(Res.string.zkp_answer_origin_detail, s.origin, incoming.expectedOrigin)
                     else -> null

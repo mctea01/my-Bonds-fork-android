@@ -4499,6 +4499,8 @@
     <string name="zkp_routes">Another copy of this wallet can also answer through: %1$s</string>
     <string name="zkp_answer_nearby">Nearby request: the requester's domain cannot be confirmed</string>
     <string name="zkp_answer_nearby_detail">The request came over the local network or Bluetooth, which report no origin. The proofs are bound to %1$s; answer only a requester in front of you.</string>
+    <string name="zkp_answer_relay">Relayed request: the requester's domain cannot be confirmed</string>
+    <string name="zkp_answer_relay_detail">The request came through the relay at %1$s, which pairs a room by its id alone and does not vouch for who opened it. The proofs are bound to %2$s; answer only a requester you know is behind this code.</string>
     <string name="zkp_answer_tech_channel">Channel: %1$s</string>
     <string name="zkp_answer_err_nearby">The answer could not be delivered nearby (%1$s). Check that both phones are on the same Wi-Fi or hotspot, or that Bluetooth is on.</string>
     <string name="zkp_registry_as_of">Checked offline: the registry state is the one this device recorded on %1$s.</string>

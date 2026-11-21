@@ -4499,6 +4499,8 @@
     <string name="zkp_routes">另一支本錢包也可經由：%1$s 回應</string>
     <string name="zkp_answer_nearby">近距離請求：無法由連線確認查驗方網域</string>
     <string name="zkp_answer_nearby_detail">請求經區域網路或藍牙傳來，沒有來源可供比對。證明會綁定 %1$s，只回應你面前的查驗方。</string>
+    <string name="zkp_answer_relay">轉送請求：無法由連線確認查驗方網域</string>
+    <string name="zkp_answer_relay_detail">請求經 %1$s 的轉送伺服器傳來，轉送只依房間代碼配對，無法證明是誰開的房間。證明會綁定 %2$s，只回應你確定在這個代碼背後的查驗方。</string>
     <string name="zkp_answer_tech_channel">連線方式：%1$s</string>
     <string name="zkp_answer_err_nearby">無法在近距離送出回應（%1$s）。請確認兩支手機在同一個 Wi-Fi 或熱點，或已開啟藍牙。</string>
     <string name="zkp_registry_as_of">離線查驗：註冊表狀態為這台裝置在 %1$s 的紀錄。</string>

@@ -374,7 +374,7 @@ Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：�
 - 查驗端：使用者有服務端時（`ServerModel.relaysForVerifier` 的第一個），在它的 `/zktls/relay/{room}` 開一個房間，連結附上 `diw_relay`（relay 的 ws 或 wss 位址）與 `diw_room`（16 位元組亂數，base64url）。查驗端同時在 bridge 與房間等待，誰先收到持有者的 handshake 就用誰，另一條不再處理。
 - 持有端：連結有 `diw_relay` 時先進房間送 handshake，15 秒內收到查驗端加密的 `hello` 才改走 relay，否則回到 bridge。「只用自己的服務端」政策下，不是自己服務端的 relay 一律略過。
 - 訊息與 bridge 相同（secp256k1 ECDH、AES-GCM、zlib 分塊的 JSON-RPC），以二進位訊框經 relay 轉送；relay 只看到密文。房間在任一方離開時結束，所以這條路不重連。
-- 來源：同意畫面顯示 relay 的 https 來源代替 bridge 回報的來源，與網域不符時一樣要強提示確認（查驗網域預設就是服務端網域，通常一致）。
+- 來源：relay 只依房間代碼配對，連上 relay 只證明伺服器是誰，不證明房間另一端代表連結的網域，所以 relay 來源一律不算已確認。同意畫面以「轉送請求：無法由連線確認查驗方網域」標示並顯示 relay 的來源供參考，接受前一律要強提示確認，與附近的方式相同。
 - 只在兩支本錢包之間：每個證明另外附上驗證金鑰 `vkey`，查驗端的原生檢查先以 manifest 的雜湊核對金鑰才使用（`native/zkpassport-verify` 的 `vkey:<電路>` 檢查），所以來源不需信任；經 bridge 送出的訊息不加這個欄位。
 - 驗證：`ZkPassportDiwTransportTest`（標準連結不含擴充、擴充參數讀回、經 relay 完整交換、`vkey` 只出現在擴充路徑）；標準路徑沿用 `ZkPassportResponderTest`。
 

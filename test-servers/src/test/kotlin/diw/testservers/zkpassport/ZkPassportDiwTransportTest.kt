@@ -116,7 +116,8 @@ class ZkPassportDiwTransportTest {
             assertNotNull(incoming.diwRelay)
 
             val responder = ZkPassportResponder(http, incoming, noBridge)
-            // The request reached this wallet through the relay, which is the origin shown.
+            // The request reached this wallet through the relay, whose origin is shown for reference only: the relay
+            // pairs a room by its id, so it never counts as the requester's confirmed origin.
             assertEquals("http://127.0.0.1", responder.connect())
             assertEquals(ZkPassportChannel.DIW_RELAY, responder.channel)
             assertFalse(responder.originMatches)

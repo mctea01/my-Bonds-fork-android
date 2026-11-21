@@ -174,14 +174,17 @@ class ZkPassportResponder(
     private val pending = ArrayList<String>()
 
     /**
-     * The requester's origin as the bridge reports it, or over the DIW relay the relay's own origin: the request
-     * reached this wallet through that server, and the link's domain is compared with it in the same way. Nearby
-     * nothing reports one.
+     * The requester's origin as the bridge reports it, or over the DIW relay the relay's own origin, shown for
+     * reference only: the relay pairs a room by its id alone, so it proves who runs the server, not who is in the room.
+     * Nearby nothing reports one.
      */
     val origin: String? get() = relay?.origin ?: if (nearbyWay != null) null else bridge.origin
 
-    /** Whether the origin is the https origin of the link's domain (5.3; a relay attack otherwise). */
-    val originMatches: Boolean get() = origin == incoming.expectedOrigin
+    /**
+     * Whether the bridge reported the https origin of the link's domain (5.3; a relay attack otherwise). Over the DIW
+     * relay or nearby nothing vouches for the requester, so it never matches there.
+     */
+    val originMatches: Boolean get() = relay == null && nearbyWay == null && origin == incoming.expectedOrigin
 
     /** Whether the answer goes through the DIW relay rather than zkPassport's bridge. */
     val viaRelay: Boolean get() = relay != null
