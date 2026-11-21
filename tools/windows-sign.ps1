@@ -203,20 +203,6 @@ if ($Mode -eq "Native") {
     $uploads = @($signed)
     $what = "Windows 原生版（實驗，$zipName）的執行檔與其旁的程式庫"
 } else {
-        Copy-Item $Path $folder -Recurse
-    }
-    $exe = Get-ChildItem $folder -Recurse -Filter "diw-desktop.exe" | Select-Object -First 1
-    if (-not $exe) { throw "diw-desktop.exe not found in $Path" }
-    $root = $exe.Directory.FullName
-    $binaries = @(Get-ChildItem $root -Recurse -Include "*.exe", "*.dll" | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
-    Write-Host "Signing $($binaries.Count) files of the native executable folder"
-    foreach ($b in $binaries) { Sign-File $b.FullName }
-    $zipName = if ($Tag -match "^v(\d+\.\d+\.\d+)$") { "$PackageName-$($Matches[1])-windows-x64-native.zip" } else { "$PackageName-windows-x64-native.zip" }
-    $signed = Join-Path $output $zipName
-    [IO.Compression.ZipFile]::CreateFromDirectory($root, $signed, [IO.Compression.CompressionLevel]::Optimal, $false)
-    $uploads = @($signed)
-    $what = "Windows 原生版（實驗，$zipName）的執行檔與其旁的程式庫"
-} else {
     # The installer: a local file, or the one .msi of the release.
     if ($Msi) {
         $Msi = (Resolve-Path $Msi).Path
