@@ -414,6 +414,13 @@ class TaiwanModel(private val model: WalletModel) {
     var preferredDocument: String? = null
     private var linkJob: Job? = null
     private var lanJob: Job? = null
+    /** Preparing a pickup, its barcode, or the cards for a Bonds request: leaving the offline screen stops it. */
+    private var offlineJob: Job? = null
+
+    private fun offlineStep(block: suspend () -> Unit) {
+        offlineJob?.cancel()
+        offlineJob = model.scope.launch { block() }
+    }
     private var verifierLinkJob: Job? = null
     /** The one-time key of the challenge on screen; presentations over the network and Bluetooth are sealed to it. */
     private var verifierKey: EcPrivateKey? = null
@@ -479,10 +486,12 @@ class TaiwanModel(private val model: WalletModel) {
         }
         offline.value = OfflineUi.Working(tr(Res.string.tw_creating_pickup, service.name))
         model.screen.value = Screen.Offline
-        model.scope.launch {
+        offlineStep {
             try {
                 val session = model.twdiwServices.startOffline(service, allowUnlisted)
                 model.startPresentation(session.entry.uri, TwdiwEntry.ENTRY_HINT, session.fields, session)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: ProtocolException) {
                 offline.value = if (e.code == "untrusted_verifier" && !allowUnlisted) OfflineUi.Unlisted(service, model.describe(e))
                 else OfflineUi.Failed(model.describe(e))
@@ -506,7 +515,7 @@ class TaiwanModel(private val model: WalletModel) {
     fun fetchBarcode(session: TwdiwOfflineSession) {
         offline.value = OfflineUi.Working(tr(Res.string.tw_getting_pickup_code))
         model.screen.value = Screen.Offline
-        model.scope.launch {
+        offlineStep {
             try {
                 val holder = model.holderIdentities.find(HolderIdentities.TWDIW)
                     ?: throw ProtocolException("credential_unavailable", tr(Res.string.tw_no_wallet_key))
@@ -517,6 +526,8 @@ class TaiwanModel(private val model: WalletModel) {
                 }
                 offline.value = OfflineUi.Barcode(session.service.name, model.platform.decodeImage(barcode.png), barcode.expiresAt)
                 model.platform.keepScreenOn(true)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 offline.value = OfflineUi.Failed(model.describe(e))
             }
@@ -604,7 +615,7 @@ class TaiwanModel(private val model: WalletModel) {
         model.screen.value = Screen.Offline
         val preferred = preferredDocument
         preferredDocument = null
-        model.scope.launch {
+        offlineStep {
             try {
                 val request = BondsPresentationRequest.parse(text)
                 if (request.source == BondsCredentialSource.SELF_ISSUED) {
@@ -614,7 +625,7 @@ class TaiwanModel(private val model: WalletModel) {
                     }
                     offline.value = if (cards.isNotEmpty()) OfflineUi.BondsChoose(request, cards)
                     else OfflineUi.Failed(tr(Res.string.tw_needs_bonds_id))
-                    return@launch
+                    return@offlineStep
                 }
                 val docs = if (request.source == BondsCredentialSource.TWDIW) twdiwDocuments(model.documents.value) else model.documents.value
                 val cards = docs.mapNotNull { bondsCard(it, request.source) }.sortedBy { if (it.document?.identifier == preferred) 0 else 1 }
@@ -623,6 +634,8 @@ class TaiwanModel(private val model: WalletModel) {
                     request.source == BondsCredentialSource.TWDIW -> OfflineUi.Failed(tr(Res.string.tw_only_gov_cards))
                     else -> OfflineUi.Failed(tr(Res.string.tw_no_offline_cards))
                 }
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 offline.value = OfflineUi.Failed(tr(Res.string.tw_verifier_qr_unreadable) + model.describe(e))
             }
@@ -1012,6 +1025,8 @@ class TaiwanModel(private val model: WalletModel) {
         ageVerifier.stop()
         zkTls.stop()
         zkPassport.stop()
+        offlineJob?.cancel()
+        offlineJob = null
         linkJob?.cancel()
         linkJob = null
         lanJob?.cancel()

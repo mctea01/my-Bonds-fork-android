@@ -2711,6 +2711,9 @@
     <string name="msg_root_trusted">已信任「%1$s」（文件簽章、時間戳記與內容憑證，信任等級 T2）</string>
     <string name="msg_saved_before">，%1$s 個先前已保存</string>
     <string name="msg_saved_files">已保存 %1$s 個檔案</string>
+    <string name="msg_user_cancelled">已取消</string>
+    <string name="msg_operation_cancelled">已停止，沒有儲存新的內容</string>
+    <string name="msg_issued_after_leaving">離開畫面後收到 %1$d 張憑證，已加入皮夾</string>
     <string name="msg_saved_name">已保存：%1$s</string>
     <string name="msg_self_host_bad">自架主機的網址無法使用：%1$s</string>
     <string name="msg_self_host_vk">這台裝置缺少驗證自架主機證明所需的驗證金鑰，請在設定的「零知識證明」頁下載</string>

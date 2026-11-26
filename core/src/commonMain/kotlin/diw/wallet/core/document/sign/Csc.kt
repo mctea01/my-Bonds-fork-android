@@ -632,8 +632,8 @@ class CscSigner(
         "implicit", "explicit" -> {
             val token = serviceToken()
             if (c.otpNeeded && c.otpOnline) client.sendOtp(token, c.id)
-            val pin = if (c.pinNeeded) agent.askSecret(ct("core_csc_pin"), false) ?: throw SigningException(ct("core_sign_cancelled")) else null
-            val otp = if (c.otpNeeded) agent.askSecret(ct("core_csc_otp"), true) ?: throw SigningException(ct("core_sign_cancelled")) else null
+            val pin = if (c.pinNeeded) agent.askSecret(ct("core_csc_pin"), false) ?: throw UserCancelledException(ct("core_sign_cancelled")) else null
+            val otp = if (c.otpNeeded) agent.askSecret(ct("core_csc_otp"), true) ?: throw UserCancelledException(ct("core_sign_cancelled")) else null
             onStatus(ct("core_csc_authorizing"))
             token to client.authorizeCredential(token, c.id, listOf(hash), pin, otp, asciiDescription(hint))
         }

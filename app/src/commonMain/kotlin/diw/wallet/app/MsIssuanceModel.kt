@@ -8,6 +8,7 @@ import diw.wallet.core.profile.msvid.MsTokenRequirement
 import diw.wallet.core.profile.msvid.MsVerifiedIdIssuance
 import diw.wallet.core.w3c.W3cInspector
 import diw.wallet.core.w3c.W3cVcCredential
+import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
@@ -65,6 +66,8 @@ class MsIssuanceModel(private val model: WalletModel) {
             val url = issuance().beginLogin(request, requirement)
             state.value = MsIssuanceUi.WaitingForLogin(request, requirement)
             model.platform.openBrowser(url)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             state.value = MsIssuanceUi.Failed(model.describe(e))
         }
@@ -108,14 +111,19 @@ class MsIssuanceModel(private val model: WalletModel) {
             } finally {
                 model.endOperation()
             }
-            current = null
+            // The person may have left the screen while the issuer answered: the card is stored either way.
+            val left = current !== request
+            if (!left) current = null
             model.refreshDocuments()
             model.record(HistoryKind.ISSUED, issuerName(request), request.trust, listOf(doc.displayName ?: request.cardTitle ?: "Verified ID"))
-            state.value = MsIssuanceUi.Done(doc)
+            if (left) model.message.value = tr(Res.string.msg_issued_after_leaving, 1) else state.value = MsIssuanceUi.Done(doc)
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            current = null
+            val left = current !== request
+            if (!left) current = null
             model.record(HistoryKind.ISSUED, issuerName(request), request.trust, listOf(request.cardTitle ?: "Verified ID"), failure = model.describe(e))
-            state.value = MsIssuanceUi.Failed(model.describe(e))
+            if (!left) state.value = MsIssuanceUi.Failed(model.describe(e))
         }
     }
 
@@ -125,7 +133,8 @@ class MsIssuanceModel(private val model: WalletModel) {
     fun cancel() {
         val request = current ?: return
         current = null
-        model.scope.launch { runCatching { issuance().cancel(request) } }
+        // Once the card is being collected the issuer is not told to cancel: that request is already on its way.
+        if (state.value !is MsIssuanceUi.Working) model.scope.launch { runCatching { issuance().cancel(request) } }
         state.value = MsIssuanceUi.Failed(tr(Res.string.zk_cancelled))
     }
 }

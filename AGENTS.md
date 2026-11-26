@@ -160,6 +160,11 @@
 - 掃描入口（`ui/ScanActions`）：有相機時提供「掃描 QR Code」與「從圖片讀取」，沒有相機（桌面）時只有「從圖片讀取 QR Code」。圖片由 `core` 的 `QrDecoder`（jvmCommonMain 以 ZXing core 實作，含反白圖片、多個 QR Code 時取最靠近中央者）解碼，`WalletModel.qrFromImage` 先把大圖縮到最長邊 2400 像素。
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
 - 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、沒有 SP 帳號時的行動自然人憑證。
+- 操作的失敗、取消、返回與狀態更新：
+  - `FilesModel` 的操作都經 `run`：進行中可由忙碌列的「取消」（`FilesBusyLine`、`FilesModel.cancel`）停止，`WalletModel.back()` 離開文件詳情、簽署、身分證卡、晶片讀取、OpenCerts 與公文容器畫面時以 `files.left(screen)` 停止在該畫面開始的操作並清掉錯誤（衍生畫面的零知識證明另有取消，不在此列）。操作結束時的換頁一律用 `show(...)`：使用者已離開開始的畫面或已取消時不換頁。卡片或服務已簽好之後的儲存、紀錄在 `NonCancellable` 內完成，`store` 的內容與紀錄一起寫入。
+  - 使用者關閉的步驟（Multipaz 的 `PromptDismissedException`、`UserCancelledException`）以 `WalletModel.cancelledByUser` 判斷，顯示為取消而不是錯誤；`describe` 不會顯示例外類別名稱。新增等待使用者的步驟（PIN、OTP、授權）被關閉時丟 `UserCancelledException`。
+  - 在 `launch` 裡 `catch (e: Exception)` 前要先 `catch (e: CancellationException) { throw e }`，否則取消會被當成失敗顯示。
+  - 憑證領取以 `issuanceRun` 區分流程：返回或開始新的領取後，舊流程的結果不再改畫面（`showIssuance`），已送出的憑證照樣保存並以訊息告知；Verified ID 同理。TWDIW 離線畫面的取件、條碼與 Bonds 卡片準備經 `offlineStep`，`closeOffline` 會停止它們。
 - 簽章金鑰來源的選擇（卡片、PIV、PKCS#11、系統、PKCS#12、行動自然人憑證、CSC）是共用元件 `ui/KeySources`（`SignerPicker`、`CscPromptPanel`），文件簽署、金鑰檢視與查驗方身分都用它；讀取金鑰一律經 `FilesModel.signer(choice)`。
 - EU DSS 交叉驗證：`DIW_SIGNED_OUT=<資料夾> ./gradlew :test-servers:test --tests '*DocumentSigningTest' --tests '*LongTermSigningTest' --rerun` 輸出錢包簽出的檔案（長期驗證的樣本在 `<資料夾>/lt`），再以 `./gradlew -p tools/dss-check run --args=<資料夾>`（與 `<資料夾>/lt`）用 DSS 6.5 驗證（測試 PKI 沒有撤銷資訊，政策只把缺撤銷資料降為警告）。DSS 拒絕含 DOCTYPE 的 XML，公文「函」改由 JDK 與錢包自身驗證。
 - 含個資的真實文件不可提交進 repo；測試樣本只用測試 PKI 產生或 DSS、ofdrw 的公開範例。用真實文件核對解析時，探測程式放在 `test-servers/src/test/kotlin/diw/testservers/local/`（已列在 .gitignore），輸出不放進 repo。

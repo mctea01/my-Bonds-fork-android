@@ -2711,6 +2711,9 @@
     <string name="msg_root_trusted">Trusted \"%1$s\" (document signatures, timestamps and content credentials, trust level T2)</string>
     <string name="msg_saved_before">, %1$s saved before</string>
     <string name="msg_saved_files">Saved %1$s files</string>
+    <string name="msg_user_cancelled">Cancelled</string>
+    <string name="msg_operation_cancelled">Stopped. Nothing new was saved</string>
+    <string name="msg_issued_after_leaving">%1$d credentials arrived after you left the screen and are in the wallet</string>
     <string name="msg_saved_name">Saved: %1$s</string>
     <string name="msg_self_host_bad">The self-hosted host URL cannot be used: %1$s</string>
     <string name="msg_self_host_vk">This device lacks the verification key for self-hosted proofs; download it on the Zero-knowledge proofs page of Settings</string>

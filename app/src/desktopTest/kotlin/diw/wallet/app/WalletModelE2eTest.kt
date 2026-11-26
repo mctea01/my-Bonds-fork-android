@@ -5,6 +5,9 @@ import androidx.compose.ui.unit.dp
 import diw.testservers.TestPki
 import diw.testservers.TestServers
 import diw.wallet.app.desktop.PinValueCipher
+import diw.wallet.app.res.Res
+import diw.wallet.app.res.msg_operation_cancelled
+import diw.wallet.app.res.msg_user_cancelled
 import diw.wallet.core.document.sign.SignatureLevel
 import diw.wallet.core.profile.bonds.BondsCredentialSource
 import diw.wallet.core.oid4vci.IssuanceResult
@@ -1316,6 +1319,91 @@ class WalletModelE2eTest {
         assertNull(sign())
         assertEquals(3, posted.size)
         assertTrue(m.files.files.value.any { it.parentId == stored.id })
+    }
+
+    /**
+     * A signing that waits for the person (here a mobile citizen certificate approval) stops when they go Back, and
+     * stores nothing; one that finishes after they moved elsewhere keeps the signature without taking them back.
+     */
+    @Test
+    fun signingStopsOnBackAndDoesNotPullThePersonBack() = runBlocking<Unit> {
+        val host = "diw.example.org"
+        val approved = java.util.concurrent.atomic.AtomicBoolean(false)
+        val posted = java.util.concurrent.atomic.AtomicInteger(0)
+        val rsa = java.security.KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        fun rsaSign(data: ByteArray): ByteArray = java.security.Signature.getInstance("SHA256withRSA").run { initSign(rsa.private); update(data); sign() }
+        val cert = diw.wallet.core.document.sign.DocumentSigning.selfIssuedCertificate(
+            rsa.public.encoded, "測試持有人", { rsaSign(it) }, diw.wallet.core.document.sign.SignerKeyType.RSA, 30,
+        )
+        val data = java.util.concurrent.ConcurrentHashMap<String, ByteArray>()
+        val b64 = java.util.Base64.getEncoder()
+        val engine = io.ktor.client.engine.mock.MockEngine { request ->
+            val json = io.ktor.http.headersOf(HttpHeaders.ContentType, "application/json")
+            val path = request.url.encodedPath
+            when {
+                path == "/info" -> respond(buildJsonObject {
+                    put("name", "diw-wallet-server")
+                    putJsonArray("features") { add("relay"); add("twfido") }
+                    put("twfido", buildJsonObject { put("environment", "UAT") })
+                }.toString(), io.ktor.http.HttpStatusCode.OK, json)
+                path == "/twfido/sign" -> {
+                    val o = DiwJson.parseToJsonElement((request.body as io.ktor.http.content.TextContent).text).jsonObject
+                    val n = posted.incrementAndGet()
+                    data["s$n"] = java.util.Base64.getDecoder().decode(o["data"]!!.jsonPrimitive.content)
+                    val ticket = java.util.Base64.getUrlEncoder().withoutPadding()
+                        .encodeToString("""{"transaction_id":"txn-$n","sp_ticket_id":"t-$n"}""".toByteArray()) + ".digest"
+                    respond("""{"sessionId":"s$n","token":"r$n","spTicket":"$ticket","environment":"UAT"}""", io.ktor.http.HttpStatusCode.OK, json)
+                }
+                path.startsWith("/twfido/sign/") -> if (!approved.get()) respond("""{"status":"pending"}""", io.ktor.http.HttpStatusCode.OK, json) else {
+                    val signed = data[path.substringAfterLast('/')]!!
+                    respond("""{"status":"done","signature":"${b64.encodeToString(rsaSign(signed))}","certificate":"${b64.encodeToString(cert)}","hashedIdNumber":"h"}""",
+                        io.ktor.http.HttpStatusCode.OK, json)
+                }
+                else -> respond("not found", io.ktor.http.HttpStatusCode.NotFound)
+            }
+        }
+        val p = TestPlatform(EphemeralStorage(), client = { HttpClient(engine) { followRedirects = false } })
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        m.legal.acceptAll()
+        m.updateSettings { it.copy(zkVerifierUrl = "https://$host", serverToken = "token-for-the-host-0123") }.join()
+        val pdf = diw.testservers.fixtures.PdfComposer.compose("在學證明", listOf(diw.testservers.fixtures.PdfComposer.Block.Heading("在學證明")))
+        m.files.import(PickedFile("proof.pdf", pdf), FileOrigin.IMPORTED, null).join()
+        val stored = m.files.files.value.single()
+        val choice = SignerChoice.MobileMoica(null, "A123456789", diw.wallet.core.document.sign.MobileMoicaMode.PUSH, server = "https://$host")
+        suspend fun waitFor(n: Int) = kotlinx.coroutines.withTimeout(20_000) { while (posted.get() < n) kotlinx.coroutines.delay(20) }
+
+        // Back while the approval is pending: the signing stops, nothing is stored, no error is left behind.
+        m.screen.value = Screen.FileSign(stored.id)
+        val first = m.files.sign(stored, choice, SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B)
+        waitFor(1)
+        assertTrue(m.files.cancellable.value)
+        assertTrue(m.back())
+        assertEquals(Screen.FileDetail(stored.id), m.screen.value)
+        kotlinx.coroutines.withTimeout(20_000) { first.join() }
+        assertTrue(first.isCancelled)
+        assertNull(m.files.busy.value)
+        assertNull(m.files.error.value)
+        assertFalse(m.files.cancellable.value)
+        assertEquals(tr(Res.string.msg_operation_cancelled), m.message.value)
+        assertTrue(m.files.files.value.none { it.parentId == stored.id })
+
+        // Approved after the person went elsewhere: the signed file is kept and the screen stays where they are.
+        m.screen.value = Screen.FileSign(stored.id)
+        val second = m.files.sign(stored, choice, SignForm.PADES, "", "", timestamp = false, level = SignatureLevel.B_B)
+        waitFor(2)
+        m.showTab(HomeTab.VERIFY)
+        approved.set(true)
+        kotlinx.coroutines.withTimeout(60_000) { second.join() }
+        assertNull(m.files.error.value)
+        assertEquals(Screen.Home, m.screen.value)
+        assertEquals(HomeTab.VERIFY, m.tab.value)
+        assertTrue(m.files.files.value.any { it.parentId == stored.id })
+
+        // A dismissed card or biometric prompt reads as cancelled, not as the exception's class name.
+        assertTrue(m.cancelledByUser(org.multipaz.prompt.PromptDismissedException()))
+        assertEquals(tr(Res.string.msg_user_cancelled), m.describe(org.multipaz.prompt.PromptDismissedException()))
     }
 
     @Test

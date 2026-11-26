@@ -244,7 +244,7 @@ fun FilesTab(model: WalletModel) {
             Spacer(Modifier.width(6.dp))
             Text(stringResource(Res.string.files_read_passport))
         }
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         if (files.isEmpty()) {
             EmptyState(
                 WalletIcons.Document, stringResource(Res.string.files_empty_title),
@@ -280,14 +280,22 @@ fun DocumentSourcesScreen(model: WalletModel) {
 }
 
 @Composable
-internal fun BusyLine(busy: String?, error: String?) {
+internal fun BusyLine(busy: String?, error: String?, onCancel: (() -> Unit)? = null) {
     busy?.let {
         Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             CircularProgressIndicator(Modifier.size(18.dp))
-            Text(it, style = MaterialTheme.typography.bodyMedium)
+            Text(it, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.weight(1f))
+            onCancel?.let { cancel -> TextButton(onClick = cancel) { Text(stringResource(Res.string.action_cancel)) } }
         }
     }
     error?.let { Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+}
+
+/** [BusyLine] for vault actions, with Cancel while one runs. */
+@Composable
+internal fun FilesBusyLine(model: WalletModel, busy: String?, error: String?) {
+    val cancellable by model.files.cancellable.collectAsState()
+    BusyLine(busy, error, if (cancellable) model.files::cancel else null)
 }
 
 /** How the files list is laid out: newest first, or grouped by what the files are (MyData item, official documents). */
@@ -486,7 +494,7 @@ fun OfficialBundleScreen(model: WalletModel, screen: Screen.OfficialBundle) {
         Text(main.report?.title ?: main.name, style = MaterialTheme.typography.titleMedium)
         Text(stringResource(Res.string.files_pick_related_text),
             style = MaterialTheme.typography.bodySmall)
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         val list = candidates
         when {
             list == null -> CircularProgressIndicator(Modifier.size(20.dp))
@@ -548,7 +556,7 @@ fun FileDetailScreen(model: WalletModel, screen: Screen.FileDetail) {
         Text(listOfNotNull(if (report?.title != null && report.title != f.name) f.name else null, f.period,
             report?.format?.let { formatTitle(it) } ?: f.mediaType, sizeText(f.size), f.source ?: f.origin.title).joinToString("・"),
             style = MaterialTheme.typography.bodySmall)
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         if (report != null) ReportVerdict(report)
         WrapRow() {
             Button(onClick = { model.screen.value = Screen.FileSign(f.id) }) { Text(stringResource(Res.string.files_sign)) }
@@ -1045,7 +1053,7 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 listOf(stringResource(Res.string.sign_break_text_1), stringResource(Res.string.sign_break_text_2), stringResource(Res.string.sign_break_text_3)),
             )
         } else true
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         CscPromptPanel(model)
         Button(onClick = { choice?.let { model.files.sign(
                     f, it, form, reason, location, timestamp, allowBreakingCertification = locked,
@@ -2305,7 +2313,7 @@ fun FileDeriveScreen(model: WalletModel, screen: Screen.FileDerive) {
                 FilterChip(selected = validDays == d, onClick = { validDays = d }, label = { Text(t) })
             }
         }
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         val claims = suggested.filter { it.name in chosen } + dayClaims + listOfNotNull(
             if (showNote && noteName.isNotBlank() && noteValue.isNotBlank()) {
                 DerivedClaim(DerivedCredentials.SELF_ASSERTED_PREFIX + noteName.trim(), noteValue.trim(), stringResource(Res.string.derive_self_asserted) + noteName.trim())
