@@ -5076,4 +5076,14 @@
     <string name="verify_bonds">Bonds 兼容查验（非标准）</string>
     <string name="verify_bonds_text">供 Bonds App 与 TWDIW 卡片使用：离线查验挑战与年龄查验。这些依 Bonds 自有格式，不属于上方的标准协议。</string>
     <string name="verify_bonds_challenge">Bonds 离线查验挑战</string>
+    <string name="zkp_face_model_title">人脸比对模型</string>
+    <string name="zkp_face_model_facenet">改用 FaceNet-512，不用内置的 MobileFaceNet</string>
+    <string name="zkp_face_model_note">两个模型都设置为在公开人脸照片（LFW）上约十万次比对误接受一次。在这个标准下，MobileFaceNet 让 90% 的本人比对通过，FaceNet-512 为 65%，所以 FaceNet-512 是内置模型不适合你的脸时的备用选项。每次比对取五帧相机画面平均。约 24 MB。</string>
+    <string name="zkp_face_model_installed">FaceNet-512 已安装。</string>
+    <string name="zkp_face_model_missing">FaceNet-512 尚未安装。</string>
+    <string name="zkp_face_model_unavailable">这个 App 安装档没有附 FaceNet-512。要使用请改装 GitHub 的完整 APK 或 Google Play 版。</string>
+    <string name="zkp_face_model_install">安装 FaceNet-512</string>
+    <string name="zkp_face_model_installing">正在安装 FaceNet-512（%1$d%%）</string>
+    <string name="zkp_face_model_error">安装失败：%1$s</string>
+    <string name="zkp_answer_err_facematch_model">zkPassport 设置选用的 FaceNet-512 模型尚未安装。请在该处安装，或改回内置模型。请求方没有收到任何数据。</string>
 </resources>

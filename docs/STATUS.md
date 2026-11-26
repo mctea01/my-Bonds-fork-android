@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-26（工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #172）。
+最後更新：2026-11-26（工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
