@@ -444,4 +444,19 @@ class X509ConstraintsTest {
         // Without a role only the path rules apply to the path as drawn, and the root's SHA-1 signature on the CA shows.
         assertTrue(registry.path(listOf(l, m, r)).constraints.weak)
     }
+
+    /** An intermediate the wallet completes the chain with is checked even when no anchor is found above it. */
+    @Test
+    fun completedChainWithoutAnchorIsChecked() = runBlocking<Unit> {
+        val nc = Ext(Extension.nameConstraints, true, NameConstraints(null, arrayOf(GeneralSubtree(GeneralName(GeneralName.dNSName, "blocked.tw")))))
+        val m = mid(ca(), caUsage, nc)
+        val l = leaf(signUsage, san(GeneralName(GeneralName.dNSName, "www.blocked.tw")))
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addIntermediate(m, "Constraint CA", "test")
+        val d = registry.decide(TrustRole.DOCUMENT, listOf(l))
+        assertEquals(TrustTier.T4, d.tier, d.toString())
+        assertTrue(TrustLabel.CERTIFICATE_CONSTRAINT in d.labels)
+        // The same chain sent complete gives the same result.
+        assertEquals(d, registry.decide(TrustRole.DOCUMENT, listOf(l, m)))
+    }
 }

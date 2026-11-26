@@ -472,10 +472,12 @@ class TrustRegistry(
         var used = chain
         var m = matchChain(role, chain, atTime, docType)
         if (m == null) {
+            // The completed chain is checked even when it still leads to no anchor, so that an intermediate's
+            // constraints apply whether it came with the chain or from the pool.
             val longer = extendFromPool(chain)
             if (longer.size > chain.size) {
                 m = matchChain(role, longer, atTime, docType)
-                if (m != null) used = longer
+                used = longer
             }
         }
         return judge(role, used, m, atTime, docType)
@@ -660,8 +662,9 @@ class TrustRegistry(
         if (ev.match != null || ev.rejected != null || issuerFetcher == null || chain.isEmpty()) return ev to false
         val longer = complete(extendFromPool(chain))
         if (longer.size <= chain.size) return ev to false
+        // Kept without an anchor too: the issuers AIA names are checked like those sent with the chain.
         val again = evaluate(role, longer, atTime, docType)
-        return if (again.match != null || again.rejected != null) again to (again.match != null) else ev to false
+        return again to (again.match != null)
     }
 
     /**
