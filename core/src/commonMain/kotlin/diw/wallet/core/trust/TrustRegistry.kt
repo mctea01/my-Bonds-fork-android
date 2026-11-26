@@ -421,7 +421,7 @@ class TrustRegistry(
         val out = chain.toMutableList()
         while (out.size < MAX_CHAIN) {
             val last = out.last()
-            if (last.selfIssuedRoot) break
+            if (signedItself(last)) break
             out.add(candidates.firstOrNull { c -> c !in out && issues(c, last) } ?: break)
         }
         return out
@@ -513,12 +513,18 @@ class TrustRegistry(
     /** [chain] in issuing order from the leaf, as far as each certificate names the one above it and its key verifies. */
     private fun linked(chain: List<X509Cert>): List<X509Cert> {
         val out = mutableListOf(chain.first())
-        while (out.size < MAX_CHAIN && !out.last().selfIssuedRoot) {
+        while (out.size < MAX_CHAIN && !signedItself(out.last())) {
             val last = out.last()
             out.add(chain.firstOrNull { it !in out && issues(it, last) && Pkix.signedBy(last, it) } ?: break)
         }
         return out
     }
+
+    /**
+     * A root that signed itself: self-issued and its own key verifies its signature. A key rollover certificate
+     * under the same name is signed by the old key, so a chain goes on from it to the certificate of that key.
+     */
+    private fun signedItself(c: X509Cert): Boolean = c.selfIssuedRoot && Pkix.signedBy(c, c)
 
     private suspend fun matchChain(role: TrustRole, chain: List<X509Cert>, atTime: Instant, docType: String?): AnchorMatch? {
         var listsChecked = false
@@ -614,7 +620,7 @@ class TrustRegistry(
         var downloads = 0
         while (out.size < MAX_CHAIN && downloads < MAX_FETCHES) {
             val last = out.last()
-            if (last.selfIssuedRoot) break
+            if (signedItself(last)) break
             val urls = runCatching { DocCrypto.caIssuerUrls(last.encoded.toByteArray()) }.getOrDefault(emptyList())
             var next: X509Cert? = null
             for (url in urls) {

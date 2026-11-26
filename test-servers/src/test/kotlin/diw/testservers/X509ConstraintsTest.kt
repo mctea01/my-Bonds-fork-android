@@ -58,6 +58,7 @@ import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
 import kotlin.test.assertNotNull
+import kotlin.test.assertNull
 import kotlin.test.assertTrue
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -441,6 +442,16 @@ class X509ConstraintsTest {
         val rooted = CertificateConstraints.check(listOf(selfSigned), null, now, anchored = false)
         assertFalse(rooted.failed, rooted.toString())
         assertTrue(ConstraintRule.UNKNOWN_CRITICAL_EXTENSION in rooted.rules(ConstraintSeverity.NOTE), rooted.toString())
+
+        // Without an anchor the chain goes on past the rollover certificate to the old root that signed it, whose
+        // name constraints exclude the leaf.
+        val excludeLeaf = Ext(Extension.nameConstraints, true, NameConstraints(null, arrayOf(GeneralSubtree(GeneralName(GeneralName.dNSName, "rollover.test")))))
+        val oldRoot = cert(name, name, rsaOld, rsaOld, listOf(ca(), caUsage, excludeLeaf))
+        val named = cert("CN=Rollover Leaf,C=TW", name, ecGen.generateKeyPair(), rsaNew, listOf(signUsage, san(GeneralName(GeneralName.dNSName, "www.rollover.test"))), keyIds = false)
+        val untrusted = TrustRegistry(EphemeralStorage(), EnvironmentPolicy()).evaluate(TrustRole.DOCUMENT, listOf(named, rollover, oldRoot))
+        assertNull(untrusted.match, untrusted.toString())
+        assertEquals(listOf(named, rollover, oldRoot), untrusted.path)
+        assertTrue(ConstraintRule.NAME_CONSTRAINTS in untrusted.constraints.rules(ConstraintSeverity.FAIL), untrusted.constraints.toString())
     }
 
     /**
