@@ -625,8 +625,13 @@ class FilesModel(private val model: WalletModel) {
         return file(f.id) ?: f
     }
 
-    /** A vault action in progress and the screen it started on. */
-    private class Operation(val job: Job, val from: Screen) {
+    /**
+     * A vault action and the screen it started on. It travels in the action's coroutine context, so [show] judges by
+     * the action that calls it, not by whichever action started last.
+     */
+    private class Operation(val from: Screen) : kotlin.coroutines.AbstractCoroutineContextElement(Key) {
+        companion object Key : kotlin.coroutines.CoroutineContext.Key<Operation>
+        lateinit var job: Job
         @kotlin.concurrent.Volatile var cancelled = false
     }
 
@@ -640,8 +645,8 @@ class FilesModel(private val model: WalletModel) {
      * closed (a card or PIN prompt) is reported as cancelled rather than as an error. The busy line can [cancel] it.
      */
     private fun run(progress: String, block: suspend () -> Unit): Job {
-        val from = model.screen.value
-        val job = model.scope.launch(start = CoroutineStart.LAZY) {
+        val op = Operation(model.screen.value)
+        val job = model.scope.launch(op, start = CoroutineStart.LAZY) {
             busy.value = progress
             error.value = null
             try {
@@ -651,15 +656,18 @@ class FilesModel(private val model: WalletModel) {
             } catch (e: Exception) {
                 if (model.cancelledByUser(e)) model.message.value = model.describe(e) else error.value = model.describe(e)
             } finally {
-                if (running?.job === coroutineContext[Job]) {
+                if (running === op) {
                     running = null
                     cancellable.value = false
-                    busy.value = null
                 }
+                // A cancelled action that went on to store its signature may end after a newer one: the busy line
+                // clears once nothing runs.
+                if (running == null) busy.value = null
                 model.endOperation()
             }
         }
-        running = Operation(job, from)
+        op.job = job
+        running = op
         cancellable.value = true
         job.start()
         return job
@@ -685,10 +693,10 @@ class FilesModel(private val model: WalletModel) {
     }
 
     /** Opens [screen] at the end of an action, unless the person has since moved on from the screen it started on. */
-    private fun show(screen: Screen) {
-        val op = running
-        if (op?.cancelled == true) return
-        if (op == null || model.screen.value == op.from) model.screen.value = screen
+    private suspend fun show(screen: Screen) {
+        val op = currentCoroutineContext()[Operation]
+        if (op != null && (op.cancelled || model.screen.value != op.from)) return
+        model.screen.value = screen
     }
 
     /** Lets the user pick a file and stores it. */

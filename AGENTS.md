@@ -161,7 +161,7 @@
 - 非判定的標記（已衍生憑證、身分證卡、公文容器）用 `InfoPill`，不用判定色。
 - 停用列（寫明原因）：公文交換收發（需要機關的公文電子交換帳號與憑證）、沒有 SP 帳號時的行動自然人憑證。
 - 操作的失敗、取消、返回與狀態更新：
-  - `FilesModel` 的操作都經 `run`：進行中可由忙碌列的「取消」（`FilesBusyLine`、`FilesModel.cancel`）停止，`WalletModel.back()` 離開文件詳情、簽署、身分證卡、晶片讀取、OpenCerts 與公文容器畫面時以 `files.left(screen)` 停止在該畫面開始的操作並清掉錯誤（衍生畫面的零知識證明另有取消，不在此列）。操作結束時的換頁一律用 `show(...)`：使用者已離開開始的畫面或已取消時不換頁。卡片或服務已簽好之後的儲存、紀錄在 `NonCancellable` 內完成，`store` 的內容與紀錄一起寫入。
+  - `FilesModel` 的操作都經 `run`：進行中可由忙碌列的「取消」（`FilesBusyLine`、`FilesModel.cancel`）停止，`WalletModel.back()` 離開文件詳情、簽署、身分證卡、晶片讀取、OpenCerts 與公文容器畫面時以 `files.left(screen)` 停止在該畫面開始的操作並清掉錯誤（衍生畫面的零知識證明另有取消，不在此列）。操作結束時的換頁一律用 `show(...)`：以呼叫它的操作（放在協程 context 的 `Operation`）判斷，使用者已離開開始的畫面或已取消時不換頁。卡片或服務已簽好之後的儲存、紀錄在 `NonCancellable` 內完成，`store` 的內容與紀錄一起寫入。
   - 使用者關閉的步驟（Multipaz 的 `PromptDismissedException`、`UserCancelledException`）以 `WalletModel.cancelledByUser` 判斷，顯示為取消而不是錯誤；`describe` 不會顯示例外類別名稱。新增等待使用者的步驟（PIN、OTP、授權）被關閉時丟 `UserCancelledException`。
   - 在 `launch` 裡 `catch (e: Exception)` 前要先 `catch (e: CancellationException) { throw e }`，否則取消會被當成失敗顯示。
   - 憑證領取以 `issuanceRun` 區分流程：返回或開始新的領取後，舊流程的結果不再改畫面（`showIssuance`），已送出的憑證照樣保存並以訊息告知；Verified ID 同理。TWDIW 離線畫面的取件、條碼與 Bonds 卡片準備經 `offlineStep`，`closeOffline` 會停止它們。
