@@ -2,7 +2,7 @@
 
 跨平台的整合數位皮夾：在同一個 App 內持有與出示數位憑證、查驗他人的證件、保存並檢查簽章文件、以自然人憑證或遠端簽章服務簽署，並把文件轉成可出示的衍生憑證。
 
-以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫（繁體中文與英文），目前提供 Android 與 Windows、Linux 桌面版，macOS 可用 jar 執行。
+以標準協議為核心（OpenID4VCI / OpenID4VP 1.0、SD-JWT VC、ISO mdoc），並相容台灣數位憑證皮夾（TWDIW）、Bonds、Microsoft Entra Verified ID 與 EUDI 參考實作。底層使用 [Multipaz](https://github.com/openwallet-foundation/multipaz)，介面以 Compose Multiplatform 撰寫（繁體中文、簡體中文與英文，可自行加入其他語言，見 [docs/guides/translation.md](docs/guides/translation.md)），目前提供 Android 與 Windows、Linux 桌面版，macOS 可用 jar 執行。
 
 > 狀態：開發中，版本線 0.5。標準核心、相容 Profile、文件與簽章、零知識證明、驗證者透明與主動查驗（P1 到 P5）都已在 main；iOS（P6）尚未開始，多數功能還沒有完整的實機驗收。各功能做到哪裡、還缺什麼，見 [專案現況](docs/STATUS.md)。正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
 
@@ -132,7 +132,7 @@
 
 ## 建置與測試
 
-需求：JDK 21、Android SDK（compileSdk 36）。
+需求：JDK 21、Android SDK（compileSdk 37）。
 
 ```bash
 ./gradlew :app:assembleDebug          # Android debug APK

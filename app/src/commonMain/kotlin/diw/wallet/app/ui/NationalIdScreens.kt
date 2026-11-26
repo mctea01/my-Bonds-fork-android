@@ -134,7 +134,7 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
                 modifier = Modifier.fillMaxWidth(),
             )
             Text(stringResource(Res.string.national_id_number_text), style = MaterialTheme.typography.bodySmall)
-            BusyLine(busy, error)
+            FilesBusyLine(model, busy, error)
             Button(onClick = { model.files.readNationalId(f, idNumber) }, enabled = busy == null && idNumber.isNotBlank()) { Text(stringResource(Res.string.national_id_open_read)) }
             return@ScreenColumn
         }
@@ -161,7 +161,7 @@ fun NationalIdCreateScreen(model: WalletModel, screen: Screen.NationalIdCreate) 
             else IntegrationOffRow(model, diw.wallet.app.legal.Integration.MOBILE_MOICA)
             TextButton(onClick = { useMobile = false; mobile = null }) { Text(stringResource(Res.string.national_id_use_card)) }
         }
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         WrapRow() {
             Button(
                 onClick = {
@@ -198,7 +198,7 @@ fun NationalIdScreen(model: WalletModel, screen: Screen.NationalId) {
     val name = cardholder(card)
     ScreenColumn(spacing = 10.dp) {
         NationalIdCardView(name, issuedAt(card)) {}
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         SectionTitle(stringResource(Res.string.label_fields))
         TaiwanModel.nationalIdClaims(card).forEach { (k, v) ->
             LabelValue(BondsNationalId.claimLabels[k] ?: k, if (k == BondsNationalId.CLAIM_OVER_18) yesNo(v) else v)

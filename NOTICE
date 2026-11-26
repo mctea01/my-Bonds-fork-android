@@ -297,6 +297,9 @@ Linux runtime linked by Zig
 - Protocol Buffers protoc - BSD 3-Clause
 - libclang / bindgen - Apache 2.0 with LLVM exceptions / BSD 3-Clause
 - fontTools (tools/twdiw-assets, offline font resource inspection) - MIT License
+- OpenCC (tools/i18n/i18n.py hans, converting the Traditional Chinese interface
+  strings to Simplified Chinese; installed with pip, not bundled) - Apache
+  License 2.0
 - cryptography (TWDIW offline public-key inspection and local signing tools) -
   Apache License 2.0 or BSD 3-Clause
 - SPIRV-Tools (optional tools/twdiw-assets shader disassembly and validation) -

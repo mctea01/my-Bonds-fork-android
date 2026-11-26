@@ -1,0 +1,7 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="nfc_presentation_service">DIW MY WALLET 感应出示</string>
+    <string name="nfc_engagement_aid_group">ISO/IEC 18013-5 NFC 握手（NDEF）</string>
+    <string name="nfc_data_transfer_aid_group">ISO/IEC 18013-5 NFC 数据传输</string>
+    <string name="bb5_module_title">zkPassport 旧版电路验证组件</string>
+</resources>

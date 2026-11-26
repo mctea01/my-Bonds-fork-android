@@ -309,6 +309,8 @@
     <string name="ble_none">此裝置沒有藍牙</string>
     <string name="ble_off">藍牙未開啟</string>
     <string name="ble_permission">請允許「附近的裝置」權限</string>
+    <string name="lan_permission">區域網路需要「附近的裝置」權限（Android 17）。請再試一次，並在詢問時允許</string>
+    <string name="lan_permission_settings">這個 App 的「附近的裝置」權限已關閉，Android 不會再詢問。要使用區域網路，請到系統設定（應用程式 &gt; DIW MY WALLET &gt; 權限）開啟後再試一次</string>
     <string name="ble_permission_retry">請允許「附近的裝置」權限後再試一次</string>
     <string name="blec_cannot_connect">無法連線</string>
     <string name="blec_connect_failed">連線失敗（%1$s）</string>
@@ -2709,6 +2711,9 @@
     <string name="msg_root_trusted">已信任「%1$s」（文件簽章、時間戳記與內容憑證，信任等級 T2）</string>
     <string name="msg_saved_before">，%1$s 個先前已保存</string>
     <string name="msg_saved_files">已保存 %1$s 個檔案</string>
+    <string name="msg_user_cancelled">已取消</string>
+    <string name="msg_operation_cancelled">已停止，沒有儲存新的內容</string>
+    <string name="msg_issued_after_leaving">離開畫面後收到 %1$d 張憑證，已加入皮夾</string>
     <string name="msg_saved_name">已保存：%1$s</string>
     <string name="msg_self_host_bad">自架主機的網址無法使用：%1$s</string>
     <string name="msg_self_host_vk">這台裝置缺少驗證自架主機證明所需的驗證金鑰，請在設定的「零知識證明」頁下載</string>
@@ -3397,7 +3402,7 @@
     <string name="settings_language">語言</string>
     <string name="settings_language_prefix">語言：</string>
     <string name="settings_language_system">跟隨系統</string>
-    <string name="settings_language_text">介面語言。跟隨系統時，中文裝置顯示繁體中文，其他語言顯示英文。部分畫面與訊息尚未翻譯。發證端、查驗方與文件提供的名稱與內容維持原本的語言。</string>
+    <string name="settings_language_text">介面語言。跟隨系統時，中文（中國）的裝置顯示簡體中文，其他中文裝置顯示繁體中文，沒有翻譯的語言顯示英文；簡體中文的法律文件顯示繁體中文原文。部分畫面與訊息尚未翻譯。發證端、查驗方與文件提供的名稱與內容維持原本的語言。</string>
     <string name="settings_last_response">最後一次回應</string>
     <string name="settings_license">授權</string>
     <string name="settings_license_bc">Bouncy Castle License（MIT 類）</string>

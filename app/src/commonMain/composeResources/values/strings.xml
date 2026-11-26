@@ -309,6 +309,8 @@
     <string name="ble_none">This device has no Bluetooth</string>
     <string name="ble_off">Bluetooth is off</string>
     <string name="ble_permission">Allow the Nearby devices permission</string>
+    <string name="lan_permission">The local network needs the Nearby devices permission (Android 17). Try again and allow it when asked</string>
+    <string name="lan_permission_settings">The Nearby devices permission is turned off for this app, and Android will not ask again. To use the local network, turn it on in the system settings (Apps &gt; DIW MY WALLET &gt; Permissions), then try again</string>
     <string name="ble_permission_retry">Allow the Nearby devices permission and try again</string>
     <string name="blec_cannot_connect">Cannot connect</string>
     <string name="blec_connect_failed">Connection failed (%1$s)</string>
@@ -2709,6 +2711,9 @@
     <string name="msg_root_trusted">Trusted \"%1$s\" (document signatures, timestamps and content credentials, trust level T2)</string>
     <string name="msg_saved_before">, %1$s saved before</string>
     <string name="msg_saved_files">Saved %1$s files</string>
+    <string name="msg_user_cancelled">Cancelled</string>
+    <string name="msg_operation_cancelled">Stopped. Nothing new was saved</string>
+    <string name="msg_issued_after_leaving">%1$d credentials arrived after you left the screen and are in the wallet</string>
     <string name="msg_saved_name">Saved: %1$s</string>
     <string name="msg_self_host_bad">The self-hosted host URL cannot be used: %1$s</string>
     <string name="msg_self_host_vk">This device lacks the verification key for self-hosted proofs; download it on the Zero-knowledge proofs page of Settings</string>
@@ -3397,7 +3402,7 @@
     <string name="settings_language">Language</string>
     <string name="settings_language_prefix">Language: </string>
     <string name="settings_language_system">Follow the system</string>
-    <string name="settings_language_text">Interface language. Following the system shows Traditional Chinese on Chinese devices and English elsewhere. Some screens and messages are not translated yet. Names and values from issuers, verifiers and documents keep their own language.</string>
+    <string name="settings_language_text">Interface language. Following the system shows Simplified Chinese on devices set to Chinese (China), Traditional Chinese on other Chinese devices and English for languages without a translation; in Simplified Chinese the legal documents show the Traditional Chinese original. Some screens and messages are not translated yet. Names and values from issuers, verifiers and documents keep their own language.</string>
     <string name="settings_last_response">Last response</string>
     <string name="settings_license">License</string>
     <string name="settings_license_bc">Bouncy Castle License (MIT-style)</string>

@@ -6,10 +6,7 @@ import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
-import androidx.compose.runtime.getValue
-import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.viewinterop.AndroidView
 import diw.wallet.core.document.opencerts.OpenCertRenderer
@@ -22,30 +19,32 @@ import diw.wallet.core.document.opencerts.OpenCertRenderer
 @SuppressLint("SetJavaScriptEnabled")
 @Composable
 actual fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boolean, onExternal: (String) -> Unit) {
-    var view by remember { mutableStateOf<WebView?>(null) }
-    DisposableEffect(Unit) { onDispose { view?.destroy() } }
+    val slot = remember { WebViewSlot() }
+    DisposableEffect(Unit) { onDispose { slot.destroy() } }
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            WebView(context).apply {
-                // An offline page runs no scripts and may not load anything.
-                settings.javaScriptEnabled = !offline
-                settings.domStorageEnabled = !offline
-                settings.blockNetworkLoads = offline
-                settings.builtInZoomControls = offline
-                settings.displayZoomControls = false
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
-                webViewClient = object : WebViewClient() {
-                    override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
-                        if (!request.isForMainFrame) return false
-                        onExternal(request.url.toString())
-                        return true
-                    }
+            val web = WebView(context)
+            // No content:// or file:// access: the page is given as data and its frame loads only over https.
+            val settings = web.settings
+            settings.allowContentAccess = false
+            settings.allowFileAccess = false
+            // An offline page runs no scripts and may not load anything.
+            settings.javaScriptEnabled = !offline
+            settings.domStorageEnabled = !offline
+            settings.blockNetworkLoads = offline
+            settings.builtInZoomControls = offline
+            settings.displayZoomControls = false
+            web.webViewClient = object : WebViewClient() {
+                override fun shouldOverrideUrlLoading(v: WebView, request: WebResourceRequest): Boolean {
+                    if (!request.isForMainFrame) return false
+                    onExternal(request.url.toString())
+                    return true
                 }
-                loadDataWithBaseURL(OpenCertRenderer.HOST_BASE_URL, html, "text/html", "utf-8", null)
-                view = this
             }
+            web.loadDataWithBaseURL(OpenCertRenderer.HOST_BASE_URL, html, "text/html", "utf-8", null)
+            slot.hold(web)
+            web
         },
     )
 }

@@ -4,6 +4,7 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.util.Locale
 
 plugins {
     kotlin("multiplatform")
@@ -40,7 +41,7 @@ fun zkCommandOutput(vararg command: String): String? = runCatching {
 }.getOrNull()
 
 /** With diw.zkNative=prebuilt, fails unless both ABIs that native/build.sh android writes are already in native/dist. */
-val checkZkAndroidPrebuilt by tasks.registering {
+val checkZkAndroidPrebuilt = tasks.register("checkZkAndroidPrebuilt") {
     val libraries = listOf("arm64-v8a", "x86_64").flatMap { abi ->
         listOfNotNull(
             rootProject.file("native/dist/android/$abi/libdiw_zk.so"),
@@ -54,7 +55,7 @@ val checkZkAndroidPrebuilt by tasks.registering {
     }
 }
 
-val buildZkAndroid by tasks.registering(Exec::class) {
+val buildZkAndroid = tasks.register<Exec>("buildZkAndroid") {
     workingDir(rootProject.projectDir)
     commandLine(zkBash ?: "bash", "native/build.sh", "android")
     environment("DIW_ZK_FEATURES", zkFeatures)
@@ -116,7 +117,7 @@ abstract class GenerateBuiltInSp : DefaultTask() {
     }
 }
 
-val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
+val generateBuiltInSp = tasks.register<GenerateBuiltInSp>("generateBuiltInSp") {
     fun setting(name: String) = providers.environmentVariable(name).orElse(providers.gradleProperty(name))
     serviceId.set(setting("DIW_MOICA_SP_SERVICE_ID"))
     aesKey.set(setting("DIW_MOICA_SP_AES_KEY"))
@@ -126,7 +127,7 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
 
 /** Provision a separate P-256 application key, using secrets or a stable local pair until clean. */
 val twdiwApplicationKeySources = layout.buildDirectory.dir("generated/twdiwApplicationKey/kotlin")
-val generateTwdiwApplicationKey by tasks.registering(Exec::class) {
+val generateTwdiwApplicationKey = tasks.register<Exec>("generateTwdiwApplicationKey") {
     val generator = rootProject.file("tools/twdiw/GenerateApplicationKey.java")
     val java = File(System.getProperty("java.home"), "bin/" + if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
     commandLine(java, generator, twdiwApplicationKeySources.get().asFile, layout.buildDirectory.dir("twdiwApplicationKeyState").get().asFile)
@@ -209,16 +210,18 @@ abstract class GenerateAppBuild : DefaultTask() {
     }
 }
 
-val generateAppBuild by tasks.registering(GenerateAppBuild::class) {
+val generateAppBuild = tasks.register<GenerateAppBuild>("generateAppBuild") {
     version.set(appVersionName)
     commit.set(providers.environmentVariable("GITHUB_SHA"))
     outputDir.set(layout.buildDirectory.dir("generated/appBuild/kotlin"))
 }
 
 /**
- * The interface languages, read from the translation files: every composeResources values directory whose
- * strings.xml has language_tag (BCP 47) and language_self (the language's name in itself) is offered, so a new
- * language needs only its strings.xml. Writes AppLanguages.kt and Android's locales_config.xml (per-app language).
+ * The interface languages, read from the translation files: every composeResources values directory with a
+ * strings.xml is offered, so a new language needs only its strings.xml (docs/guides/translation.md). Its language is
+ * language_tag (BCP 47) when the file has one, else the directory's qualifier (values-ja, values-pt-rBR,
+ * values-b+sr+Latn), as files from translation platforms such as Weblate have it; its name is language_self, else the
+ * language's own name for itself. Writes AppLanguages.kt and Android's locales_config.xml (per-app language).
  */
 abstract class GenerateAppLanguages : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val resources: ConfigurableFileCollection
@@ -229,14 +232,25 @@ abstract class GenerateAppLanguages : DefaultTask() {
     fun generate() {
         fun value(xml: String, name: String): String? =
             Regex("<string name=\"" + name + "\"[^>]*>([^<]*)</string>").find(xml)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+        fun qualifierTag(dir: String): String? {
+            val q = dir.removePrefix("values").removePrefix("-").takeIf { it.isNotEmpty() } ?: return null
+            if (q.startsWith("b+")) return q.removePrefix("b+").replace('+', '-')
+            val parts = q.split('-')
+            if (!Regex("[a-z]{2,3}").matches(parts[0])) return null
+            return if (parts.size > 1 && Regex("r[A-Z]{2}").matches(parts[1])) parts[0] + "-" + parts[1].drop(1) else parts[0]
+        }
         val found = resources.files.filter { it.name == "strings.xml" && it.parentFile.name.startsWith("values") }
             .sortedBy { it.parentFile.name }
             .mapNotNull { f ->
                 val xml = f.readText(Charsets.UTF_8)
-                val tag = value(xml, "language_tag") ?: return@mapNotNull null
-                val self = value(xml, "language_self") ?: throw GradleException("${f.parentFile.name}/strings.xml has language_tag but no language_self")
-                if (!Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*").matches(tag)) throw GradleException("Bad language_tag \"$tag\" in ${f.parentFile.name}")
-                tag to self.replace("&amp;", "&")
+                val dir = f.parentFile.name
+                val tag = value(xml, "language_tag") ?: qualifierTag(dir) ?: return@mapNotNull null
+                if (!Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*").matches(tag)) throw GradleException("Bad language_tag \"$tag\" in $dir")
+                val locale = Locale.forLanguageTag(tag)
+                val self = value(xml, "language_self")?.replace("&amp;", "&")
+                    ?: locale.getDisplayName(locale).replaceFirstChar { it.titlecase(locale) }.takeIf { it.isNotBlank() && it != tag }
+                    ?: throw GradleException("$dir/strings.xml: no language_self and no known name for $tag")
+                tag to self
             }
         if (found.isEmpty()) throw GradleException("No strings.xml names its language_tag")
         if (found.map { it.first.lowercase() }.toSet().size != found.size) throw GradleException("Two translation files name the same language_tag")
@@ -259,7 +273,7 @@ abstract class GenerateAppLanguages : DefaultTask() {
     }
 }
 
-val generateAppLanguages by tasks.registering(GenerateAppLanguages::class) {
+val generateAppLanguages = tasks.register<GenerateAppLanguages>("generateAppLanguages") {
     resources.from(fileTree("src/commonMain/composeResources") { include("values*/strings.xml") })
     kotlinDir.set(layout.buildDirectory.dir("generated/appLanguages/kotlin"))
     resDir.set(layout.buildDirectory.dir("generated/appLanguages/res"))
@@ -285,11 +299,11 @@ kotlin {
         commonMain.get().kotlin.srcDir(generateTwdiwApplicationKey.map { twdiwApplicationKeySources.get() })
         commonMain.dependencies {
             implementation(project(":core"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.material3)
-            implementation(compose.ui)
-            implementation(compose.components.resources)
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.ui)
+            implementation(libs.compose.components.resources)
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
             implementation(libs.multipaz.doctypes)
@@ -313,7 +327,7 @@ kotlin {
             implementation(libs.coroutines.android)
             implementation(libs.bcprov)
         }
-        val desktopMain by getting {
+        getByName("desktopMain") {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.ktor.client.java)
@@ -324,7 +338,7 @@ kotlin {
                 implementation("org.apache.pdfbox:pdfbox:3.0.8")
             }
         }
-        val desktopTest by getting {
+        getByName("desktopTest") {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(project(":test-servers"))
@@ -401,13 +415,13 @@ val debugKey: Result<ReleaseKey?> = runCatching {
 
 android {
     namespace = "diw.wallet.app"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = zkNdkVersion
     sourceSets.getByName("main").jniLibs.srcDir(rootProject.file("native/dist/android"))
     defaultConfig {
         applicationId = "diw.wallet.app"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
     }
@@ -486,7 +500,8 @@ configurations.all {
     }
 }
 
-// Interface strings: composeResources/values (English) and values-zh (Traditional Chinese), see docs/design/i18n.md.
+// Interface strings: composeResources/values (English), values-zh (Traditional Chinese) and values-zh-rCN (Simplified
+// Chinese), see docs/design/i18n.md and docs/guides/translation.md.
 compose.resources {
     packageOfResClass = "diw.wallet.app.res"
     generateResClass = always

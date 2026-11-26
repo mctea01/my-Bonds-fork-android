@@ -155,7 +155,7 @@ class CscModel(private val model: WalletModel) {
         prompt.value = CscPrompt.Browser(purpose, redirectUri, answer)
         return try {
             model.platform.openBrowser(url)
-            answer.await() ?: throw SigningException(tr(Res.string.csc_auth_cancelled))
+            answer.await() ?: throw diw.wallet.core.document.sign.UserCancelledException(tr(Res.string.csc_auth_cancelled))
         } finally {
             prompt.value = null
         }

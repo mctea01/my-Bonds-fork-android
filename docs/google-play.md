@@ -28,7 +28,7 @@ Google 建議兩件事都要做：
 
 | 項目 | Play 的要求 | 結果 |
 |---|---|---|
-| 目標 API | 2026-08-31 起新應用程式與更新需 API 36 | `targetSdk = 36`，`minSdk = 29` |
+| 目標 API | 2026-08-31 起新應用程式與更新需 API 36 | `targetSdk = 37`（2026-11-26 起），`minSdk = 29` |
 | 64 位元 | 有原生程式庫時需提供 64 位元版本 | arm64-v8a 與 x86_64 齊全 |
 | 16 KB 分頁 | 目標 Android 15 以上需支援 16 KB 分頁 | 64 位元的 `.so` 全部以 16 KB 對齊（`libdiw_zk`、Multipaz 的 `libzkp`、JNA、CameraX、AndroidX） |
 | 格式 | 新應用程式需 AAB | CI 已建置 `:app:bundleRelease`（R8 縮減與最佳化），nightly 附 `DIW-MY-WALLET-<版本>.aab` |
@@ -45,6 +45,7 @@ Google 建議兩件事都要做：
 | `CAMERA` | 掃描 QR Code；以 Tesseract 在本機辨識護照機讀區並填入讀取晶片所需欄位，不保存影像；回應要求人臉比對的 zkPassport 請求時，把持有者的臉與護照晶片照片在本機比對（Multipaz FaceNet 與 LiteRT），影像、特徵與分數不保存也不傳送 | 不需要（只在裝置上處理） |
 | `NFC` | 自然人憑證卡、mdoc 感應出示與查驗（HCE） | 不需要 |
 | `BLUETOOTH_SCAN`（`neverForLocation`）、`BLUETOOTH_CONNECT`、`BLUETOOTH_ADVERTISE`；舊版的 `BLUETOOTH`、`BLUETOOTH_ADMIN`、`ACCESS_FINE_LOCATION`（只到 API 30） | ISO 18013-5 與 Bonds 近距離傳輸 | 不需要；不取得位置 |
+| `ACCESS_LOCAL_NETWORK`（Android 17 起，「附近的裝置」權限群組） | 兩支手機在同一個 Wi-Fi 或熱點上交換：年齡證明、zkTLS、zkPassport、線上查驗的區網直連；開始區網交換時才要求 | 不需要 |
 | `USE_BIOMETRIC`、`USE_FINGERPRINT` | 解鎖金鑰 | 不需要 |
 | `VIBRATE`、`DUMP`（AndroidX ProfileInstaller） | 震動回饋、啟動最佳化 | 不需要 |
 

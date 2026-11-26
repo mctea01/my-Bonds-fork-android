@@ -71,13 +71,6 @@
       "groupName": "credential manager and dc api"
     },
     {
-      "description": "OkHttp 5.5 needs compileSdk 37; held at 5.4 until AGP 9 and compileSdk 37 (see the root build.gradle.kts)",
-      "matchPackageNames": [
-        "com.squareup.okhttp3:**"
-      ],
-      "allowedVersions": "<5.5.0"
-    },
-    {
       "description": "xml-apis 2.0.2 is an old relocation artifact, not a newer release",
       "matchPackageNames": [
         "xml-apis:xml-apis"
@@ -90,6 +83,16 @@
         "sha2"
       ],
       "allowedVersions": "<0.11.0"
+    },
+    {
+      "description": "rand stays on 0.8 in diw-zk-ffi: taceo-oprf-core (0.6.x) takes rand 0.8 generators, and rand 0.10 has no thread_rng",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "rand"
+      ],
+      "allowedVersions": "<0.9.0"
     },
     {
       "description": "Rust crates wait for review: native/Cargo.lock was not refreshed with the sha2 0.11 and snow 0.10 bumps, and both reached main while the locked native builds failed",

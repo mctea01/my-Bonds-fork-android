@@ -58,4 +58,7 @@ interface DocumentSigner {
 }
 
 /** A failure the user can act on (wrong PIN, card removed, key not usable); [message] is shown as is. */
-class SigningException(message: String, cause: Throwable? = null) : Exception(message, cause)
+open class SigningException(message: String, cause: Throwable? = null) : Exception(message, cause)
+
+/** The person stopped the step (closed a PIN or approval prompt): the screens say so without treating it as a failure. */
+class UserCancelledException(message: String) : SigningException(message)

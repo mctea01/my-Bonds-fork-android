@@ -564,11 +564,14 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     private suspend fun verifyHere(engine: ZkTlsEngine, profile: ZkTlsProfile, fields: List<String>, purpose: String) {
         val relays = model.server.relaysForVerifier(host())
         val relay = relays.firstOrNull()
+        // Android 17 asks for the local network permission here and waits; refused, the request lists relays only.
+        val blocked = model.platform.bondsLan?.prepare()
         val opened = try {
-            engine.open(lan = model.platform.bondsLan != null, relayUrls = relays)
+            // No local address (or no local network permission): relays only.
+            engine.open(lan = blocked == null && model.platform.bondsLan?.localInterfaces().orEmpty().isNotEmpty(), relayUrls = relays)
         } catch (e: ProtocolException) {
             if (e.code != "unavailable") throw e
-            throw IllegalStateException(noRoute(relay))
+            throw IllegalStateException(noRoute(relay, blocked))
         }
         session = opened
         val request = ZkTlsSessionRequest.create(opened.transports, opened.publicKey, profile, fields, purpose,
@@ -683,11 +686,12 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
     /**
      * Why no holder could reach this verifier, and what to change: a phone on mobile data alone has no address another
      * phone can reach (the carrier's addresses are left out on purpose), so it needs a shared Wi-Fi or hotspot, or a
-     * verifier host whose relay both phones reach.
+     * verifier host whose relay both phones reach. [blocked] is why the local network may not be used (a refused
+     * permission), shown in place of "no network".
      */
-    private fun noRoute(relay: String?): String {
-        val lan = model.platform.bondsLan?.localInterfaces().orEmpty()
-        val network = if (lan.isEmpty()) tr(Res.string.zktls_no_network) else tr(Res.string.zktls_listen_failed, lan.networks())
+    private fun noRoute(relay: String?, blocked: String? = null): String {
+        val lan = if (blocked != null) emptyList() else model.platform.bondsLan?.localInterfaces().orEmpty()
+        val network = blocked ?: if (lan.isEmpty()) tr(Res.string.zktls_no_network) else tr(Res.string.zktls_listen_failed, lan.networks())
         val host = if (relay == null) tr(Res.string.zktls_no_host_relay) else tr(Res.string.zktls_host_relay_down, relay)
         return tr(Res.string.zktls_no_route_1, network, host) +
             tr(Res.string.zktls_no_route_2)

@@ -158,7 +158,24 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val bondsLinkCentral: BondsLinkCentral by lazy { AndroidBondsLinkCentral(context) { activity } }
 
-    override val bondsLan: BondsLanLink by lazy { SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory } }
+    /** Android 17's local network permission, asked for when a local network exchange starts. */
+    private val localNetwork = LocalNetworkGate(context) { activity }
+
+    /** The local network permission dialog closed; MainActivity passes on its answer to the exchanges waiting for it. */
+    fun onLocalNetworkPermissionResult(activity: Activity, granted: Boolean, answered: Boolean) =
+        localNetwork.onResult(activity, granted, answered)
+
+    override val bondsLan: BondsLanLink by lazy { localNetwork.wrap(SocketBondsLanLink { host -> lanSocketFactory(host) }) }
+
+    /**
+     * Sockets to [host] over the network both phones share. A local address (IPv4 or IPv6 unique local) needs the
+     * local network permission first, also when no shared network is found and the socket takes the default route.
+     */
+    private fun lanSocketFactory(host: String): javax.net.SocketFactory? {
+        runCatching { java.net.InetAddress.getByName(host.removePrefix("[").removeSuffix("]")) }.getOrNull()
+            ?.let { localNetwork.checkAddress(it) }
+        return localNetworkFor(host)?.socketFactory
+    }
 
     /**
      * The connected network whose own subnet holds [host]: the Wi-Fi or hotspot both phones share. A socket left
@@ -441,7 +458,11 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             }
         })
 
-    override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
+    override fun httpClient(): HttpClient = HttpClient(OkHttp) {
+        followRedirects = false
+        // Test servers, self-hosted servers and provers on the local network need the Android 17 permission too.
+        engine { config { localNetwork.guard(this) } }
+    }
 
     /** OkHttp refuses clear text where the network security configuration does (release: only this device and the emulator host). */
     override fun cleartextPermitted(host: String): Boolean =
@@ -451,8 +472,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
         diw.wallet.core.zk.native.JvmZkEnvironment(
-            context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },
-            { host -> localNetworkFor(host)?.socketFactory },
+            context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> lanSocketFactory(host) },
+            { host -> lanSocketFactory(host) },
             PlayFeatureComponent(context, "bb5", "diw_bb5") { activity },
         ) {
             val memory = android.app.ActivityManager.MemoryInfo()
@@ -470,7 +491,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     // The release network security configuration refuses clear text; http time stamps, OCSP, CRLs and AIA
     // certificates go through a plain socket instead, since each reply is checked by its signature.
-    override fun signedDataHttp(http: HttpClient): SignedDataHttp = SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp())
+    override fun signedDataHttp(http: HttpClient): SignedDataHttp =
+        SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp(beforeConnect = localNetwork::checkAddress))
 
     /**
      * Opens an issuer, sign-in or application page in a Custom Tab inside the wallet's own task, above MainActivity.

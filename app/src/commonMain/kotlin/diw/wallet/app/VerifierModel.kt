@@ -518,6 +518,7 @@ class VerifierModel(private val model: WalletModel) {
         verifierInfo: suspend (String, String) -> List<JsonObject>,
     ): Pair<OnlineRequest, Map<String, String>>? {
         val lan = model.platform.bondsLan ?: throw ProtocolException("no_lan", tr(Res.string.ov_no_lan))
+        lan.prepare()?.let { throw ProtocolException("no_lan", it) }
         val address = lan.localAddresses().firstOrNull() ?: throw ProtocolException("no_lan", tr(Res.string.ov_no_lan))
         val secret = PlatformCrypto.randomBytes(16).toBase64Url()
         val requestPath = OnlineVerifierRequests.LAN_REQUEST + "/" + secret

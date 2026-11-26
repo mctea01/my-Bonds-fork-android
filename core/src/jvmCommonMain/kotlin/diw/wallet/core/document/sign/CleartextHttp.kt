@@ -6,6 +6,7 @@ import java.io.BufferedInputStream
 import java.io.ByteArrayOutputStream
 import java.io.IOException
 import java.io.InputStream
+import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.URI
 import javax.net.SocketFactory
@@ -15,12 +16,15 @@ import javax.net.SocketFactory
  * refuse clear text in their HTTP stacks (network security configuration), while time-stamp authorities, OCSP
  * responders, CRL distribution points and AIA links are published over http; their replies are verified by signature,
  * so this route does not rely on the transport. One request per connection, no compression, replies up to [maxBytes].
- * [socketFactory] picks the network the socket uses (a local network on Android, see SocketBondsLanLink).
+ * [socketFactory] picks the network the socket uses (a local network on Android, see SocketBondsLanLink);
+ * [beforeConnect] sees the resolved address first and may refuse it by throwing (the Android 17 local network
+ * permission).
  */
 class CleartextHttp(
     private val timeoutMillis: Int = 20_000,
     private val maxBytes: Int = 17 * 1024 * 1024,
     private val socketFactory: SocketFactory = SocketFactory.getDefault(),
+    private val beforeConnect: (InetAddress) -> Unit = {},
 ) : SignedDataHttp {
     override suspend fun exchange(url: String, body: ByteArray?, contentType: String?, accept: String?): FetchReply =
         withContext(Dispatchers.IO) {
@@ -30,7 +34,9 @@ class CleartextHttp(
             val port = if (uri.port == -1) 80 else uri.port
             val path = (uri.rawPath?.takeIf { it.isNotEmpty() } ?: "/") + (uri.rawQuery?.let { "?$it" } ?: "")
             socketFactory.createSocket().use { socket ->
-                socket.connect(InetSocketAddress(host.removePrefix("[").removeSuffix("]"), port), timeoutMillis)
+                val address = InetAddress.getByName(host.removePrefix("[").removeSuffix("]"))
+                beforeConnect(address)
+                socket.connect(InetSocketAddress(address, port), timeoutMillis)
                 socket.soTimeout = timeoutMillis
                 val head = StringBuilder()
                     .append(if (body != null) "POST " else "GET ").append(path).append(" HTTP/1.1\r\n")

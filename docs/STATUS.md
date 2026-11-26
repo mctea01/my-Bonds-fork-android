@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-26（人臉比對門檻校準、5 幀平均與選用的 FaceNet-512；線上查驗經服務端前先確認服務端開啟 `oid4vp`；查驗方 X.509 身分的 x5c 補齊中間憑證；Bonds 身分證卡可改用行動自然人憑證簽署；兩支本錢包之間的 zkPassport 可經服務端轉送、區網或藍牙，並可預先下載資料離線查驗；main 到 PR #165）。
+最後更新：2026-11-26（工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限與其拒絕、取消、返回的處理；文件簽署、憑證領取與 TWDIW 離線流程的取消與返回；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -34,7 +34,7 @@ P4 之後合併的工作：
 | OpenPGP 與 OpenPGP 卡 | 完成 | [openpgp.md](design/openpgp.md) |
 | TWDIW 新版應用簽章（1.0.14 格式） | 實作完成；官方平台是否接受未驗收 | [twdiw-application-signature.md](acceptance/twdiw-application-signature.md) |
 | 法律聲明、首次啟動同意、專門聲明（PR #80） | 完成 | [legal/README.md](legal/README.md) |
-| i18n：英文與繁體中文（PR #89） | 完成 | [i18n.md](design/i18n.md) |
+| i18n：英文與繁體中文（PR #89）；簡體中文與新增語言的方法（PR #173） | 完成；簡體中文由繁體中文轉換（OpenCC），法律文件顯示繁體原文 | [i18n.md](design/i18n.md)、[translation.md](guides/translation.md) |
 | Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |
 | zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；重測最高相似度 0.46；2026-11-26 門檻以 LFW 校準為誤接受十萬分之一（`tools/facematch-eval`）：MobileFaceNet 0.47（同一人 90% 通過），每次比對取 5 幀正臉特徵平均（`AveragedFaceSession`）；FaceNet-512 做成選用隨選模組 `features/facenet`（門檻 0.74，同一人 65% 通過），在 zkPassport 設定切換與安裝；實機能否通過與 Play 隨選安裝待驗證 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
@@ -136,6 +136,8 @@ P4 之後合併的工作：
 | France Identité 互通 | 協定已具備，缺合作夥伴登錄 | 使用者決定是否申請 |
 | 關於頁的第三方元件清單 | 只列主要元件，完整清單在 [NOTICE](../NOTICE) | 視需要補 |
 | 台灣 G2C | 尚無公開標準，只留接口 | 外部 |
+| AGP 10 前的模組調整 | AGP 9 以 `android.builtInKotlin=false`、`android.newDsl=false` 保留 KMP 模組直接套用 Android 外掛的結構；AGP 10 移除這兩個選項，屆時 `core` 改用 `com.android.kotlin.multiplatform.library`，`app` 的 Android 進入點拆成獨立模組 | AGP 10 發佈前排程 |
+| Code scanning 剩餘告警 | 依規格必須使用的演算法（電子護照 BAC 的 3DES、安全通訊的 AES-ECB、RFC 3394 金鑰包裝、OpenPGP v4 指紋的 SHA-1；CodeQL 不認得的 RSASSA-PSS、SM3withSM2）、取件入口網頁必須的 JavaScript 與下載介面、zkPassport 證明器的憑證釘選，屬設計需要或誤報 | 使用者在 Code scanning 以 won't fix／false positive 關閉 |
 
 不規劃：Android HTTPS App Links、TWDIW 高安全皮夾、zkOFD、戶政司電子戶籍謄本的 zkTLS（查驗頁不回內容）。
 
@@ -153,6 +155,8 @@ P4 之後合併的工作：
 | 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔在 contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |
 | 查驗方（P5） | 兩機線上查驗（服務端轉送與區網直連）、近距離 QR + 藍牙查驗與聲明、X.509 與 OpenPGP 卡證據、Bonds 藍牙加密與對原版 Bonds 的未加密傳輸 |
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
+| 失敗、取消與返回 | 文件簽署與文件庫的操作可按「取消」停止，返回會停止在該畫面進行中的簽署（等卡片、行動自然人憑證或 CSC 授權時）且不儲存；已簽好的結果一定保存；離開畫面後才完成的操作不再把畫面拉回去。卡片、生物辨識、PIN 對話框被關閉時顯示「已取消」。憑證領取與 Verified ID 返回後，舊流程不覆蓋新流程，晚到的憑證照樣保存並提示；TWDIW 取件與條碼在離開後停止，不再跳頁或保持螢幕常亮 |
+| Android 17 | targetSdk 37 的區域網路權限：年齡證明、zkTLS、zkPassport、線上查驗與 TWDIW 出示的區網直連第一次使用時會跳出「附近的裝置」權限並等待回覆，允許後同一次操作繼續，不必重試；拒絕或按返回關閉對話框時改走中繼、藍牙或顯示原因，再試一次會重新詢問；系統不再詢問時提示到系統設定開啟；離開畫面會停止等待 |
 | 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw` 與連結的 `diw_*` 參數）、兩支本錢包的 zkPassport 區網與藍牙交換及預先下載後的離線查驗、人臉比對的相機與轉頭檢查（門檻 0.47 與 5 幀平均能否讓本人通過、選用 FaceNet-512 的 Play 隨選安裝與比對）、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
 | 桌面 | PC/SC 讀卡機、PKCS#11、Windows 與 Linux 安裝檔、原生版的中文輸入法與讀取 JVM 版留下的資料 |
 
@@ -172,13 +176,14 @@ P4 之後合併的工作：
 
 | 項目 | 版本 |
 |---|---|
-| Kotlin、AGP、Compose Multiplatform | 2.4.21、8.13.2、1.10.1 |
+| Kotlin、AGP、Compose Multiplatform | 2.4.21、9.5.3（`android.builtInKotlin=false`、`android.newDsl=false`）、1.12.2（Material3 1.9.0） |
+| Gradle | 9.9.2 |
 | Multipaz | 0.102.0 |
-| Ktor | 3.6.1（OkHttp 固定 5.4.0） |
-| Bouncy Castle | 1.86 |
+| Ktor | 3.6.2（OkHttp 5.5） |
+| Bouncy Castle | 1.87 |
 | JDK | 21（Android 目標為 17） |
-| Android | compileSdk 36、minSdk 29、targetSdk 36、NDK 28.2.13676358 |
-| Rust | 1.99.1（`native/rust-toolchain.toml`） |
+| Android | compileSdk 37、minSdk 29、targetSdk 37、NDK 28.2.13676358 |
+| Rust | 1.100.0（`native/rust-toolchain.toml`） |
 | Barretenberg、Noir | 6.0.0（另有 5.0.0 選用元件）、1.0.0-rc.3 |
 | TLSNotary | 0.1.0-alpha.15 |
 

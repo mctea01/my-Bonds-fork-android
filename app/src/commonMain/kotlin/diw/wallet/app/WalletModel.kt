@@ -829,7 +829,13 @@ class WalletModel(val platform: PlatformServices) {
      * false on the documents tab, where the platform handles it.
      */
     fun back(): Boolean {
-        when (val s = screen.value) {
+        val s = screen.value
+        // A vault action started on this screen (a signing waiting for a card or an approval, a chip being read)
+        // stops; one started elsewhere goes on. The derivation screen keeps its proof, which has its own Cancel.
+        if (s is Screen.FileDetail || s is Screen.FileSign || s is Screen.NationalIdCreate || s is Screen.NationalId ||
+            s is Screen.PassportRead || s is Screen.OpenCertRender || s is Screen.OfficialBundle
+        ) files.left(s)
+        when (s) {
             Screen.Home -> {
                 if (tab.value == HomeTab.DOCUMENTS) return false
                 tab.value = HomeTab.DOCUMENTS
@@ -838,6 +844,8 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.Certificate -> screen.value = s.from
             Screen.Issuance -> {
                 cancelBrowserWait()
+                // A loading offer is dropped; credentials the issuer is already sending are still stored.
+                issuanceRun++
                 screen.value = Screen.Home
             }
             Screen.Presentation -> {
@@ -1386,6 +1394,7 @@ class WalletModel(val platform: PlatformServices) {
     }
 
     fun startIssuance(uri: String, entryHint: String? = null, requestedBy: String? = null) {
+        val run = ++issuanceRun
         issuance.value = IssuanceUi.Loading
         screen.value = Screen.Issuance
         scope.launch {
@@ -1394,10 +1403,11 @@ class WalletModel(val platform: PlatformServices) {
                 val c = oid4vci()
                 val session = c.startFromOffer(uri, entryHint)
                 requireTwdiwAllowed(session.issuer.credentialIssuer)
+                if (run != issuanceRun) return@launch
                 issuanceSession = session
                 learnLabels(session.issuer.configurations.values)
                 val issuerName = session.issuer.display.pick(locales)?.name ?: session.issuer.credentialIssuer
-                issuance.value = IssuanceUi.Review(
+                showIssuance(run, IssuanceUi.Review(
                     session = session,
                     configurations = session.offeredConfigurations,
                     issuerName = issuerName,
@@ -1407,15 +1417,18 @@ class WalletModel(val platform: PlatformServices) {
                         .filter { it !in session.issuer.configurations }
                         .map { it to (session.issuer.unsupported[it] ?: tr(Res.string.msg_config_not_listed)) },
                     requestedBy = requestedBy,
-                )
+                ))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                issuance.value = IssuanceUi.Failed(describe(e))
+                showIssuance(run, IssuanceUi.Failed(describe(e)))
             }
         }
     }
 
     /** Wallet-initiated issuance from a credential issuer URL: fetch its metadata and list every configuration. */
     fun startFromIssuer(url: String) {
+        val run = ++issuanceRun
         issuance.value = IssuanceUi.Loading
         screen.value = Screen.Issuance
         scope.launch {
@@ -1431,13 +1444,14 @@ class WalletModel(val platform: PlatformServices) {
                 val session = candidates.firstNotNullOfOrNull { candidate ->
                     try { c.startWalletInitiated(candidate, emptyList()) } catch (e: Exception) { last = e; null }
                 } ?: throw last ?: ProtocolException("invalid_issuer_metadata", "No issuer metadata at $url")
+                if (run != issuanceRun) return@launch
                 issuanceSession = session
                 val issuer = session.issuer
                 learnLabels(issuer.configurations.values)
                 if (session.authServer.authorizationEndpoint == null) {
                     throw ProtocolException("unsupported_grant", tr(Res.string.msg_preauth_only))
                 }
-                issuance.value = IssuanceUi.Review(
+                showIssuance(run, IssuanceUi.Review(
                     session = session,
                     configurations = issuer.configurations.values.sortedBy { it.display.pick(locales)?.name ?: it.id },
                     issuerName = issuer.display.pick(locales)?.name ?: issuer.credentialIssuer,
@@ -1445,38 +1459,42 @@ class WalletModel(val platform: PlatformServices) {
                     preAuthorized = false,
                     unsupported = issuer.unsupported.toList(),
                     walletInitiated = true,
-                )
+                ))
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                issuance.value = IssuanceUi.Failed(describe(e))
+                showIssuance(run, IssuanceUi.Failed(describe(e)))
             }
         }
     }
 
     /** User accepted the offer. [txCode] is the PIN from the issuer when the offer asks for one; [selected] are the chosen configuration ids. */
     fun acceptOffer(review: IssuanceUi.Review, txCode: String?, selected: List<String> = review.configurations.map { it.id }) = scope.launch {
+        val run = issuanceRun
         val c = oid4vci()
         try {
             if (selected.isEmpty()) throw ProtocolException("invalid_request", tr(Res.string.msg_choose_credential))
             review.session.select(selected)
             if (review.preAuthorized) {
-                issuance.value = IssuanceUi.Working(tr(Res.string.step_authorize))
+                showIssuance(run, IssuanceUi.Working(tr(Res.string.step_authorize)))
                 try {
                     c.authorizePreAuthorized(review.session, txCode)
                 } catch (e: Exception) {
                     recordIssuanceFailure(review.session, describe(e))
                     throw e
                 }
-                issueAll(c, review.session)
+                issueAll(c, review.session, run)
             } else {
                 val url = c.beginAuthorizationCode(review.session, platform.oid4vciRedirectUri)
                 if (!Oid4vciClient.isSafeAuthorizationUrl(url, environmentPolicy.insecureLoopbackAllowed)) {
                     throw ProtocolException("invalid_request", tr(Res.string.msg_auth_url_unsafe))
                 }
-                issuance.value = IssuanceUi.WaitingForBrowser(review.session)
-                platform.openBrowser(url)
+                if (showIssuance(run, IssuanceUi.WaitingForBrowser(review.session))) platform.openBrowser(url)
             }
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
-            issuance.value = IssuanceUi.Failed(describe(e))
+            showIssuance(run, IssuanceUi.Failed(describe(e)))
         }
     }
 
@@ -1504,6 +1522,16 @@ class WalletModel(val platform: PlatformServices) {
         }
     }
 
+    /** Counts issuance flows: work of a flow the person has left (Back, or a newer offer) no longer changes the screen. */
+    @kotlin.concurrent.Volatile private var issuanceRun = 0
+
+    /** Shows [ui] when flow [run] is still the one on screen; false when the person has left it. */
+    private fun showIssuance(run: Int, ui: IssuanceUi): Boolean {
+        if (run != issuanceRun) return false
+        issuance.value = ui
+        return true
+    }
+
     /** User gave up waiting for the browser. */
     fun cancelBrowserWait() {
         if (issuance.value is IssuanceUi.WaitingForBrowser) issuance.value = IssuanceUi.Failed(tr(Res.string.msg_login_cancelled))
@@ -1513,33 +1541,38 @@ class WalletModel(val platform: PlatformServices) {
     private fun completeAuthorization(redirect: String) {
         val session = issuanceSession ?: run { message.value = tr(Res.string.msg_no_issuance); return }
         screen.value = Screen.Issuance
+        val run = issuanceRun
         scope.launch {
             val c = oid4vci()
             try {
-                issuance.value = IssuanceUi.Working(tr(Res.string.step_finish_auth))
+                showIssuance(run, IssuanceUi.Working(tr(Res.string.step_finish_auth)))
                 c.completeAuthorizationCode(session, redirect)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 recordIssuanceFailure(session, describe(e))
-                issuance.value = IssuanceUi.Failed(describe(e))
+                showIssuance(run, IssuanceUi.Failed(describe(e)))
                 return@launch
             }
             try {
-                issueAll(c, session)
+                issueAll(c, session, run)
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
-                issuance.value = IssuanceUi.Failed(describe(e))
+                showIssuance(run, IssuanceUi.Failed(describe(e)))
             }
         }
     }
 
     /** Issues every selected configuration; one failing configuration does not stop the others. */
-    private suspend fun issueAll(c: Oid4vciClient, session: IssuanceSession) {
+    private suspend fun issueAll(c: Oid4vciClient, session: IssuanceSession, run: Int) {
         val results = mutableListOf<IssuanceResult>()
         val failures = mutableListOf<Pair<String, String>>()
         try {
             withContext(unlockProvider) {
                 for (config in session.selectedConfigurations) {
                     val name = config.display.pick(locales)?.name ?: config.id
-                    issuance.value = IssuanceUi.Working(tr(Res.string.step_receive, name))
+                    showIssuance(run, IssuanceUi.Working(tr(Res.string.step_receive, name)))
                     try {
                         var r = c.issue(session, config.id, keyRequest())
                         var polls = 0
@@ -1550,6 +1583,8 @@ class WalletModel(val platform: PlatformServices) {
                         }
                         if (r is IssuanceResult.Issued) r.notificationId?.let { runCatching { c.notify(session, it, "credential_accepted") } }
                         results += r
+                    } catch (e: CancellationException) {
+                        throw e
                     } catch (e: Exception) {
                         failures += name to describe(e)
                     }
@@ -1570,8 +1605,10 @@ class WalletModel(val platform: PlatformServices) {
             )
         }
         failures.forEach { (name, reason) -> record(HistoryKind.ISSUED, issuerName, session.issuer.trust, listOf(name), failure = reason) }
-        issuance.value = if (results.isEmpty() && failures.size == 1) IssuanceUi.Failed(failures.single().second)
-        else IssuanceUi.Done(results, failures)
+        val shown = showIssuance(run, if (results.isEmpty() && failures.size == 1) IssuanceUi.Failed(failures.single().second)
+            else IssuanceUi.Done(results, failures))
+        // The person left the screen while the issuer answered: what arrived is in the wallet and the history.
+        if (!shown && results.isNotEmpty()) message.value = tr(Res.string.msg_issued_after_leaving, results.size)
     }
 
     private fun issuerName(session: IssuanceSession) = session.issuer.display.pick(locales)?.name ?: session.issuer.credentialIssuer
@@ -2315,7 +2352,16 @@ class WalletModel(val platform: PlatformServices) {
 
     // ---------------------------------------------------------------- helpers
 
+    /**
+     * Whether [e] means the person stopped the step (a dismissed card, biometric or PIN prompt, a closed approval)
+     * rather than a failure: the screens then say it was cancelled instead of showing an error.
+     */
+    fun cancelledByUser(e: Throwable): Boolean =
+        e is org.multipaz.prompt.PromptDismissedException || e is diw.wallet.core.document.sign.UserCancelledException
+
     fun describe(e: Throwable): String = when (e) {
+        // Multipaz's prompts end with this exception and no message; its class name means nothing to people.
+        is org.multipaz.prompt.PromptDismissedException -> tr(Res.string.msg_user_cancelled)
         is diw.wallet.core.oid4vp.RequestValidationException -> tr(Res.string.msg_request_invalid, e.code, e.message.toString())
         is ProtocolException -> tr(Res.string.msg_protocol_error, e.code, e.message.toString()) + hint(e)
         // Platform errors wrap the reason (e.g. Android Keystore "Error creating key"), so the causes are shown too.

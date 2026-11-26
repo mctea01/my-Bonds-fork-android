@@ -18,7 +18,8 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.unit.dp
 import java.awt.Desktop
-import java.io.File
+import diw.wallet.app.desktop.xdgOpen
+import java.nio.file.Files
 
 /**
  * The desktop has no embedded web view: the host page is written to a temporary file (removed when the app exits)
@@ -31,12 +32,13 @@ actual fun OpenCertRendererView(html: String, modifier: Modifier, offline: Boole
         Text(stringResource(Res.string.oc_desktop_note) + if (offline) stringResource(Res.string.oc_offline_note) else "", style = MaterialTheme.typography.bodySmall)
         Button(onClick = {
             failure = runCatching {
-                val file = File.createTempFile("opencert-", ".html").apply {
+                // Files.createTempFile gives the owner alone access on POSIX systems; the certificate stays private.
+                val file = Files.createTempFile("opencert-", ".html").toFile().apply {
                     deleteOnExit()
                     writeText(html, Charsets.UTF_8)
                 }
                 if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) Desktop.getDesktop().browse(file.toURI())
-                else ProcessBuilder("xdg-open", file.absolutePath).start()
+                else xdgOpen(file.absolutePath)
             }.exceptionOrNull()?.let { tr(Res.string.oc_browser_failed, it.message ?: it::class.simpleName) }
         }) { Text(stringResource(Res.string.oc_open_browser)) }
         failure?.let { Text(it, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall) }

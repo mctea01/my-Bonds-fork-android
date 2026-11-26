@@ -168,7 +168,7 @@ fun PassportReadScreen(model: WalletModel, scanMrz: (suspend () -> String?)? = n
             enabled = busy == null && reader != null && secret != null,
             modifier = Modifier.fillMaxWidth(),
         ) { Text(stringResource(Res.string.mrtd_read)) }
-        BusyLine(busy, error)
+        FilesBusyLine(model, busy, error)
         Text(stringResource(Res.string.mrtd_privacy), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.outline)
     }
 }

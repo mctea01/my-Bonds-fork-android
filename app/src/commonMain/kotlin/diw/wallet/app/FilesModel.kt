@@ -134,7 +134,10 @@ import kotlin.time.Clock
 import kotlin.time.Duration.Companion.days
 import kotlin.time.Instant
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.CoroutineStart
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
+import kotlinx.coroutines.NonCancellable
 import kotlinx.coroutines.currentCoroutineContext
 import kotlinx.coroutines.ensureActive
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -609,8 +612,11 @@ class FilesModel(private val model: WalletModel) {
             parentId = parentId,
             archive = archive,
         )
-        Blobs.put(model.storage.getTable(dataTable), f.id, bytes)
-        save(f)
+        // Content and record together: a cancelled action never leaves one without the other.
+        withContext(NonCancellable) {
+            Blobs.put(model.storage.getTable(dataTable), f.id, bytes)
+            save(f)
+        }
         if (model.settings.timestampOnSave) runCatching { addTimestampNow(f) }
         if (model.settings.timestampRevocation && report.signatures.isNotEmpty()) {
             model.scope.launch { runCatching { storeSignatureValidation(f.id) } }
@@ -619,19 +625,78 @@ class FilesModel(private val model: WalletModel) {
         return file(f.id) ?: f
     }
 
-    private fun run(progress: String, block: suspend () -> Unit) = model.scope.launch {
-        busy.value = progress
-        error.value = null
-        try {
-            block()
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            error.value = model.describe(e)
-        } finally {
-            busy.value = null
-            model.endOperation()
+    /**
+     * A vault action and the screen it started on. It travels in the action's coroutine context, so [show] judges by
+     * the action that calls it, not by whichever action started last.
+     */
+    private class Operation(val from: Screen) : kotlin.coroutines.AbstractCoroutineContextElement(Key) {
+        companion object Key : kotlin.coroutines.CoroutineContext.Key<Operation>
+        lateinit var job: Job
+        @kotlin.concurrent.Volatile var cancelled = false
+    }
+
+    @kotlin.concurrent.Volatile private var running: Operation? = null
+
+    /** Whether an action is in progress that [cancel] can stop. */
+    val cancellable = MutableStateFlow(false)
+
+    /**
+     * Runs a vault action: [progress] shows while it runs, a failure stays on screen as [error], and a step the person
+     * closed (a card or PIN prompt) is reported as cancelled rather than as an error. The busy line can [cancel] it.
+     */
+    private fun run(progress: String, block: suspend () -> Unit): Job {
+        val op = Operation(model.screen.value)
+        val job = model.scope.launch(op, start = CoroutineStart.LAZY) {
+            busy.value = progress
+            error.value = null
+            try {
+                block()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                if (model.cancelledByUser(e)) model.message.value = model.describe(e) else error.value = model.describe(e)
+            } finally {
+                if (running === op) {
+                    running = null
+                    cancellable.value = false
+                }
+                // A cancelled action that went on to store its signature may end after a newer one: the busy line
+                // clears once nothing runs.
+                if (running == null) busy.value = null
+                model.endOperation()
+            }
         }
+        op.job = job
+        running = op
+        cancellable.value = true
+        job.start()
+        return job
+    }
+
+    /**
+     * Stops the action in progress (the busy line's Cancel, or leaving the screen of a signing): a card stops being
+     * read, a remote approval stops being waited for, and nothing is stored. A signature already made is still kept.
+     */
+    fun cancel() {
+        val op = running?.takeUnless { it.cancelled } ?: return
+        op.cancelled = true
+        cancellable.value = false
+        op.job.cancel()
+        busy.value = null
+        model.message.value = tr(Res.string.msg_operation_cancelled)
+    }
+
+    /** The person left [screen]: an action that needs them there (a card tap, a PIN, an approval) stops. */
+    fun left(screen: Screen) {
+        if (running?.takeUnless { it.cancelled }?.from == screen) cancel()
+        error.value = null
+    }
+
+    /** Opens [screen] at the end of an action, unless the person has since moved on from the screen it started on. */
+    private suspend fun show(screen: Screen) {
+        val op = currentCoroutineContext()[Operation]
+        if (op != null && (op.cancelled || model.screen.value != op.from)) return
+        model.screen.value = screen
     }
 
     /** Lets the user pick a file and stores it. */
@@ -679,7 +744,7 @@ class FilesModel(private val model: WalletModel) {
         busy.value = tr(Res.string.step_read_check)
         val f = store(Passports.fileName(dump), dump.encode(), FileOrigin.CHIP, tr(Res.string.mrtd_source))
         model.message.value = tr(Res.string.msg_saved_name, f.name)
-        model.screen.value = Screen.FileDetail(f.id)
+        show(Screen.FileDetail(f.id))
     }
 
     /** A file handed over by another app or downloaded from a source site. */
@@ -723,7 +788,7 @@ class FilesModel(private val model: WalletModel) {
         if (nationalId && pdfs.isNotEmpty()) {
             val pdf = pdfs.firstOrNull { MyDataFiles.recognize(it.name)?.nationalId == true } ?: pdfs.first()
             model.message.value = if (unlock(pdf, data(pdf.id), null) != null) tr(Res.string.msg_mydata_confirm_id) else tr(Res.string.msg_mydata_enter_id)
-            model.screen.value = Screen.NationalIdCreate(pdf.id)
+            show(Screen.NationalIdCreate(pdf.id))
             return
         }
         model.message.value = null
@@ -742,7 +807,7 @@ class FilesModel(private val model: WalletModel) {
             files.value.size == known -> tr(Res.string.msg_already_saved)
             else -> tr(Res.string.msg_saved_name, f.name)
         }
-        model.screen.value = Screen.FileDetail(target.id)
+        show(Screen.FileDetail(target.id))
     }
 
     /** Checks the file again with the current time and trust anchors and stores the new report. */
@@ -1092,7 +1157,7 @@ class FilesModel(private val model: WalletModel) {
         model.message.value = tr(Res.string.msg_extracted_files, added)
         if (file(f.id) == null) {
             val only = stored.singleOrNull()
-            if (only != null) model.screen.value = Screen.FileDetail(only.id) else model.showTab(HomeTab.FILES)
+            if (only != null) show(Screen.FileDetail(only.id)) else model.showTab(HomeTab.FILES)
         }
     }
 
@@ -1106,7 +1171,7 @@ class FilesModel(private val model: WalletModel) {
             ?: throw SigningException(tr(Res.string.msg_member_missing, entry))
         val name = OfficialBundles.decodeZipName(entry.substringAfterLast('/'))
         val stored = store(name, bytes, FileOrigin.EXTRACTED, f.source ?: f.name, parentId = f.id, archive = f.name)
-        model.screen.value = Screen.FileDetail(stored.id)
+        show(Screen.FileDetail(stored.id))
     }
 
     // ---------------------------------------------------------------- official document containers
@@ -1282,10 +1347,10 @@ class FilesModel(private val model: WalletModel) {
             recheckApprovals(main)
             if (left.isEmpty()) {
                 model.message.value = tr(Res.string.msg_container_made, placed.size)
-                model.screen.value = Screen.FileDetail(main.id)
+                show(Screen.FileDetail(main.id))
             } else {
                 model.message.value = tr(Res.string.msg_container_partial, placed.size, left.size)
-                model.screen.value = Screen.OfficialBundle(main.id, left.map { it.id }, emptyList())
+                show(Screen.OfficialBundle(main.id, left.map { it.id }, emptyList()))
             }
             return true
         }
@@ -1309,7 +1374,7 @@ class FilesModel(private val model: WalletModel) {
             val home = incomingApprovals.firstNotNullOfOrNull { a ->
                 files.value.firstOrNull { m -> m.bundleOf != null && m.name in a.names && a.lists(m.name, data(m.id)) == true }?.bundleOf?.let { file(it) }
             } ?: return false
-            model.screen.value = Screen.OfficialBundle(home.id, others.map { it.id }, emptyList())
+            show(Screen.OfficialBundle(home.id, others.map { it.id }, emptyList()))
             return true
         }
         if (docs.isEmpty() || others.isEmpty()) return false
@@ -1322,7 +1387,7 @@ class FilesModel(private val model: WalletModel) {
         val main = approved.firstOrNull { d -> files.value.any { it.bundleOf == d.id } } ?: approved.firstOrNull() ?: docs.first()
         val grouped = approved.filter { it != main }
         val rest = docs.filter { it != main && it !in grouped }
-        model.screen.value = Screen.OfficialBundle(main.id, (grouped + others).map { it.id }, rest.map { it.id })
+        show(Screen.OfficialBundle(main.id, (grouped + others).map { it.id }, rest.map { it.id }))
         return true
     }
 
@@ -1396,9 +1461,9 @@ class FilesModel(private val model: WalletModel) {
         val following = next.firstNotNullOfOrNull { file(it) }
         if (following != null) {
             val left = only?.filter { it !in ids && it != following.id && file(it)?.bundleOf == null }
-            model.screen.value = Screen.OfficialBundle(following.id, left, next.drop(next.indexOf(following.id) + 1))
+            show(Screen.OfficialBundle(following.id, left, next.drop(next.indexOf(following.id) + 1)))
         } else {
-            model.screen.value = Screen.FileDetail(main.id)
+            show(Screen.FileDetail(main.id))
         }
     }
 
@@ -1417,7 +1482,7 @@ class FilesModel(private val model: WalletModel) {
             busy.value = tr(Res.string.step_read_check_n, i + 1, picked.size)
             stored.addAll(ingest(p, FileOrigin.IMPORTED, null))
         }
-        model.screen.value = Screen.OfficialBundle(main.id, stored.filter { it.id != main.id }.map { it.id }.distinct(), emptyList())
+        show(Screen.OfficialBundle(main.id, stored.filter { it.id != main.id }.map { it.id }.distinct(), emptyList()))
     }
 
     // ---------------------------------------------------------------- periods
@@ -1635,7 +1700,7 @@ class FilesModel(private val model: WalletModel) {
         val known = files.value.size
         val stored = store(a.name, a.bytes, FileOrigin.EXTRACTED, source = tr(Res.string.oa_attachment_source), parentId = f.id, archive = f.name)
         model.message.value = if (files.value.size == known) tr(Res.string.msg_attachment_saved) else tr(Res.string.msg_saved_name, stored.name)
-        model.screen.value = Screen.FileDetail(stored.id)
+        show(Screen.FileDetail(stored.id))
     }
 
     fun exportOpenCertAttachment(a: OaAttachment, share: Boolean = false) = run(if (share) tr(Res.string.step_share_attachment) else tr(Res.string.step_export_attachment)) {
@@ -1871,19 +1936,22 @@ class FilesModel(private val model: WalletModel) {
                 SignForm.OPENPGP_DETACHED -> throw IllegalStateException("OpenPGP handled above")
             }
         }
-        busy.value = tr(Res.string.step_check_save_signed)
-        // A detached CAdES signature and a sidecar manifest are checked against the file they were made for.
-        val detached = form == SignForm.CADES_DETACHED || (form == SignForm.C2PA && name.endsWith(".c2pa"))
-        val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (detached) f.id else null)
-        // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
-        val reached = reachedLevel(file(stored.id) ?: stored)
-        val levelNote = if (form == SignForm.C2PA) (if (ts != null) tr(Res.string.sep_comma) + tr(Res.string.c2pa_with_timestamp) else "")
-            else if (form == SignForm.OFD) tr(Res.string.sep_comma) + (if (ts != null) "B-T" else "B-B")
-            else tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
-        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
-        val lower = form != SignForm.OFD && form != SignForm.C2PA && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
-        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
-        model.screen.value = Screen.FileDetail(stored.id)
+        // The card or service has signed: what is left is kept even when the action is cancelled now.
+        withContext(NonCancellable) {
+            busy.value = tr(Res.string.step_check_save_signed)
+            // A detached CAdES signature and a sidecar manifest are checked against the file they were made for.
+            val detached = form == SignForm.CADES_DETACHED || (form == SignForm.C2PA && name.endsWith(".c2pa"))
+            val stored = store(name, bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = if (detached) f.id else null)
+            // The level the inspection of the result reached, which can be lower than asked when revocation data was missing.
+            val reached = reachedLevel(file(stored.id) ?: stored)
+            val levelNote = if (form == SignForm.C2PA) (if (ts != null) tr(Res.string.sep_comma) + tr(Res.string.c2pa_with_timestamp) else "")
+                else if (form == SignForm.OFD) tr(Res.string.sep_comma) + (if (ts != null) "B-T" else "B-B")
+                else tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
+            model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
+            val lower = form != SignForm.OFD && form != SignForm.C2PA && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
+            model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
+            show(Screen.FileDetail(stored.id))
+        }
     }
 
     /**
@@ -2022,7 +2090,7 @@ class FilesModel(private val model: WalletModel) {
         model.record(HistoryKind.SIGNED, TsaServices.byId(model.settings.tsaId).name, null, listOf(f.name),
             note = tr(Res.string.history_extend_note, result.signatures) + (reached?.let { tr(Res.string.cert_path_len_sep, it) } ?: ""))
         model.message.value = tr(Res.string.msg_extended_saved, stored.name) + result.validation.summary()
-        model.screen.value = Screen.FileDetail(stored.id)
+        show(Screen.FileDetail(stored.id))
     }
 
     /**
@@ -2035,18 +2103,20 @@ class FilesModel(private val model: WalletModel) {
         val bytes = withContext(model.unlockProvider) {
             DocumentSigning.signApproval(previous?.let { data(it.id) }, case.files.map { it.name to data(it.id) }, signer, point)
         }
-        busy.value = tr(Res.string.step_check_save_approval)
-        val owner = case.main ?: f
-        val name = previous?.name ?: (owner.name.substringBeforeLast('.') + tr(Res.string.approval_file_suffix))
-        var stored = store(name, bytes, FileOrigin.SIGNED, previous?.name ?: owner.name, parentId = previous?.id ?: owner.id)
-        case.main?.let { main ->
-            stored = (file(stored.id) ?: stored).copy(bundleOf = main.id).also { save(it) }
-            previous?.takeIf { it.bundleOf == main.id }?.let { old -> save((file(old.id) ?: old).copy(bundleOf = null)) }
+        withContext(NonCancellable) {
+            busy.value = tr(Res.string.step_check_save_approval)
+            val owner = case.main ?: f
+            val name = previous?.name ?: (owner.name.substringBeforeLast('.') + tr(Res.string.approval_file_suffix))
+            var stored = store(name, bytes, FileOrigin.SIGNED, previous?.name ?: owner.name, parentId = previous?.id ?: owner.id)
+            case.main?.let { main ->
+                stored = (file(stored.id) ?: stored).copy(bundleOf = main.id).also { save(it) }
+                previous?.takeIf { it.bundleOf == main.id }?.let { old -> save((file(old.id) ?: old).copy(bundleOf = null)) }
+            }
+            if (timestamp) runCatching { addTimestampNow(file(stored.id) ?: stored) }
+            model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, case.files.map { it.name }, note = tr(Res.string.history_approval_note, SignForm.APPROVAL.title, point.action, signer.source.title))
+            model.message.value = tr(Res.string.msg_approval_added, stored.name, case.files.size) + if (previous != null && case.main != null) tr(Res.string.msg_approval_previous) else ""
+            show(Screen.FileDetail(stored.id))
         }
-        if (timestamp) runCatching { addTimestampNow(file(stored.id) ?: stored) }
-        model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, case.files.map { it.name }, note = tr(Res.string.history_approval_note, SignForm.APPROVAL.title, point.action, signer.source.title))
-        model.message.value = tr(Res.string.msg_approval_added, stored.name, case.files.size) + if (previous != null && case.main != null) tr(Res.string.msg_approval_previous) else ""
-        model.screen.value = Screen.FileDetail(stored.id)
     }
 
     /** The signer [choice] names, with its certificate read (a card is tapped once here). */
@@ -2094,12 +2164,14 @@ class FilesModel(private val model: WalletModel) {
         val added = if (listed == null || (listed.trust == OpenPgpTrust.UNVERIFIED)) runCatching { model.openPgp.addCard(info) }.isSuccess else false
         busy.value = OpenPgpModel.tapMessage(choice.reader, tr(Res.string.step_same_card))
         val bytes = signer.signDetached(data)
-        busy.value = tr(Res.string.step_check_save_signed)
-        val stored = store("${f.name}.asc", bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = f.id)
-        val name = model.openPgp.holder(fpr ?: "")?.info?.name ?: info.cardholder ?: info.label
-        model.record(HistoryKind.SIGNED, name, null, listOf(f.name), note = tr(Res.string.history_pgp_note, SignForm.OPENPGP_DETACHED.title, SignerSource.OPENPGP.title, key.algorithm))
-        model.message.value = tr(Res.string.msg_signed_saved, stored.name) + if (added) tr(Res.string.msg_pgp_key_added) else ""
-        model.screen.value = Screen.FileDetail(stored.id)
+        withContext(NonCancellable) {
+            busy.value = tr(Res.string.step_check_save_signed)
+            val stored = store("${f.name}.asc", bytes, FileOrigin.SIGNED, f.name, parentId = f.id, contentId = f.id)
+            val name = model.openPgp.holder(fpr ?: "")?.info?.name ?: info.cardholder ?: info.label
+            model.record(HistoryKind.SIGNED, name, null, listOf(f.name), note = tr(Res.string.history_pgp_note, SignForm.OPENPGP_DETACHED.title, SignerSource.OPENPGP.title, key.algorithm))
+            model.message.value = tr(Res.string.msg_signed_saved, stored.name) + if (added) tr(Res.string.msg_pgp_key_added) else ""
+            show(Screen.FileDetail(stored.id))
+        }
     }
 
     // ---------------------------------------------------------------- OpenPGP messages
@@ -2131,7 +2203,7 @@ class FilesModel(private val model: WalletModel) {
         if (dec != null && model.openPgp.holder(dec) == null) runCatching { model.openPgp.addCard(info) }
         val stored = storePlain(f, plain, FileOrigin.DECRYPTED)
         model.message.value = tr(Res.string.msg_decrypted_saved, stored.name) + if (plain.detachedSignature != null) tr(Res.string.msg_decrypted_sig) else ""
-        model.screen.value = Screen.FileDetail(stored.id)
+        show(Screen.FileDetail(stored.id))
     }
 
     /** Takes the content out of a signed (or plain) OpenPGP message [f], keeping its signatures as a detached signature. */
@@ -2139,7 +2211,7 @@ class FilesModel(private val model: WalletModel) {
         val plain = withContext(Dispatchers.Default) { OpenPgp.literal(data(f.id)) } ?: throw SigningException(tr(Res.string.msg_unwrap_none))
         val stored = storePlain(f, plain, FileOrigin.UNWRAPPED)
         model.message.value = tr(Res.string.msg_unwrapped_saved, stored.name)
-        model.screen.value = Screen.FileDetail(stored.id)
+        show(Screen.FileDetail(stored.id))
     }
 
     private suspend fun storePlain(f: StoredFile, plain: OpenPgpPlaintext, origin: FileOrigin): StoredFile {
@@ -2165,7 +2237,7 @@ class FilesModel(private val model: WalletModel) {
         val bytes = withContext(Dispatchers.Default) { OpenPgp.encrypt(data(f.id), f.name, certs, armor, cardKeys) }
         val stored = store(f.name + if (armor) ".asc" else ".gpg", bytes, FileOrigin.ENCRYPTED, f.name, parentId = f.id)
         model.message.value = tr(Res.string.msg_encrypted_saved, entries.size, stored.name)
-        model.screen.value = Screen.FileDetail(stored.id)
+        show(Screen.FileDetail(stored.id))
     }
 
     /** SP account entered on the signing screen during this run (developer option); never written to storage. */
@@ -2504,7 +2576,7 @@ class FilesModel(private val model: WalletModel) {
             plan?.let { p -> p.slots.map { s -> (p.profile.field(s.claim)?.label ?: s.claim) + tr(Res.string.derive_zk_suffix) } }.orEmpty()
         model.record(HistoryKind.ISSUED, tr(Res.string.derive_issuer_name), null, listOf(doc.displayName ?: f.name), labels)
         model.message.value = if (plan != null) tr(Res.string.msg_derived_zk) else tr(Res.string.msg_derived)
-        model.screen.value = Screen.FileDetail(f.id)
+        show(Screen.FileDetail(f.id))
     }
 
     /**
@@ -2839,7 +2911,7 @@ class FilesModel(private val model: WalletModel) {
             BondsNationalId.claims(draft.fields, Clock.System.now()).map { BondsNationalId.claimLabels[it.first] ?: it.first },
         )
         model.message.value = tr(Res.string.msg_id_made)
-        model.screen.value = Screen.NationalId(f.id)
+        show(Screen.NationalId(f.id))
     }
 
     /** Exports the national ID card as Bonds vc+moica JSON. */

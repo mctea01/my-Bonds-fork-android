@@ -5,6 +5,7 @@ import diw.wallet.app.res.*
 import diw.wallet.app.res.Res
 import diw.wallet.app.tr
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.os.Bundle
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
@@ -103,6 +104,17 @@ class MainActivity : FragmentActivity() {
         app.platform.applyNfcPreference(this)
         app.model.onAppResumed()
         AndroidFileAccess.clearStaleShared(this)
+    }
+
+    @Deprecated("Deprecated in ComponentActivity")
+    @Suppress("DEPRECATION")
+    override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        // An empty result is a dialog closed without an answer (Back, or the activity recreated while it showed).
+        if (requestCode == LocalNetworkGate.REQUEST) {
+            val granted = grantResults.isNotEmpty() && grantResults.all { it == PackageManager.PERMISSION_GRANTED }
+            app.platform.onLocalNetworkPermissionResult(this, granted, answered = grantResults.isNotEmpty())
+        }
     }
 
     override fun onPause() {
