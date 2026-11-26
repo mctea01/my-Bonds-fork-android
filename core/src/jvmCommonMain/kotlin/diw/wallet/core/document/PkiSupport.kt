@@ -5,6 +5,7 @@ import diw.wallet.core.trust.TrustDecision
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.x509.CertificateConstraints
 import kotlinx.io.bytestring.ByteString
 import org.bouncycastle.asn1.ASN1InputStream
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
@@ -170,8 +171,9 @@ internal class PkiSupport(private val trust: DocumentTrustSource) {
             val id = runCatching { CertificateID(Bc.digestProvider().get(CertificateID.HASH_SHA1), issuer, cert.serialNumber) }.getOrNull() ?: continue
             val single = basic.responses.firstOrNull { it.certID.serialNumber == cert.serialNumber && runCatching { it.certID.matchesIssuer(issuer, Bc.digestProvider()) }.getOrDefault(false) }
                 ?: basic.responses.firstOrNull { it.certID == id } ?: continue
-            // The response must be signed by the issuer or by a responder it delegated to.
-            val signers = listOf(issuer) + basic.certs.filter { issued(it, issuer) }
+            // The response must be signed by the issuer or by a responder it delegated to (RFC 6960 4.2.2.2:
+            // issued by the issuer with extKeyUsage id-kp-OCSPSigning).
+            val signers = listOf(issuer) + basic.certs.filter { issued(it, issuer) && CertificateConstraints.ocspResponderAllowed(X509Cert(ByteString(it.encoded))) }
             if (signers.none { s -> runCatching { basic.isSignatureValid(Bc.contentVerifier(s)) }.getOrDefault(false) }) continue
             return when (val st = single.certStatus) {
                 null -> Revocation(false, null, "OCSP", basic.producedAt.time / 1000)

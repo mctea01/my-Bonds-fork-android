@@ -65,6 +65,8 @@ fun labelText(l: TrustLabel): String = when (l) {
     TrustLabel.EUTL -> stringResource(Res.string.trust_label_eutl)
     TrustLabel.EU_QUALIFIED -> stringResource(Res.string.trust_label_eu_qualified)
     TrustLabel.OPENID_FEDERATION -> stringResource(Res.string.trust_label_federation)
+    TrustLabel.CERTIFICATE_CONSTRAINT -> stringResource(Res.string.trust_label_constraint)
+    TrustLabel.WEAK_ALGORITHM -> stringResource(Res.string.trust_label_weak_alg)
 }
 
 /** The clause added for an EU trusted list service the list names as qualified. */
@@ -82,8 +84,10 @@ private fun twdiwListed(t: TrustDecision): Boolean = t.reasons.any { "TWDIW trus
 fun tierAdvice(t: TrustDecision): String = when {
     t.environment == TrustEnvironment.TEST -> stringResource(Res.string.trust_advice_test)
     t.tier == TrustTier.T1 -> stringResource(Res.string.trust_advice_t1)
+    TrustLabel.CERTIFICATE_CONSTRAINT in t.labels -> stringResource(Res.string.trust_advice_constraint)
     TrustLabel.SELF_ISSUED in t.labels -> SELF_ISSUED_TEXT
     t.tier == TrustTier.T4 -> stringResource(Res.string.trust_advice_t4)
+    TrustLabel.WEAK_ALGORITHM in t.labels -> stringResource(Res.string.trust_advice_weak)
     t.tier == TrustTier.T3 -> stringResource(Res.string.trust_advice_t3)
     TrustLabel.IDENTITY_VERIFIED in t.labels -> stringResource(Res.string.trust_advice_gpki, t.anchorName ?: "")
     twdiwListed(t) -> stringResource(Res.string.trust_advice_twdiw_partial)
@@ -105,7 +109,9 @@ fun tierAdvice(t: TrustDecision): String = when {
 fun signerTrustLine(t: TrustDecision): String = when {
     t.environment == TrustEnvironment.TEST -> stringResource(Res.string.signer_trust_test)
     t.tier == TrustTier.T1 -> stringResource(Res.string.signer_trust_t1)
+    TrustLabel.CERTIFICATE_CONSTRAINT in t.labels -> stringResource(Res.string.signer_trust_constraint)
     t.tier == TrustTier.T4 -> stringResource(Res.string.signer_trust_failed)
+    TrustLabel.WEAK_ALGORITHM in t.labels -> stringResource(Res.string.signer_trust_weak)
     t.tier == TrustTier.T3 -> stringResource(Res.string.signer_trust_t3)
     TrustLabel.IDENTITY_VERIFIED in t.labels -> stringResource(Res.string.signer_trust_gpki, t.anchorName ?: "")
     TrustLabel.MAINLAND_CHINA_CA in t.labels -> stringResource(Res.string.signer_trust_china, t.anchorName ?: "")
@@ -122,8 +128,10 @@ fun issuerTrustLine(t: TrustDecision?): String = when {
     t == null -> stringResource(Res.string.issuer_trust_none)
     t.environment == TrustEnvironment.TEST -> stringResource(Res.string.issuer_trust_test)
     t.tier == TrustTier.T1 -> stringResource(Res.string.issuer_trust_t1)
+    TrustLabel.CERTIFICATE_CONSTRAINT in t.labels -> stringResource(Res.string.issuer_trust_constraint)
     TrustLabel.SELF_ISSUED in t.labels -> SELF_ISSUED_TEXT
     t.tier == TrustTier.T4 -> stringResource(Res.string.issuer_trust_failed)
+    TrustLabel.WEAK_ALGORITHM in t.labels -> stringResource(Res.string.issuer_trust_weak)
     t.tier == TrustTier.T3 -> stringResource(Res.string.issuer_trust_t3)
     TrustLabel.IDENTITY_VERIFIED in t.labels -> stringResource(Res.string.issuer_trust_gpki, t.anchorName ?: "")
     twdiwListed(t) -> stringResource(Res.string.issuer_trust_twdiw_partial)

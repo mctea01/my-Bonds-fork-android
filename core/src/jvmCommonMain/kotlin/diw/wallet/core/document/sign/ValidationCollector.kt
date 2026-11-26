@@ -2,6 +2,9 @@ package diw.wallet.core.document.sign
 
 import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.Bc
+import diw.wallet.core.x509.CertificateConstraints
+import kotlinx.io.bytestring.ByteString
+import org.multipaz.crypto.X509Cert
 import org.bouncycastle.asn1.x509.AccessDescription
 import org.bouncycastle.asn1.x509.AuthorityInformationAccess
 import org.bouncycastle.asn1.x509.CRLDistPoint
@@ -109,9 +112,11 @@ internal object ValidationCollector {
             if (resp.status != OCSPResp.SUCCESSFUL) continue
             val basic = resp.responseObject as? BasicOCSPResp ?: continue
             val single = basic.responses.firstOrNull { it.certID.serialNumber == cert.serialNumber && it.certID.matchesIssuer(issuer, Bc.digestProvider()) } ?: continue
-            // The response is signed by the issuer or by a responder certificate the issuer issued.
+            // The response is signed by the issuer or by a responder certificate the issuer issued for OCSP signing
+            // (RFC 6960 4.2.2.2: extKeyUsage id-kp-OCSPSigning).
             val responder = (listOf(issuer) + basic.certs).firstOrNull { r ->
-                runCatching { basic.isSignatureValid(Bc.contentVerifier(r)) }.getOrDefault(false) && (r == issuer || issued(r, issuer))
+                runCatching { basic.isSignatureValid(Bc.contentVerifier(r)) }.getOrDefault(false) &&
+                    (r == issuer || (issued(r, issuer) && CertificateConstraints.ocspResponderAllowed(X509Cert(ByteString(r.encoded)))))
             } ?: continue
             val (status, detail) = when (val s = single.certStatus) {
                 null -> "GOOD" to null

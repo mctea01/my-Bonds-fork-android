@@ -353,9 +353,9 @@ class PresentationVerifier(
             TrustDecision.unknown("no issuer certificate chain")
         } else {
             val docType = (vp as? MdocVerifiedPresentation)?.docType
-            val m = trustRegistry.match(TrustRole.ISSUER, chain.certificates, now, docType)
-            m?.let { revocation(vp, it.anchor).let { (check, finding) -> checks += check; status = finding } }
-            trustRegistry.decision(m)
+            val ev = trustRegistry.evaluate(TrustRole.ISSUER, chain.certificates, now, docType)
+            ev.match?.let { revocation(vp, it.anchor).let { (check, finding) -> checks += check; status = finding } }
+            trustRegistry.decision(ev)
         }
         // A Photo ID made by a holder wallet from a passport is that wallet's own statement (T3); the chip files it
         // carries are what a verifier weighs, as with a document-derived credential.

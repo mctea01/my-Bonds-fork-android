@@ -62,6 +62,16 @@ enum class TrustLabel {
 
     /** The party's metadata comes from an OpenID Federation trust chain to a configured Trust Anchor. */
     OPENID_FEDERATION,
+
+    /**
+     * A certificate of the chain breaks a usage or path rule (keyUsage, extKeyUsage, basicConstraints, name or policy
+     * constraints, an unknown critical extension, a broken algorithm): it may not be used for this, so the result is T4
+     * and the reasons name the rule ([diw.wallet.core.x509.CertificateConstraints]).
+     */
+    CERTIFICATE_CONSTRAINT,
+
+    /** The chain relies on a weak algorithm or key at the time checked (SHA-1, RSA below 2048 bits): at most T3. */
+    WEAK_ALGORITHM,
 }
 
 /**
