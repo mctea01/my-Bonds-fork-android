@@ -163,9 +163,15 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val bondsLan: BondsLanLink by lazy { localNetwork.wrap(SocketBondsLanLink { host -> lanSocketFactory(host) }) }
 
-    /** Sockets to [host] over the network both phones share, once the local network permission allows them. */
-    private fun lanSocketFactory(host: String): javax.net.SocketFactory? =
-        localNetworkFor(host)?.also { localNetwork.check() }?.socketFactory
+    /**
+     * Sockets to [host] over the network both phones share. A local address (IPv4 or IPv6 unique local) needs the
+     * local network permission first, also when no shared network is found and the socket takes the default route.
+     */
+    private fun lanSocketFactory(host: String): javax.net.SocketFactory? {
+        runCatching { java.net.InetAddress.getByName(host.removePrefix("[").removeSuffix("]")) }.getOrNull()
+            ?.let { localNetwork.checkAddress(it) }
+        return localNetworkFor(host)?.socketFactory
+    }
 
     /**
      * The connected network whose own subnet holds [host]: the Wi-Fi or hotspot both phones share. A socket left
