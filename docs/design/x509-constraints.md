@@ -113,3 +113,16 @@ ISSUER 與 VERIFIER 不更嚴格，原因是錢包服務端與 Multipaz 的讀�
 - 委任的 OCSP 回應：回應者沒有 OCSPSigning 時，不採用這份回應（`ValidationCollector`、`PkiSupport.revocation`）。
 - Bonds vc+moica 的持卡人憑證：以 DOCUMENT 用途檢查 MOICA 路徑，違規時拒絕（`invalid_certificate_chain`）。
 - 憑證鏈畫面：上方的「用途與限制檢查」卡片列出不允許與強度不足的項目，每張憑證下方以顏色列出它自己的發現。
+
+## 5. 錢包自己的自簽憑證
+
+`DocumentSigning.selfIssuedCertificate` 產生的憑證預設帶 extKeyUsage documentSigning 與 emailProtection，符合文件簽章與 C2PA 的規則。以下憑證會帶這組用途：
+
+- 錢包金鑰的簽署憑證；
+- OpenPGP 卡沒有持卡人憑證時自簽的憑證。
+
+保存的舊憑證沒有 extKeyUsage，使用時會重新產生（`selfIssuedNeedsRenewal`）。查驗方近距離的讀卡機憑證維持不帶 extKeyUsage。
+
+## 6. 檢查的路徑
+
+檢查的路徑從終端憑證開始，每一層都要名稱與金鑰識別碼相符，而且簽發者的金鑰能驗證簽章。這樣，與根憑證同名的換鑰憑證不會因為名稱相符而被略過。

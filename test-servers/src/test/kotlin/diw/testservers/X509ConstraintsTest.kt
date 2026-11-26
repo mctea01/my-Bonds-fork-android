@@ -1,6 +1,9 @@
 package diw.testservers
 
 import diw.wallet.core.env.EnvironmentPolicy
+import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.sign.SignerKeyType
+import diw.wallet.core.document.sign.selfIssuedNeedsRenewal
 import diw.wallet.core.env.TrustEnvironment
 import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRegistry
@@ -78,14 +81,17 @@ class X509ConstraintsTest {
         signer: KeyPair,
         extensions: List<Ext>,
         algorithm: String? = null,
+        keyIds: Boolean = true,
     ): X509Cert {
         val b = JcaX509v3CertificateBuilder(
             X500Name(issuer), BigInteger.valueOf(serial++), Date(System.currentTimeMillis() - 86_400_000L),
             Date(System.currentTimeMillis() + 86_400_000L * 365), X500Name(subject), key.public,
         )
         val util = JcaX509ExtensionUtils()
-        b.addExtension(Extension.subjectKeyIdentifier, false, util.createSubjectKeyIdentifier(key.public))
-        b.addExtension(Extension.authorityKeyIdentifier, false, util.createAuthorityKeyIdentifier(signer.public))
+        if (keyIds) {
+            b.addExtension(Extension.subjectKeyIdentifier, false, util.createSubjectKeyIdentifier(key.public))
+            b.addExtension(Extension.authorityKeyIdentifier, false, util.createAuthorityKeyIdentifier(signer.public))
+        }
         extensions.forEach { b.addExtension(it.oid, it.critical, it.value) }
         val alg = algorithm ?: if (signer.private.algorithm == "EC") "SHA256withECDSA" else "SHA256withRSA"
         return X509Cert(ByteString(b.build(JcaContentSignerBuilder(alg).build(signer.private)).encoded))
@@ -371,5 +377,47 @@ class X509ConstraintsTest {
         assertEquals(TrustTier.T3, weak.tier)
         assertTrue(TrustLabel.WEAK_ALGORITHM in weak.labels)
         assertEquals("Constraint Root", weak.anchorName)
+    }
+
+    /** The wallet's own self-issued certificates carry an extKeyUsage that document and C2PA signatures accept. */
+    @Test
+    fun selfIssuedCertificatesMeetTheContentProfile() = runBlocking<Unit> {
+        val key = ecGen.generateKeyPair()
+        suspend fun make(purposes: List<String>?): ByteArray {
+            val sign: suspend (ByteArray) -> ByteArray = { data ->
+                java.security.Signature.getInstance("SHA256withECDSA").run { initSign(key.private); update(data); sign() }
+            }
+            return if (purposes == null) DocumentSigning.selfIssuedCertificate(key.public.encoded, "Self", sign, SignerKeyType.EC_P256, 30)
+            else DocumentSigning.selfIssuedCertificate(key.public.encoded, "Self", sign, SignerKeyType.EC_P256, 30, purposes)
+        }
+        val made = make(null)
+        val cert = X509Cert(ByteString(made))
+        assertFalse(selfIssuedNeedsRenewal(made))
+        for (purpose in listOf(CertificatePurpose.CONTENT, CertificatePurpose.DOCUMENT)) {
+            assertFalse(CertificateConstraints.check(listOf(cert), purpose, now, anchored = false).failed, purpose.name)
+        }
+        // A certificate without extKeyUsage (made before, or the reader key) is renewed for signing.
+        assertTrue(selfIssuedNeedsRenewal(make(emptyList())))
+    }
+
+    /**
+     * A key rollover certificate under the root's own name stays on the checked path when the certificates below it
+     * name no authorityKeyIdentifier: the anchor must verify the signature, a name match is not enough.
+     */
+    @Test
+    fun rolloverCertificateStaysOnThePath() = runBlocking<Unit> {
+        val name = "CN=Rollover Root,C=TW"
+        val rsaOld = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        val rsaNew = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        val root = cert(name, name, rsaOld, rsaOld, listOf(ca(), caUsage))
+        val rollover = cert(name, name, rsaNew, rsaOld, listOf(ca(), caUsage), algorithm = "SHA1withRSA", keyIds = false)
+        val leafCert = cert("CN=Rollover Leaf,C=TW", name, ecGen.generateKeyPair(), rsaNew, listOf(signUsage), keyIds = false)
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.USER, root, "Rollover Root", official = false, source = "test")
+        val ev = registry.evaluate(TrustRole.DOCUMENT, listOf(leafCert, rollover))
+        val m = assertNotNull(ev.match, ev.toString())
+        assertEquals(listOf(leafCert, rollover, root), m.path)
+        assertTrue(ConstraintRule.SIGNATURE_ALGORITHM in ev.constraints.rules(ConstraintSeverity.WEAK), ev.constraints.toString())
+        assertEquals(TrustTier.T3, registry.decision(ev).tier)
     }
 }

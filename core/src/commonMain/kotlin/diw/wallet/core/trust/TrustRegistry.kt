@@ -493,21 +493,23 @@ class TrustRegistry(
     /**
      * The certificates of [chain] from the leaf to [anchor]: the anchor itself when the leaf is the anchor, else the
      * shortest leading part of the chain whose last certificate [anchor] issued, then the anchor (a chain may carry a
-     * cross-signed copy of a root above the certificate the anchor issued).
+     * cross-signed copy of a root above the certificate the anchor issued). Issued means the names and key
+     * identifiers link and the anchor's key verifies the signature: a key rollover certificate under the root's name
+     * is not skipped because a root without a subjectKeyIdentifier matches it by name.
      */
     private fun pathTo(chain: List<X509Cert>, anchor: X509Cert): List<X509Cert> {
         if (chain.first() == anchor) return listOf(anchor)
         val below = chain.takeWhile { it != anchor }
-        val k = below.indices.firstOrNull { issues(anchor, below[it]) } ?: below.lastIndex
+        val k = below.indices.firstOrNull { issues(anchor, below[it]) && Pkix.signedBy(below[it], anchor) } ?: below.lastIndex
         return below.subList(0, k + 1) + anchor
     }
 
-    /** [chain] in issuing order from the leaf, as far as each certificate names the one above it. */
+    /** [chain] in issuing order from the leaf, as far as each certificate names the one above it and its key verifies. */
     private fun linked(chain: List<X509Cert>): List<X509Cert> {
         val out = mutableListOf(chain.first())
         while (out.size < MAX_CHAIN && !out.last().selfIssuedRoot) {
             val last = out.last()
-            out.add(chain.firstOrNull { it !in out && issues(it, last) } ?: break)
+            out.add(chain.firstOrNull { it !in out && issues(it, last) && Pkix.signedBy(last, it) } ?: break)
         }
         return out
     }
