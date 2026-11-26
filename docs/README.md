@@ -35,6 +35,7 @@
 | [guides/fork-setup.md](guides/fork-setup.md) | 現行 | 新 Fork 的配置：GitHub 設定、secrets、要改成自己的識別與金鑰、版型與資產來源、與上游同步 |
 | [guides/desktop-usage.md](guides/desktop-usage.md) | 現行 | 電腦版的寬窄版面、捲軸、視窗記憶、鍵盤快捷鍵與原生版錯誤紀錄 |
 | [guides/windows-local-test.md](guides/windows-local-test.md) | 現行 | 在 Windows 啟動本機測試伺服器，設定錢包、領卡與出示 |
+| [guides/translation.md](guides/translation.md) | 現行 | 新增與維護介面翻譯：手動加入語言（TSV 匯出與匯入）、簡體中文的轉換與校訂、Weblate 與其他翻譯平台的設定 |
 | [research/device-test-checklist.md](research/device-test-checklist.md) | 現行 | 實機測試清單：步驟與判定 |
 | [../templates/README.md](../templates/README.md) | 現行 | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型）的格式、簽章與發佈 |
 | [../native/README.md](../native/README.md) | 現行 | 原生函式庫的建置、目標平台與 CI |

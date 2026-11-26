@@ -5,7 +5,7 @@
 ## 溝通與輸出
 
 - 與使用者交談一律使用繁體中文；程式碼註解、識別字、commit 訊息使用英文。
-- 程式碼不可使用 emoji 或特殊符號。App 介面字串放在 `app/src/commonMain/composeResources`（`values` 英文、`values-zh` 繁體中文），畫面以 `stringResource(Res.string.x)`、畫面外以 `WalletModel.text` 取用；新文字不要寫成程式常值，舊畫面依 [docs/design/i18n.md](docs/design/i18n.md) 以 `tools/i18n/i18n.py` 搬移。
+- 程式碼不可使用 emoji 或特殊符號。App 介面字串放在 `app/src/commonMain/composeResources`（`values` 英文、`values-zh` 繁體中文、`values-zh-rCN` 簡體中文；新字串加進英文與繁體中文後執行 `python3 tools/i18n/i18n.py hans` 補簡體中文，新增語言見 [docs/guides/translation.md](docs/guides/translation.md)），畫面以 `stringResource(Res.string.x)`、畫面外以 `WalletModel.text` 取用；新文字不要寫成程式常值，舊畫面依 [docs/design/i18n.md](docs/design/i18n.md) 以 `tools/i18n/i18n.py` 搬移。
 - 交付完整實作，不留框架或 TODO 佔位。
 - 在 Windows 執行指令前確保 UTF-8（`chcp 65001`、`-Dfile.encoding=UTF-8`）。
 

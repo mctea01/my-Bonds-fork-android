@@ -3398,7 +3398,7 @@
     <string name="settings_language">Language</string>
     <string name="settings_language_prefix">Language: </string>
     <string name="settings_language_system">Follow the system</string>
-    <string name="settings_language_text">Interface language. Following the system shows Traditional Chinese on Chinese devices and English elsewhere. Some screens and messages are not translated yet. Names and values from issuers, verifiers and documents keep their own language.</string>
+    <string name="settings_language_text">Interface language. Following the system shows Simplified Chinese on devices set to Chinese (China), Traditional Chinese on other Chinese devices and English for languages without a translation; in Simplified Chinese the legal documents show the Traditional Chinese original. Some screens and messages are not translated yet. Names and values from issuers, verifiers and documents keep their own language.</string>
     <string name="settings_last_response">Last response</string>
     <string name="settings_license">License</string>
     <string name="settings_license_bc">Bouncy Castle License (MIT-style)</string>

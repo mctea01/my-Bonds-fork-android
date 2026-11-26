@@ -3398,7 +3398,7 @@
     <string name="settings_language">語言</string>
     <string name="settings_language_prefix">語言：</string>
     <string name="settings_language_system">跟隨系統</string>
-    <string name="settings_language_text">介面語言。跟隨系統時，中文裝置顯示繁體中文，其他語言顯示英文。部分畫面與訊息尚未翻譯。發證端、查驗方與文件提供的名稱與內容維持原本的語言。</string>
+    <string name="settings_language_text">介面語言。跟隨系統時，中文（中國）的裝置顯示簡體中文，其他中文裝置顯示繁體中文，沒有翻譯的語言顯示英文；簡體中文的法律文件顯示繁體中文原文。部分畫面與訊息尚未翻譯。發證端、查驗方與文件提供的名稱與內容維持原本的語言。</string>
     <string name="settings_last_response">最後一次回應</string>
     <string name="settings_license">授權</string>
     <string name="settings_license_bc">Bouncy Castle License（MIT 類）</string>

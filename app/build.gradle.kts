@@ -4,6 +4,7 @@ import java.nio.file.FileSystems
 import java.nio.file.Files
 import java.security.KeyStore
 import java.security.MessageDigest
+import java.util.Locale
 
 plugins {
     kotlin("multiplatform")
@@ -216,9 +217,11 @@ val generateAppBuild = tasks.register<GenerateAppBuild>("generateAppBuild") {
 }
 
 /**
- * The interface languages, read from the translation files: every composeResources values directory whose
- * strings.xml has language_tag (BCP 47) and language_self (the language's name in itself) is offered, so a new
- * language needs only its strings.xml. Writes AppLanguages.kt and Android's locales_config.xml (per-app language).
+ * The interface languages, read from the translation files: every composeResources values directory with a
+ * strings.xml is offered, so a new language needs only its strings.xml (docs/guides/translation.md). Its language is
+ * language_tag (BCP 47) when the file has one, else the directory's qualifier (values-ja, values-pt-rBR,
+ * values-b+sr+Latn), as files from translation platforms such as Weblate have it; its name is language_self, else the
+ * language's own name for itself. Writes AppLanguages.kt and Android's locales_config.xml (per-app language).
  */
 abstract class GenerateAppLanguages : DefaultTask() {
     @get:InputFiles @get:PathSensitive(PathSensitivity.RELATIVE) abstract val resources: ConfigurableFileCollection
@@ -229,14 +232,25 @@ abstract class GenerateAppLanguages : DefaultTask() {
     fun generate() {
         fun value(xml: String, name: String): String? =
             Regex("<string name=\"" + name + "\"[^>]*>([^<]*)</string>").find(xml)?.groupValues?.get(1)?.trim()?.takeIf { it.isNotEmpty() }
+        fun qualifierTag(dir: String): String? {
+            val q = dir.removePrefix("values").removePrefix("-").takeIf { it.isNotEmpty() } ?: return null
+            if (q.startsWith("b+")) return q.removePrefix("b+").replace('+', '-')
+            val parts = q.split('-')
+            if (!Regex("[a-z]{2,3}").matches(parts[0])) return null
+            return if (parts.size > 1 && Regex("r[A-Z]{2}").matches(parts[1])) parts[0] + "-" + parts[1].drop(1) else parts[0]
+        }
         val found = resources.files.filter { it.name == "strings.xml" && it.parentFile.name.startsWith("values") }
             .sortedBy { it.parentFile.name }
             .mapNotNull { f ->
                 val xml = f.readText(Charsets.UTF_8)
-                val tag = value(xml, "language_tag") ?: return@mapNotNull null
-                val self = value(xml, "language_self") ?: throw GradleException("${f.parentFile.name}/strings.xml has language_tag but no language_self")
-                if (!Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*").matches(tag)) throw GradleException("Bad language_tag \"$tag\" in ${f.parentFile.name}")
-                tag to self.replace("&amp;", "&")
+                val dir = f.parentFile.name
+                val tag = value(xml, "language_tag") ?: qualifierTag(dir) ?: return@mapNotNull null
+                if (!Regex("[A-Za-z]{2,3}(-[A-Za-z0-9]{2,8})*").matches(tag)) throw GradleException("Bad language_tag \"$tag\" in $dir")
+                val locale = Locale.forLanguageTag(tag)
+                val self = value(xml, "language_self")?.replace("&amp;", "&")
+                    ?: locale.getDisplayName(locale).replaceFirstChar { it.titlecase(locale) }.takeIf { it.isNotBlank() && it != tag }
+                    ?: throw GradleException("$dir/strings.xml: no language_self and no known name for $tag")
+                tag to self
             }
         if (found.isEmpty()) throw GradleException("No strings.xml names its language_tag")
         if (found.map { it.first.lowercase() }.toSet().size != found.size) throw GradleException("Two translation files name the same language_tag")
@@ -484,7 +498,8 @@ configurations.all {
     }
 }
 
-// Interface strings: composeResources/values (English) and values-zh (Traditional Chinese), see docs/design/i18n.md.
+// Interface strings: composeResources/values (English), values-zh (Traditional Chinese) and values-zh-rCN (Simplified
+// Chinese), see docs/design/i18n.md and docs/guides/translation.md.
 compose.resources {
     packageOfResClass = "diw.wallet.app.res"
     generateResClass = always
