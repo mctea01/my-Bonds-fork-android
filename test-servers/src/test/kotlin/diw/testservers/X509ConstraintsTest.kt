@@ -22,6 +22,7 @@ import kotlinx.coroutines.runBlocking
 import kotlinx.io.bytestring.ByteString
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.DERIA5String
+import org.bouncycastle.asn1.DERNull
 import org.bouncycastle.asn1.DEROctetString
 import org.bouncycastle.asn1.DERSequence
 import org.bouncycastle.asn1.x500.X500Name
@@ -429,6 +430,17 @@ class X509ConstraintsTest {
         assertEquals(listOf(leafCert, rollover, root), m.path)
         assertTrue(ConstraintRule.SIGNATURE_ALGORITHM in ev.constraints.rules(ConstraintSeverity.WEAK), ev.constraints.toString())
         assertEquals(TrustTier.T3, registry.decision(ev).tier)
+
+        // Without an anchor, a rollover certificate at the top is not taken for a root: its signature and critical
+        // extensions are checked, while a root that signed itself keeps the exemption.
+        val unknown = Ext(ASN1ObjectIdentifier("1.3.6.1.4.1.99999.1"), true, DERNull.INSTANCE)
+        val strayTop = cert(name, name, rsaNew, rsaOld, listOf(ca(), caUsage, unknown), keyIds = false)
+        val loose = CertificateConstraints.check(listOf(leafCert, strayTop), CertificatePurpose.DOCUMENT, now, anchored = false)
+        assertTrue(ConstraintRule.UNKNOWN_CRITICAL_EXTENSION in loose.rules(ConstraintSeverity.FAIL), loose.toString())
+        val selfSigned = cert(name, name, rsaOld, rsaOld, listOf(ca(), caUsage, unknown))
+        val rooted = CertificateConstraints.check(listOf(selfSigned), null, now, anchored = false)
+        assertFalse(rooted.failed, rooted.toString())
+        assertTrue(ConstraintRule.UNKNOWN_CRITICAL_EXTENSION in rooted.rules(ConstraintSeverity.NOTE), rooted.toString())
     }
 
     /**

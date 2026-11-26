@@ -1,6 +1,7 @@
 package diw.wallet.core.x509
 
 import diw.wallet.core.i18n.ct
+import diw.wallet.core.trust.Pkix
 import diw.wallet.core.trust.TrustRole
 import org.multipaz.crypto.X509Cert
 import kotlin.time.Instant
@@ -165,8 +166,9 @@ object CertificateConstraints {
         if (out.isNotEmpty()) return ConstraintReport(out)
         val certs = details.filterNotNull()
         val top = certs.size - 1
-        // The top certificate is an anchor, or a root that signed itself (whose self-signature proves nothing).
-        val topIsTrusted = anchored || certs[top].selfIssued
+        // The top certificate is an anchor, or a root that signed itself (whose self-signature proves nothing). A
+        // self-issued certificate signed by another key, such as a key rollover certificate, is checked like any other.
+        val topIsTrusted = anchored || (certs[top].selfIssued && Pkix.signedBy(path[top], path[top]))
         fun add(sev: ConstraintSeverity, rule: ConstraintRule, i: Int, message: String) {
             out += ConstraintFinding(sev, rule, i, displayName(certs[i]), message)
         }
