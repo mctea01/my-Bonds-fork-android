@@ -53,7 +53,7 @@ class LocalNetworkGate(private val context: Context, private val activity: () ->
 
     /** The dialog's answer, asking when no dialog is open; null when no activity is in the foreground to ask from. */
     private fun ask(): CompletableFuture<Boolean>? = synchronized(lock) {
-        pending?.let { return it }
+        pending?.takeUnless { it.isDone }?.let { return it }
         val a = activity()?.takeIf { !it.isFinishing && !it.isDestroyed } ?: return null
         CompletableFuture<Boolean>().also { answer ->
             pending = answer
@@ -84,7 +84,9 @@ class LocalNetworkGate(private val context: Context, private val activity: () ->
     suspend fun prepare(wait: Duration = WAIT): String? {
         if (!missing()) return null
         val answer = ask() ?: return reason()
-        val granted = withTimeoutOrNull(wait) { answer.await() }
+        // await() cancels the future it waits on when this coroutine is cancelled; waiting on a dependent stage keeps
+        // the shared answer for the other waiters and the dialog that is still open.
+        val granted = withTimeoutOrNull(wait) { answer.thenApply { it }.await() }
         if (granted == null) forget(answer)
         return if (granted == true && !missing()) null else reason()
     }
