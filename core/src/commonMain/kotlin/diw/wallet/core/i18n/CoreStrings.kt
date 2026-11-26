@@ -999,6 +999,7 @@ object CoreStrings {
         "core_x509_c_ku_sign" to "keyUsage（%1\$s）沒有 digitalSignature 或 nonRepudiation，這把金鑰不能用來簽章（RFC 5280 4.2.1.3）",
         "core_x509_c_mdoc_eku" to "extKeyUsage（%1\$s）沒有 mdoc 文件簽署者用途 1.0.18013.5.1.2（ISO/IEC 18013-5 表 B.3）",
         "core_x509_c_mdoc_no_eku" to "文件簽署者沒有 extKeyUsage，ISO/IEC 18013-5 表 B.3 要求 1.0.18013.5.1.2",
+        "core_x509_c_nc_distance" to "%1\$s 的 nameConstraints 對子樹設定了 minimum 或 maximum 距離，錢包無法處理，必須拒絕這條路徑（RFC 5280 4.2.1.10）",
         "core_x509_c_nc_excluded" to "名稱 %1\$s 被 %3\$s 的 nameConstraints 以 %2\$s 排除（RFC 5280 4.2.1.10）",
         "core_x509_c_nc_malformed" to "nameConstraints 無法解碼，必須拒絕這條路徑（RFC 5280 4.2.1.10）",
         "core_x509_c_nc_not_permitted" to "名稱 %1\$s 不在 %2\$s 允許的範圍內（RFC 5280 4.2.1.10）",

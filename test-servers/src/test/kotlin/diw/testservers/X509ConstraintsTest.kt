@@ -289,6 +289,15 @@ class X509ConstraintsTest {
             listOf(leaf(signUsage, san(GeneralName(GeneralName.registeredID, "1.2.3.4"))), mid(ca(), caUsage), root(other)), CertificatePurpose.DOCUMENT, now, anchored = true,
         )
         assertTrue(ConstraintRule.NAME_CONSTRAINTS in strict.rules(ConstraintSeverity.FAIL), strict.toString())
+        // Subtree distances are not processed, so a constraint with a minimum or maximum fails closed.
+        for ((min, max) in listOf(BigInteger.ONE to null, BigInteger.ZERO to BigInteger.TWO)) {
+            val distance = Ext(Extension.nameConstraints, true, NameConstraints(arrayOf(GeneralSubtree(GeneralName(GeneralName.dNSName, "example.tw"), min, max)), null))
+            val dm = mid(ca(), caUsage, distance)
+            assertTrue(X509Details.parse(dm.encoded.toByteArray()).nameConstraintDistances)
+            val r2 = CertificateConstraints.check(listOf(leaf(signUsage, san(GeneralName(GeneralName.dNSName, "example.tw"))), dm, root()), CertificatePurpose.DOCUMENT, now, anchored = true)
+            assertEquals(1, r2.failures.single { it.rule == ConstraintRule.NAME_CONSTRAINTS }.index, r2.toString())
+        }
+        assertFalse(X509Details.parse(m.encoded.toByteArray()).nameConstraintDistances)
     }
 
     @Test

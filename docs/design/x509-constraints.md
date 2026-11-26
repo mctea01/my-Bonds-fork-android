@@ -81,7 +81,7 @@ ISSUER 與 VERIFIER 不更嚴格，原因是錢包服務端與 Multipaz 的讀�
 - 簽發其他憑證的憑證必須有 basicConstraints cA=TRUE。錨點沒有時只加註（第 1 版的錨點不加註）。
 - 簽發憑證的金鑰在 keyUsage 存在時必須有 keyCertSign，錨點也一樣。
 - pathLenConstraint 計算它下方非自簽發的中繼憑證張數，錨點的 pathLen 也計入。
-- nameConstraints 檢查下方每張憑證的主體、emailAddress 與 subjectAltName，可比對的類型有 DNS、email、URI、IP 與 DN。錨點自己的限制也套用（RFC 5937）。限制了錢包無法比對的名稱類型時一律拒絕。
+- nameConstraints 檢查下方每張憑證的主體、emailAddress 與 subjectAltName，可比對的類型有 DNS、email、URI、IP 與 DN。錨點自己的限制也套用（RFC 5937）。限制了錢包無法比對的名稱類型，或子樹設定了 minimum 或 maximum 距離（RFC 5280 規定 minimum 為 0、不得有 maximum）時，一律拒絕。
 - 憑證政策依 RFC 5280 6.1 建立有效政策樹，包括 policyMappings、policyConstraints 與 inhibitAnyPolicy。初始為 anyPolicy、不要求明確政策，錨點本身的政策擴充不處理。
 - 錢包不處理的 critical 擴充依 RFC 5280 4.2 拒絕；出現在錨點上只加註。
 

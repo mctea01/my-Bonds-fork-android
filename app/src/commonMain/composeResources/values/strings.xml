@@ -5136,6 +5136,7 @@
     <string name="core_x509_c_ku_sign">keyUsage (%1$s) has neither digitalSignature nor nonRepudiation, so this key may not sign (RFC 5280 4.2.1.3)</string>
     <string name="core_x509_c_mdoc_eku">extKeyUsage (%1$s) does not contain the mdoc document signer purpose 1.0.18013.5.1.2 (ISO/IEC 18013-5 Table B.3)</string>
     <string name="core_x509_c_mdoc_no_eku">The document signer has no extKeyUsage; ISO/IEC 18013-5 Table B.3 expects 1.0.18013.5.1.2</string>
+    <string name="core_x509_c_nc_distance">The nameConstraints of %1$s set a minimum or maximum subtree distance, which the wallet cannot process, so the path must be rejected (RFC 5280 4.2.1.10)</string>
     <string name="core_x509_c_nc_excluded">Name %1$s is excluded by %2$s in the nameConstraints of %3$s (RFC 5280 4.2.1.10)</string>
     <string name="core_x509_c_nc_malformed">nameConstraints cannot be decoded, so the path must be rejected (RFC 5280 4.2.1.10)</string>
     <string name="core_x509_c_nc_not_permitted">Name %1$s is not in the permitted subtrees of %2$s (RFC 5280 4.2.1.10)</string>

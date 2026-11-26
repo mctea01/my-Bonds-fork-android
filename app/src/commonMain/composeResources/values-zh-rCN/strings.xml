@@ -5136,6 +5136,7 @@
     <string name="core_x509_c_ku_sign">keyUsage（%1$s）没有 digitalSignature 或 nonRepudiation，这把密钥不能用来签章（RFC 5280 4.2.1.3）</string>
     <string name="core_x509_c_mdoc_eku">extKeyUsage（%1$s）没有 mdoc 文档签署者用途 1.0.18013.5.1.2（ISO/IEC 18013-5 表 B.3）</string>
     <string name="core_x509_c_mdoc_no_eku">文档签署者没有 extKeyUsage，ISO/IEC 18013-5 表 B.3 要求 1.0.18013.5.1.2</string>
+    <string name="core_x509_c_nc_distance">%1$s 的 nameConstraints 对子树设定了 minimum 或 maximum 距离，钱包无法处理，必须拒绝这条路径（RFC 5280 4.2.1.10）</string>
     <string name="core_x509_c_nc_excluded">名称 %1$s 被 %3$s 的 nameConstraints 以 %2$s 排除（RFC 5280 4.2.1.10）</string>
     <string name="core_x509_c_nc_malformed">nameConstraints 无法解码，必须拒绝这条路径（RFC 5280 4.2.1.10）</string>
     <string name="core_x509_c_nc_not_permitted">名称 %1$s 不在 %2$s 允许的范围内（RFC 5280 4.2.1.10）</string>

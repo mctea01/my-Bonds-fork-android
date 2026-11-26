@@ -140,6 +140,20 @@ class X509Details private constructor(
         }
     }
 
+    /**
+     * Whether a nameConstraints subtree sets a minimum other than zero or a maximum. RFC 5280 4.2.1.10 profiles
+     * them out and the wallet does not process them, so a path relying on such a constraint is rejected.
+     */
+    val nameConstraintDistances: Boolean by lazy {
+        extension(X509Names.NAME_CONSTRAINTS)?.let { e ->
+            runCatching {
+                Der.parse(e.value).children().any { c ->
+                    c.children().any { t -> t.children().drop(1).any { it.isContext(1) || (it.isContext(0) && implicitInt(it) != 0L) } }
+                }
+            }.getOrNull()
+        } ?: false
+    }
+
     /** certificatePolicies policy identifiers (RFC 5280 4.2.1.4); null without the extension. */
     val policies: List<String>? by lazy {
         extension(X509Names.CERTIFICATE_POLICIES)?.let { e -> runCatching { Der.parse(e.value).children().map { it.children().first().oid() } }.getOrNull() }

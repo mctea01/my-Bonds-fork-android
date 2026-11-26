@@ -357,6 +357,10 @@ object CertificateConstraints {
                 continue
             }
             val (permitted, excluded) = nc ?: continue
+            if (certs[ca].nameConstraintDistances) {
+                add(ConstraintSeverity.FAIL, ConstraintRule.NAME_CONSTRAINTS, ca, ct("core_x509_c_nc_distance", displayName(certs[ca])))
+                continue
+            }
             for (i in 0 until ca) {
                 // A self-issued intermediate certificate is not checked against the constraints (6.1.3 (b)).
                 if (i > 0 && certs[i].selfIssued) continue
