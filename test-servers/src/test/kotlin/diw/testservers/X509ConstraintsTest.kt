@@ -504,5 +504,20 @@ class X509ConstraintsTest {
         )
         assertFalse(check(signUsage, san(GeneralName(GeneralName.rfc822Name, "current@allowed.tw"))).failed)
         assertTrue(check(signUsage).failed)
+
+        // A mailbox constraint compares the local part exactly and the host without regard to case (RFC 5280 7.5).
+        val mailbox = Ext(Extension.nameConstraints, true, NameConstraints(null, arrayOf(GeneralSubtree(GeneralName(GeneralName.rfc822Name, "Alice@Example.TW")))))
+        val mm = mid(ca(), caUsage, mailbox)
+        fun mail(address: String) = CertificateConstraints.check(
+            listOf(leaf(signUsage, san(GeneralName(GeneralName.rfc822Name, address))), mm, r), CertificatePurpose.DOCUMENT, now, anchored = true,
+        )
+        assertFalse(mail("alice@example.tw").failed)
+        assertTrue(mail("Alice@example.tw").failed)
+        // Host and domain constraints ignore case.
+        val host = Ext(Extension.nameConstraints, true, NameConstraints(null, arrayOf(GeneralSubtree(GeneralName(GeneralName.rfc822Name, "Example.TW")))))
+        val hm = mid(ca(), caUsage, host)
+        assertTrue(CertificateConstraints.check(
+            listOf(leaf(signUsage, san(GeneralName(GeneralName.rfc822Name, "bob@example.tw"))), hm, r), CertificatePurpose.DOCUMENT, now, anchored = true,
+        ).failed)
     }
 }

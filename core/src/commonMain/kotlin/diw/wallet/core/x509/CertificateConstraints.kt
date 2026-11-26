@@ -416,15 +416,17 @@ object CertificateConstraints {
         return if (c.startsWith(".")) n.endsWith(c) else n == c || n.endsWith(".$c")
     }
 
-    /** rfc822Name: a mailbox, all mailboxes on a host, or (with a leading dot) on any host of a domain. */
+    /**
+     * rfc822Name: a mailbox, all mailboxes on a host, or (with a leading dot) on any host of a domain. The local part
+     * is compared exactly and the host without regard to case (RFC 5280 7.5).
+     */
     private fun emailWithin(name: String, constraint: String): Boolean {
-        val n = name.lowercase()
-        val c = constraint.lowercase()
-        val host = n.substringAfterLast('@')
+        val host = name.substringAfterLast('@').lowercase()
         return when {
-            '@' in c -> n == c
-            c.startsWith(".") -> host.endsWith(c)
-            else -> host == c
+            '@' in constraint -> name.substringBeforeLast('@') == constraint.substringBeforeLast('@') &&
+                host == constraint.substringAfterLast('@').lowercase()
+            constraint.startsWith(".") -> host.endsWith(constraint.lowercase())
+            else -> host == constraint.lowercase()
         }
     }
 
