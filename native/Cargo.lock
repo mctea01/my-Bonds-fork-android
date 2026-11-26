@@ -5054,9 +5054,9 @@ dependencies = [
 
 [[package]]
 name = "taceo-oprf-core"
-version = "0.6.3"
+version = "0.6.5"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "7f66b5a67d71a6022abb42198d87184aebbac1f45538b5858d22c87d0958a805"
+checksum = "c1772facb4365e8ab40021f108ab82ff8fcb9899572a4839079162a9cc923dbe"
 dependencies = [
  "ark-ec 0.6.0",
  "ark-ff 0.6.0",
