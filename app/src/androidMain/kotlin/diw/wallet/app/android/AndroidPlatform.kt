@@ -448,7 +448,11 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
             }
         })
 
-    override fun httpClient(): HttpClient = HttpClient(OkHttp) { followRedirects = false }
+    override fun httpClient(): HttpClient = HttpClient(OkHttp) {
+        followRedirects = false
+        // Test servers, self-hosted servers and provers on the local network need the Android 17 permission too.
+        engine { config { localNetwork.guard(this) } }
+    }
 
     /** OkHttp refuses clear text where the network security configuration does (release: only this device and the emulator host). */
     override fun cleartextPermitted(host: String): Boolean =

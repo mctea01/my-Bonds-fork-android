@@ -11,14 +11,19 @@ import diw.wallet.app.tr
 import diw.wallet.core.document.sign.FetchReply
 import diw.wallet.core.profile.bonds.BondsLanLink
 import diw.wallet.core.profile.bonds.LanInterface
+import okhttp3.Dns
+import okhttp3.OkHttpClient
 import java.io.IOException
+import java.net.Inet6Address
+import java.net.InetAddress
 import kotlin.time.Duration
 
 /**
  * Android 17 (API 37) asks apps that target it for ACCESS_LOCAL_NETWORK (in the Nearby devices group) before any
  * socket to a private address: LAN age proofs, zkTLS and zkPassport on the local network, and OpenID4VP verification
- * on the local network all go through a [BondsLanLink]. Without the permission the system drops the packets, so a
- * listener would wait for nothing and a post would time out; this asks for it and stops the exchange with a reason.
+ * on the local network all go through a [BondsLanLink]; plain HTTP to a local server goes through [guard]. Without
+ * the permission the system drops the packets, so a listener would wait for nothing and a post would time out; this
+ * asks for it and stops the exchange with a reason.
  */
 class LocalNetworkGate(private val context: Context, private val activity: () -> Activity?) {
     /** Whether this device needs the permission and does not have it yet. */
@@ -34,6 +39,18 @@ class LocalNetworkGate(private val context: Context, private val activity: () ->
 
     fun check() {
         unavailableReason()?.let { throw LocalNetworkPermissionException(it) }
+    }
+
+    /**
+     * HTTP through [builder] checks the permission before it reaches a local address: a literal private host before
+     * the call, a name once it resolves to one. Loopback is not local network traffic and stays allowed.
+     */
+    fun guard(builder: OkHttpClient.Builder) {
+        builder.addInterceptor { chain ->
+            literal(chain.request().url.host)?.let { if (isLocal(it)) check() }
+            chain.proceed(chain.request())
+        }
+        builder.dns { host -> Dns.SYSTEM.lookup(host).also { addresses -> if (addresses.any(::isLocal)) check() } }
     }
 
     /** [link] with the permission checked first: no addresses (and a permission prompt) while it is missing. */
@@ -68,6 +85,18 @@ class LocalNetworkGate(private val context: Context, private val activity: () ->
     companion object {
         const val ANDROID_17 = 37
         const val REQUEST = 7303
+
+        /** Private (RFC 1918), link-local, unique local IPv6 (fc00::/7) and multicast addresses. */
+        fun isLocal(address: InetAddress): Boolean =
+            address.isSiteLocalAddress || address.isLinkLocalAddress || address.isMulticastAddress ||
+                (address is Inet6Address && (address.address[0].toInt() and 0xfe) == 0xfc)
+
+        /** [host] as an address when it is an IP literal; names are left to the resolver. */
+        private fun literal(host: String): InetAddress? {
+            val bare = host.removePrefix("[").removeSuffix("]")
+            val ip = bare.isNotEmpty() && (':' in bare || bare.all { it.isDigit() || it == '.' })
+            return if (ip) runCatching { InetAddress.getByName(bare) }.getOrNull() else null
+        }
     }
 }
 
