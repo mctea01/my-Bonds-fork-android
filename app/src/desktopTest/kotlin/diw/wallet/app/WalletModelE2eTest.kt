@@ -640,7 +640,8 @@ class WalletModelE2eTest {
             assertTrue(sections.getValue("狀態清單").rows.any { it.label == "索引（idx）" })
             val cert = CredentialDetails.certificate(chain.first()).associateBy { it.title }
             assertTrue(cert.getValue("基本資訊").rows.any { it.label == "版本" && it.value == "v3" })
-            assertTrue(cert.getValue("指紋").rows.single().value.count { c -> c == ':' } == 31)
+            assertTrue(cert.getValue("指紋").rows.first { it.label == "SHA-256" }.value.count { c -> c == ':' } == 31)
+            assertTrue(cert.getValue("指紋").rows.first { it.label == "SHA-1" }.value.count { c -> c == ':' } == 19)
 
             m.checkStatus(doc).join()
             val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier).status).associateBy { it.title }

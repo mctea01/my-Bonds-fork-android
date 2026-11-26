@@ -96,8 +96,8 @@ class X509Details private constructor(
     val signatureHex: String,
     val problems: List<String>,
 ) {
-    val sha256Hex: String get() = Der.hex(PlatformCrypto.sha256(der))
-    val sha1Hex: String get() = Der.hex(DocCrypto.digest("SHA-1", der))
+    val sha256Hex: String get() = Der.colonHex(PlatformCrypto.sha256(der))
+    val sha1Hex: String get() = Der.colonHex(DocCrypto.digest("SHA-1", der))
 
     fun extension(oid: String): CertExtension? = extensions.firstOrNull { it.oid == oid }
 
