@@ -309,7 +309,8 @@
     <string name="ble_none">此设备没有蓝牙</string>
     <string name="ble_off">蓝牙未打开</string>
     <string name="ble_permission">请允许「附近的设备」权限</string>
-    <string name="lan_permission">请允许「附近的设备」中的局域网权限（Android 17），再试一次</string>
+    <string name="lan_permission">局域网需要「附近的设备」权限（Android 17）。请再试一次，并在询问时允许</string>
+    <string name="lan_permission_settings">这个 App 的「附近的设备」权限已关闭，Android 不会再询问。要使用局域网，请到系统设置（应用程序 &gt; DIW MY WALLET &gt; 权限）打开后再试一次</string>
     <string name="ble_permission_retry">请允许「附近的设备」权限后再试一次</string>
     <string name="blec_cannot_connect">无法连接</string>
     <string name="blec_connect_failed">连接失败（%1$s）</string>

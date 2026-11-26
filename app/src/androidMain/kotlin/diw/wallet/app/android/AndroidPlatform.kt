@@ -161,6 +161,10 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
     /** Android 17's local network permission, asked for when a local network exchange starts. */
     private val localNetwork = LocalNetworkGate(context) { activity }
 
+    /** The local network permission dialog closed; MainActivity passes on its answer to the exchanges waiting for it. */
+    fun onLocalNetworkPermissionResult(activity: Activity, granted: Boolean, answered: Boolean) =
+        localNetwork.onResult(activity, granted, answered)
+
     override val bondsLan: BondsLanLink by lazy { localNetwork.wrap(SocketBondsLanLink { host -> lanSocketFactory(host) }) }
 
     /**

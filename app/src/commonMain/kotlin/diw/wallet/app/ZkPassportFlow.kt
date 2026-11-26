@@ -285,7 +285,9 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
      */
     private suspend fun CoroutineScope.listenNearby(ready: CompletableDeferred<ZkPassportSession>): ZkPassportDiwNearby? {
         val lan = model.platform.bondsLan
-        val interfaces = lan?.let { runCatching { it.localInterfaces() }.getOrNull() }.orEmpty().take(ZkPassportDiwNearby.MAX_LAN)
+        // Android 17 asks for the local network permission here; refused, only Bluetooth listens.
+        val interfaces = lan?.takeIf { it.prepare() == null }?.let { runCatching { it.localInterfaces() }.getOrNull() }.orEmpty()
+            .take(ZkPassportDiwNearby.MAX_LAN)
         val urls = CompletableDeferred<List<String>>()
         if (lan != null && interfaces.isNotEmpty()) {
             launch {

@@ -19,6 +19,13 @@ interface BondsLanLink {
     fun localInterfaces(): List<LanInterface>
 
     /**
+     * Asks for what the platform needs before local network use (the Android 17 local network permission) and waits
+     * for the answer: null when the local network can be used, otherwise why not, to show in place of "no network".
+     * Call it before [localInterfaces]; cancelling stops waiting and leaves nothing behind.
+     */
+    suspend fun prepare(): String? = null
+
+    /**
      * Listens on each of [addresses] at a free port and answers POSTs to [path]: [answer] turns a body into the JSON
      * reply and says whether the exchange is over. [onListening] receives the URLs to put in the request, in the order
      * of [addresses] (an address that cannot be bound is left out). Returns the body that ended the exchange; cancel

@@ -238,6 +238,11 @@ class BondsAgeVerifierFlow(private val model: WalletModel, private val ui: Mutab
         ui.value = OfflineUi.Working(tr(Res.string.agev_preparing_lan))
         job = model.scope.launch {
             try {
+                // Android 17 asks for the local network permission here and waits for the answer.
+                lan.prepare()?.let {
+                    ui.value = OfflineUi.Failed(it)
+                    return@launch
+                }
                 val interfaces = lan.localInterfaces().take(MAX_LAN_URLS).ifEmpty {
                     ui.value = OfflineUi.Failed(NO_LAN)
                     return@launch

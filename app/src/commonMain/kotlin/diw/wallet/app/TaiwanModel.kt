@@ -800,8 +800,10 @@ class TaiwanModel(private val model: WalletModel) {
                 verifierKey = key
                 val plain = BondsPresentationRequest.generate(purpose, source, qr = true, lanKey = BondsLanPresentation.keyText(key.publicKey))
                 val lan = model.platform.bondsLan
-                val interfaces = lan?.localInterfaces()?.take(MAX_LAN_URLS).orEmpty()
-                if (lan == null || interfaces.isEmpty()) showChallenge(plain, lan?.let { tr(Res.string.tw_lan_no_network) })
+                // Android 17 asks for the local network permission here; refused or dismissed, the QR and Bluetooth remain.
+                val blocked = lan?.prepare()
+                val interfaces = if (blocked != null) emptyList() else lan?.localInterfaces()?.take(MAX_LAN_URLS).orEmpty()
+                if (lan == null || interfaces.isEmpty()) showChallenge(plain, lan?.let { blocked ?: tr(Res.string.tw_lan_no_network) })
                 else listenOnLan(lan, interfaces, purpose, source, plain, key)
             } catch (e: CancellationException) {
                 throw e
