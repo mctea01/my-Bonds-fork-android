@@ -158,7 +158,14 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val bondsLinkCentral: BondsLinkCentral by lazy { AndroidBondsLinkCentral(context) { activity } }
 
-    override val bondsLan: BondsLanLink by lazy { SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory } }
+    /** Android 17's local network permission, asked for when a local network exchange starts. */
+    private val localNetwork = LocalNetworkGate(context) { activity }
+
+    override val bondsLan: BondsLanLink by lazy { localNetwork.wrap(SocketBondsLanLink { host -> lanSocketFactory(host) }) }
+
+    /** Sockets to [host] over the network both phones share, once the local network permission allows them. */
+    private fun lanSocketFactory(host: String): javax.net.SocketFactory? =
+        localNetworkFor(host)?.also { localNetwork.check() }?.socketFactory
 
     /**
      * The connected network whose own subnet holds [host]: the Wi-Fi or hotspot both phones share. A socket left
@@ -451,8 +458,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     override val zk: diw.wallet.core.zk.ZkEnvironment by lazy {
         diw.wallet.core.zk.native.JvmZkEnvironment(
-            context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> localNetworkFor(host)?.socketFactory },
-            { host -> localNetworkFor(host)?.socketFactory },
+            context.noBackupFilesDir, httpClient(), SocketBondsLanLink { host -> lanSocketFactory(host) },
+            { host -> lanSocketFactory(host) },
             PlayFeatureComponent(context, "bb5", "diw_bb5") { activity },
         ) {
             val memory = android.app.ActivityManager.MemoryInfo()

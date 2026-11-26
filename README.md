@@ -132,7 +132,7 @@
 
 ## 建置與測試
 
-需求：JDK 21、Android SDK（compileSdk 36）。
+需求：JDK 21、Android SDK（compileSdk 37）。
 
 ```bash
 ./gradlew :app:assembleDebug          # Android debug APK

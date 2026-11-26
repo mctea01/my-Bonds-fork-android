@@ -309,6 +309,7 @@
     <string name="ble_none">This device has no Bluetooth</string>
     <string name="ble_off">Bluetooth is off</string>
     <string name="ble_permission">Allow the Nearby devices permission</string>
+    <string name="lan_permission">Allow the Nearby devices permission for the local network (Android 17), then try again</string>
     <string name="ble_permission_retry">Allow the Nearby devices permission and try again</string>
     <string name="blec_cannot_connect">Cannot connect</string>
     <string name="blec_connect_failed">Connection failed (%1$s)</string>

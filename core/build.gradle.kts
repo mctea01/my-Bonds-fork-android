@@ -48,7 +48,7 @@ val zkDesktopLibrary: String? = System.getProperty("os.name").let { os ->
 }
 
 /** With diw.zkNative=prebuilt, fails unless the host library and its digest are already in native/dist. */
-val checkZkDesktopPrebuilt by tasks.registering {
+val checkZkDesktopPrebuilt = tasks.register("checkZkDesktopPrebuilt") {
     val library = zkDesktopLibrary?.let { rootProject.file("native/dist/resources/zk/native/$it") }
     onlyIf("diw.zkNative=prebuilt") { zkNativeMode == "prebuilt" }
     doLast {
@@ -58,7 +58,7 @@ val checkZkDesktopPrebuilt by tasks.registering {
     }
 }
 
-val buildZkDesktop by tasks.registering(Exec::class) {
+val buildZkDesktop = tasks.register<Exec>("buildZkDesktop") {
     workingDir(rootProject.projectDir)
     commandLine(zkBash ?: "bash", "native/build.sh", "host")
     environment("DIW_ZK_FEATURES", zkFeatures)
@@ -76,7 +76,7 @@ val buildZkDesktop by tasks.registering(Exec::class) {
         }
     }
 }
-val zkAssetResources by tasks.registering {
+val zkAssetResources = tasks.register("zkAssetResources") {
     val source = rootProject.file("native/assets.json")
     val destination = layout.buildDirectory.dir("generated/zkAssets")
     inputs.file(source)
@@ -95,9 +95,9 @@ val zkAssetResources by tasks.registering {
  * ElementTraversal, StAX). Only classes absent from android.jar are taken from xml-apis, so nothing shadows the
  * platform's own javax.xml and org.w3c.dom classes.
  */
-val xmlApis: Configuration by configurations.creating { isTransitive = false }
+val xmlApis: Configuration = configurations.create("xmlApis") { isTransitive = false }
 dependencies { xmlApis(libs.xml.apis) }
-val androidDomExtras by tasks.registering(Jar::class) {
+val androidDomExtras = tasks.register<Jar>("androidDomExtras") {
     archiveFileName.set("android-dom-extras.jar")
     destinationDirectory.set(layout.buildDirectory.dir("android-dom"))
     from({ xmlApis.map { zipTree(it) } }) {
@@ -121,7 +121,7 @@ kotlin {
         freeCompilerArgs.add("-Xexpect-actual-classes")
     }
     sourceSets {
-        val jvmCommonMain by creating { dependsOn(commonMain.get()) }
+        val jvmCommonMain = create("jvmCommonMain") { dependsOn(commonMain.get()) }
         androidMain.get().dependsOn(jvmCommonMain)
         jvmMain.get().dependsOn(jvmCommonMain)
         commonMain.get().resources.srcDir(zkAssetResources)
@@ -172,9 +172,9 @@ configurations.all {
 
 android {
     namespace = "diw.wallet.core"
-    compileSdk = 36
+    compileSdk = 37
     // The Android library does not package commonMain resources, so the pinned asset list is added here as well.
-    sourceSets.getByName("main").resources.srcDir(layout.buildDirectory.dir("generated/zkAssets"))
+    sourceSets.getByName("main").resources.srcDir(layout.buildDirectory.dir("generated/zkAssets").get().asFile)
     defaultConfig { minSdk = 28 }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -191,4 +191,7 @@ tasks.withType<Test>().configureEach {
     }
 }
 
-tasks.matching { it.name.startsWith("process") && it.name.endsWith("JavaRes") }.configureEach { dependsOn(zkAssetResources) }
+// AGP 9 also compresses the Java resources in a task of its own; both read the generated asset list.
+tasks.matching { (it.name.startsWith("process") || it.name.startsWith("compress")) && it.name.endsWith("JavaRes") }.configureEach {
+    dependsOn(zkAssetResources)
+}

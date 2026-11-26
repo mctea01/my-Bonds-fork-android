@@ -565,7 +565,8 @@ class ZkTlsFlow(private val model: WalletModel, private val ui: MutableStateFlow
         val relays = model.server.relaysForVerifier(host())
         val relay = relays.firstOrNull()
         val opened = try {
-            engine.open(lan = model.platform.bondsLan != null, relayUrls = relays)
+            // No local address (or, on Android 17, no local network permission yet): relays only.
+            engine.open(lan = model.platform.bondsLan?.localInterfaces().orEmpty().isNotEmpty(), relayUrls = relays)
         } catch (e: ProtocolException) {
             if (e.code != "unavailable") throw e
             throw IllegalStateException(noRoute(relay))

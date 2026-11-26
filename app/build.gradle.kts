@@ -40,7 +40,7 @@ fun zkCommandOutput(vararg command: String): String? = runCatching {
 }.getOrNull()
 
 /** With diw.zkNative=prebuilt, fails unless both ABIs that native/build.sh android writes are already in native/dist. */
-val checkZkAndroidPrebuilt by tasks.registering {
+val checkZkAndroidPrebuilt = tasks.register("checkZkAndroidPrebuilt") {
     val libraries = listOf("arm64-v8a", "x86_64").flatMap { abi ->
         listOfNotNull(
             rootProject.file("native/dist/android/$abi/libdiw_zk.so"),
@@ -54,7 +54,7 @@ val checkZkAndroidPrebuilt by tasks.registering {
     }
 }
 
-val buildZkAndroid by tasks.registering(Exec::class) {
+val buildZkAndroid = tasks.register<Exec>("buildZkAndroid") {
     workingDir(rootProject.projectDir)
     commandLine(zkBash ?: "bash", "native/build.sh", "android")
     environment("DIW_ZK_FEATURES", zkFeatures)
@@ -116,7 +116,7 @@ abstract class GenerateBuiltInSp : DefaultTask() {
     }
 }
 
-val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
+val generateBuiltInSp = tasks.register<GenerateBuiltInSp>("generateBuiltInSp") {
     fun setting(name: String) = providers.environmentVariable(name).orElse(providers.gradleProperty(name))
     serviceId.set(setting("DIW_MOICA_SP_SERVICE_ID"))
     aesKey.set(setting("DIW_MOICA_SP_AES_KEY"))
@@ -126,7 +126,7 @@ val generateBuiltInSp by tasks.registering(GenerateBuiltInSp::class) {
 
 /** Provision a separate P-256 application key, using secrets or a stable local pair until clean. */
 val twdiwApplicationKeySources = layout.buildDirectory.dir("generated/twdiwApplicationKey/kotlin")
-val generateTwdiwApplicationKey by tasks.registering(Exec::class) {
+val generateTwdiwApplicationKey = tasks.register<Exec>("generateTwdiwApplicationKey") {
     val generator = rootProject.file("tools/twdiw/GenerateApplicationKey.java")
     val java = File(System.getProperty("java.home"), "bin/" + if (System.getProperty("os.name").startsWith("Windows")) "java.exe" else "java")
     commandLine(java, generator, twdiwApplicationKeySources.get().asFile, layout.buildDirectory.dir("twdiwApplicationKeyState").get().asFile)
@@ -209,7 +209,7 @@ abstract class GenerateAppBuild : DefaultTask() {
     }
 }
 
-val generateAppBuild by tasks.registering(GenerateAppBuild::class) {
+val generateAppBuild = tasks.register<GenerateAppBuild>("generateAppBuild") {
     version.set(appVersionName)
     commit.set(providers.environmentVariable("GITHUB_SHA"))
     outputDir.set(layout.buildDirectory.dir("generated/appBuild/kotlin"))
@@ -259,7 +259,7 @@ abstract class GenerateAppLanguages : DefaultTask() {
     }
 }
 
-val generateAppLanguages by tasks.registering(GenerateAppLanguages::class) {
+val generateAppLanguages = tasks.register<GenerateAppLanguages>("generateAppLanguages") {
     resources.from(fileTree("src/commonMain/composeResources") { include("values*/strings.xml") })
     kotlinDir.set(layout.buildDirectory.dir("generated/appLanguages/kotlin"))
     resDir.set(layout.buildDirectory.dir("generated/appLanguages/res"))
@@ -285,11 +285,11 @@ kotlin {
         commonMain.get().kotlin.srcDir(generateTwdiwApplicationKey.map { twdiwApplicationKeySources.get() })
         commonMain.dependencies {
             implementation(project(":core"))
-            implementation(compose.runtime)
-            implementation(compose.foundation)
-            implementation(compose.material3)
-            implementation(compose.ui)
-            implementation(compose.components.resources)
+            implementation(libs.compose.runtime)
+            implementation(libs.compose.foundation)
+            implementation(libs.compose.material3)
+            implementation(libs.compose.ui)
+            implementation(libs.compose.components.resources)
             implementation(libs.coroutines.core)
             implementation(libs.serialization.json)
             implementation(libs.multipaz.doctypes)
@@ -312,7 +312,7 @@ kotlin {
             implementation(libs.coroutines.android)
             implementation(libs.bcprov)
         }
-        val desktopMain by getting {
+        getByName("desktopMain") {
             dependencies {
                 implementation(compose.desktop.currentOs)
                 implementation(libs.ktor.client.java)
@@ -323,7 +323,7 @@ kotlin {
                 implementation("org.apache.pdfbox:pdfbox:3.0.8")
             }
         }
-        val desktopTest by getting {
+        getByName("desktopTest") {
             dependencies {
                 implementation(kotlin("test"))
                 implementation(project(":test-servers"))
@@ -400,13 +400,13 @@ val debugKey: Result<ReleaseKey?> = runCatching {
 
 android {
     namespace = "diw.wallet.app"
-    compileSdk = 36
+    compileSdk = 37
     ndkVersion = zkNdkVersion
     sourceSets.getByName("main").jniLibs.srcDir(rootProject.file("native/dist/android"))
     defaultConfig {
         applicationId = "diw.wallet.app"
         minSdk = 29
-        targetSdk = 36
+        targetSdk = 37
         versionCode = appVersionCode
         versionName = appVersionName
     }

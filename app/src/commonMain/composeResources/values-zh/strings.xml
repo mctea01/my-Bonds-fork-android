@@ -309,6 +309,7 @@
     <string name="ble_none">此裝置沒有藍牙</string>
     <string name="ble_off">藍牙未開啟</string>
     <string name="ble_permission">請允許「附近的裝置」權限</string>
+    <string name="lan_permission">請允許「附近的裝置」中的區域網路權限（Android 17），再試一次</string>
     <string name="ble_permission_retry">請允許「附近的裝置」權限後再試一次</string>
     <string name="blec_cannot_connect">無法連線</string>
     <string name="blec_connect_failed">連線失敗（%1$s）</string>

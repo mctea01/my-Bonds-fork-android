@@ -15,6 +15,8 @@
     <uses-permission android:name="android.permission.BLUETOOTH_SCAN" android:usesPermissionFlags="neverForLocation" />
     <uses-permission android:name="android.permission.ACCESS_FINE_LOCATION" android:maxSdkVersion="30" />
     <uses-permission android:name="android.permission.VIBRATE" />
+    <!-- Android 17: sockets to private addresses (age proofs, zkTLS, zkPassport and OpenID4VP on the local network). -->
+    <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
     <!-- Opening the mobile citizen certificate app (mobilemoica:) from a source site. -->
     <queries>

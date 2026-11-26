@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-21（線上查驗經服務端前先確認服務端開啟 `oid4vp`；查驗方 X.509 身分的 x5c 補齊中間憑證；Bonds 身分證卡可改用行動自然人憑證簽署；兩支本錢包之間的 zkPassport 可經服務端轉送、區網或藍牙，並可預先下載資料離線查驗；main 到 PR #165）。
+最後更新：2026-11-26（工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限；CodeQL 告警修補；main 到 PR #172）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -136,6 +136,8 @@ P4 之後合併的工作：
 | France Identité 互通 | 協定已具備，缺合作夥伴登錄 | 使用者決定是否申請 |
 | 關於頁的第三方元件清單 | 只列主要元件，完整清單在 [NOTICE](../NOTICE) | 視需要補 |
 | 台灣 G2C | 尚無公開標準，只留接口 | 外部 |
+| AGP 10 前的模組調整 | AGP 9 以 `android.builtInKotlin=false`、`android.newDsl=false` 保留 KMP 模組直接套用 Android 外掛的結構；AGP 10 移除這兩個選項，屆時 `core` 改用 `com.android.kotlin.multiplatform.library`，`app` 的 Android 進入點拆成獨立模組 | AGP 10 發佈前排程 |
+| Code scanning 剩餘告警 | 依規格必須使用的演算法（電子護照 BAC 的 3DES、安全通訊的 AES-ECB、RFC 3394 金鑰包裝、OpenPGP v4 指紋的 SHA-1；CodeQL 不認得的 RSASSA-PSS、SM3withSM2）、取件入口網頁必須的 JavaScript 與下載介面、zkPassport 證明器的憑證釘選，屬設計需要或誤報 | 使用者在 Code scanning 以 won't fix／false positive 關閉 |
 
 不規劃：Android HTTPS App Links、TWDIW 高安全皮夾、zkOFD、戶政司電子戶籍謄本的 zkTLS（查驗頁不回內容）。
 
@@ -154,6 +156,7 @@ P4 之後合併的工作：
 | 查驗方（P5） | 兩機線上查驗（服務端轉送與區網直連）、近距離 QR + 藍牙查驗與聲明、X.509 與 OpenPGP 卡證據、Bonds 藍牙加密與對原版 Bonds 的未加密傳輸 |
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
 | 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw` 與連結的 `diw_*` 參數）、兩支本錢包的 zkPassport 區網與藍牙交換及預先下載後的離線查驗、人臉比對的相機與轉頭檢查、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
+| Android 17 | targetSdk 37 的區域網路權限：年齡證明、zkTLS、zkPassport、線上查驗的區網直連第一次使用時會要求「附近的裝置」權限，允許後重試可連線；拒絕時改走中繼或顯示原因 |
 | 桌面 | PC/SC 讀卡機、PKCS#11、Windows 與 Linux 安裝檔、原生版的中文輸入法與讀取 JVM 版留下的資料 |
 
 已有實機紀錄：D1 裝置的金鑰證明與 NFC 讀取自然人憑證（[device-results-D1-2026-10-10.md](research/device-results-D1-2026-10-10.md)）。開發期間使用者回報過的實機結果（TWDIW 舊版發證端領卡、DC API 選擇器、Verified ID 出示的修正）記在各階段的驗收與後續文件，沒有整理成完整的實機紀錄，平台改版後要重測。
@@ -172,13 +175,14 @@ P4 之後合併的工作：
 
 | 項目 | 版本 |
 |---|---|
-| Kotlin、AGP、Compose Multiplatform | 2.4.21、8.13.2、1.10.1 |
+| Kotlin、AGP、Compose Multiplatform | 2.4.21、9.5.3（`android.builtInKotlin=false`、`android.newDsl=false`）、1.12.2（Material3 1.9.0） |
+| Gradle | 9.9.2 |
 | Multipaz | 0.102.0 |
-| Ktor | 3.6.1（OkHttp 固定 5.4.0） |
-| Bouncy Castle | 1.86 |
+| Ktor | 3.6.2（OkHttp 5.5） |
+| Bouncy Castle | 1.87 |
 | JDK | 21（Android 目標為 17） |
-| Android | compileSdk 36、minSdk 29、targetSdk 36、NDK 28.2.13676358 |
-| Rust | 1.99.1（`native/rust-toolchain.toml`） |
+| Android | compileSdk 37、minSdk 29、targetSdk 37、NDK 28.2.13676358 |
+| Rust | 1.100.0（`native/rust-toolchain.toml`） |
 | Barretenberg、Noir | 6.0.0（另有 5.0.0 選用元件）、1.0.0-rc.3 |
 | TLSNotary | 0.1.0-alpha.15 |
 
