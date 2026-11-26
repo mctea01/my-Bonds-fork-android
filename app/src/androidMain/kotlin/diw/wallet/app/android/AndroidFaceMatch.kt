@@ -16,7 +16,6 @@ import diw.wallet.app.tr
 import diw.wallet.core.document.image.ImageKind
 import diw.wallet.core.document.image.Jpeg2000
 import diw.wallet.core.zkpassport.KeyAttestationInfo
-import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import kotlinx.io.bytestring.ByteString
@@ -30,6 +29,7 @@ import org.multipaz.facenet.FaceEmbedding
 import org.multipaz.facenet.FaceNetFaceMatcher
 import org.multipaz.facenet.FaceNetModelConfig
 import org.multipaz.facenet.FaceNetSessionBase
+import org.multipaz.facenet.NormalizationMethod
 import org.multipaz.prompt.AndroidPromptModel
 import org.multipaz.prompt.FaceMatcherLivenessPromptDialogModel
 import org.multipaz.prompt.FaceMatcherPromptDialogModel
@@ -46,11 +46,16 @@ import java.security.spec.ECGenParameterSpec
 import java.util.UUID
 
 /**
- * Face comparison on Android (docs/design/zkpassport.md 5.6): Multipaz's FaceNet matcher (BlazeFace detection,
- * MobileFaceNet embeddings, MiniFASNetV2 passive liveness) behind Multipaz's camera prompt, and a fresh Android
- * Keystore key whose attestation vouches for the statement. Camera frames are compared in memory and not kept.
+ * Face comparison on Android (docs/design/zkpassport.md 5.6): Multipaz FaceNet's pipeline (BlazeFace detection,
+ * MobileFaceNet embeddings, MiniFASNetV2 passive liveness) in [AveragedFaceSession], which compares the mean of
+ * several frames, behind Multipaz's camera prompt, and a fresh Android Keystore key whose attestation vouches for the
+ * statement. Camera frames are compared in memory and not kept.
  */
-class AndroidFaceMatch(private val context: Context, private val prompts: () -> AndroidPromptModel?) : FaceMatchService {
+class AndroidFaceMatch(
+    private val context: Context,
+    override val alternateModel: PlayFeatureAsset?,
+    private val prompts: () -> AndroidPromptModel?,
+) : FaceMatchService {
     override val appId: String get() = context.packageName
 
     override val appVersion: String by lazy {
@@ -67,40 +72,51 @@ class AndroidFaceMatch(private val context: Context, private val prompts: () -> 
         }.getOrNull()
     }
 
-    private val matcher: FaceNetFaceMatcher by lazy {
-        FaceNetFaceMatcher(ByteString(context.assets.open(MODEL).use { it.readBytes() }), FaceNetModelConfig.MOBILE_FACENET)
-    }
+    private val model: ByteArray by lazy { context.assets.open(MODEL).use { it.readBytes() } }
 
-    override suspend fun compare(portrait: ByteArray, strict: Boolean): FaceComparison {
-        val model = prompts() ?: throw FaceMatchFailure("unavailable")
-        val faces = withContext(Dispatchers.Default) { runCatching { matcher }.getOrNull() }?.takeIf { it.isSupported }
-            ?: throw FaceMatchFailure("unavailable")
-        val photo = ByteString(withContext(Dispatchers.Default) { reference(portrait) })
-        val reference = try {
-            faces.getFaceEmbedding(photo)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw FaceMatchFailure("photo")
-        }
-        val session = faces.createSession(photo)
-        val shown = LocalizedSession(session)
-        val matched = try {
-            model.getFaceMatcherDialogModel().displayPrompt(
-                FaceMatcherPromptDialogModel.FaceMatcherRequest(
-                    shown, Reason.HumanReadable(tr(Res.string.face_prompt_title), tr(Res.string.face_prompt_text), false), false,
-                ),
-            )
-        } catch (e: PromptDismissedException) {
-            throw failure(session)
+    private val config = FaceNetModelConfig.MOBILE_FACENET.copy(matchThreshold = MATCH_THRESHOLD)
+
+    /** Multipaz's matcher, used for the strict mode's head-turn session. */
+    private val matcher: FaceNetFaceMatcher by lazy { FaceNetFaceMatcher(ByteString(model), config) }
+
+    @Volatile private var facenet: ByteArray? = null
+
+    override suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean): FaceComparison {
+        val prompt = prompts() ?: throw FaceMatchFailure("unavailable")
+        val pipeline = withContext(Dispatchers.Default) {
+            if (alternate) {
+                val bytes = facenet ?: alternateModel?.read()?.also { facenet = it } ?: throw FaceMatchFailure("model")
+                runCatching { FacePipeline(bytes, FACENET_CONFIG) }.getOrNull()
+            } else {
+                runCatching { FacePipeline(model, config) }.getOrNull()
+            }
+        } ?: throw FaceMatchFailure("unavailable")
+        try {
+            val photo = withContext(Dispatchers.Default) { reference(portrait) }
+            val reference = withContext(Dispatchers.Default) { runCatching { pipeline.portrait(photo) }.getOrNull() }
+                ?: throw FaceMatchFailure("photo")
+            val session = runCatching { AveragedFaceSession(ByteString(photo), reference, pipeline) }.getOrNull()
+                ?: throw FaceMatchFailure("photo")
+            val matched = try {
+                prompt.getFaceMatcherDialogModel().displayPrompt(
+                    FaceMatcherPromptDialogModel.FaceMatcherRequest(
+                        LocalizedSession(session),
+                        Reason.HumanReadable(tr(Res.string.face_prompt_title), tr(Res.string.face_prompt_text), false), false,
+                    ),
+                )
+            } catch (e: PromptDismissedException) {
+                throw failure(session)
+            } finally {
+                session.cancel()
+            }
+            val threshold = pipeline.config.matchThreshold
+            val score = session.bestSimilarity
+            if (!matched || score < threshold) throw mismatch(score, threshold)
+            if (strict) challenge(prompt, pipeline, reference)
+            return FaceComparison(reference.embedding, scaled(score), scaled(threshold))
         } finally {
-            session.cancel()
+            pipeline.close()
         }
-        val threshold = faces.config.matchThreshold
-        val score = (session as? FaceNetSessionBase<*>)?.bestSimilarity ?: throw FaceMatchFailure("unavailable")
-        if (!matched || score < threshold) throw mismatch(score, threshold)
-        if (strict) challenge(model, faces, reference)
-        return FaceComparison(reference.embedding, scaled(score), scaled(threshold))
     }
 
     /**
@@ -124,16 +140,15 @@ class AndroidFaceMatch(private val context: Context, private val prompts: () -> 
      * Why the camera screen closed without a match. The screen closes by itself two seconds after the session failed,
      * which reaches here as a dismissal like the holder's own; the session's state tells the two apart.
      */
-    private fun failure(session: FaceMatcherSession): FaceMatchFailure {
+    private fun failure(session: FaceNetSessionBase<*>): FaceMatchFailure {
+        val config = session.config
         val state = session.state.value
         if (state.status != FaceMatcherPromptState.Status.FAILED) return FaceMatchFailure("cancelled")
         if (FaceMatchText.isReferenceFailure(state.message)) return FaceMatchFailure("photo")
-        val base = session as? FaceNetSessionBase<*> ?: return FaceMatchFailure("no_match")
-        val config = base.config
         return when {
-            base.bestSimilarity <= 0f -> FaceMatchFailure("timeout")
-            base.bestSimilarity < config.matchThreshold -> mismatch(base.bestSimilarity, config.matchThreshold)
-            base.bestLivenessScore < config.passiveLivenessThreshold -> FaceMatchFailure("liveness")
+            session.bestSimilarity <= 0f -> FaceMatchFailure("timeout")
+            session.bestSimilarity < config.matchThreshold -> mismatch(session.bestSimilarity, config.matchThreshold)
+            session.bestLivenessScore < config.passiveLivenessThreshold -> FaceMatchFailure("liveness")
             else -> FaceMatchFailure("timeout")
         }
     }
@@ -145,11 +160,12 @@ class AndroidFaceMatch(private val context: Context, private val prompts: () -> 
      * The strict mode's active check: the holder faces the camera, then turns left and right in an order drawn here,
      * and the frontal picture taken in that session must match the document's photo as well.
      */
-    private suspend fun challenge(model: AndroidPromptModel, faces: FaceNetFaceMatcher, reference: FaceEmbedding) {
+    private suspend fun challenge(prompt: AndroidPromptModel, pipeline: FacePipeline, reference: FaceEmbedding) {
         val turns = listOf(FacePose.LOOK_LEFT, FacePose.LOOK_RIGHT).shuffled()
-        val session = faces.createLivenessSession(listOf(FacePose.FRONT) + turns)
+        val session = withContext(Dispatchers.Default) { runCatching { matcher }.getOrNull() }?.takeIf { it.isSupported }
+            ?.createLivenessSession(listOf(FacePose.FRONT) + turns) ?: throw FaceMatchFailure("unavailable")
         val captured = try {
-            model.getFaceMatcherLivenessDialogModel().displayPrompt(
+            prompt.getFaceMatcherLivenessDialogModel().displayPrompt(
                 FaceMatcherLivenessPromptDialogModel.FaceMatcherLivenessRequest(
                     LocalizedLivenessSession(session),
                     Reason.HumanReadable(tr(Res.string.face_turn_title), tr(Res.string.face_turn_text), false), false,
@@ -167,15 +183,11 @@ class AndroidFaceMatch(private val context: Context, private val prompts: () -> 
         }
         val front = captured[FacePose.FRONT]
         if (front == null || turns.any { it !in captured }) throw FaceMatchFailure("liveness")
-        val live = try {
-            faces.getFaceEmbedding(front)
-        } catch (e: CancellationException) {
-            throw e
-        } catch (e: Exception) {
-            throw FaceMatchFailure("no_match")
-        }
+        val live = withContext(Dispatchers.Default) { runCatching { pipeline.portrait(front.toByteArray()) }.getOrNull() }
+            ?: throw FaceMatchFailure("no_match")
         val similarity = reference.calculateSimilarity(live)
-        if (similarity < faces.config.matchThreshold) throw mismatch(similarity, faces.config.matchThreshold)
+        val threshold = pipeline.config.matchThreshold
+        if (similarity < threshold) throw mismatch(similarity, threshold)
     }
 
     /** [inner] with its messages in the app's language ([FaceMatchText]); everything else is the inner session's. */
@@ -259,10 +271,28 @@ class AndroidFaceMatch(private val context: Context, private val prompts: () -> 
 
     private fun scaled(score: Float): Long = Math.round(score.toDouble() * SCALE)
 
-    private companion object {
-        const val MODEL = "facenet/mobile_facenet.tflite"
-        const val KEYSTORE = "AndroidKeyStore"
-        const val SCALE = 100_000_000.0
-        const val OPAQUE = -0x1000000
+    companion object {
+        private const val MODEL = "facenet/mobile_facenet.tflite"
+        /**
+         * Calibrated with tools/facematch-eval: 1 in 100,000 false accepts per comparison on LFW, 90% of genuine pairs
+         * passing (Multipaz's 0.63 rejects 4 in 10 genuine pairs).
+         */
+        private const val MATCH_THRESHOLD = 0.47f
+        /** The optional model's file in its feature module (features/facenet). */
+        const val FACENET_ASSET = "facenet/facenet_512.tflite"
+        /**
+         * facenet-pytorch's VGGFace2 InceptionResnetV1 with int8 weights (tools/facematch-eval/README.md), at the same
+         * 1 in 100,000 false accepts on LFW as [MATCH_THRESHOLD]; 65% of genuine pairs pass.
+         */
+        val FACENET_CONFIG = FaceNetModelConfig(
+            imageSquareSize = 160,
+            embeddingDim = 512,
+            normalization = NormalizationMethod.SCALE_MINUS_ONE_TO_ONE,
+            matchThreshold = 0.74f,
+            passiveLivenessThreshold = 0.5f,
+        )
+        private const val KEYSTORE = "AndroidKeyStore"
+        private const val SCALE = 100_000_000.0
+        private const val OPAQUE = -0x1000000
     }
 }

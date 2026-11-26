@@ -340,10 +340,12 @@ Android 電路沒有檢查的項目（都交給 Play Integrity 的判定）：�
 
 人臉比對（Android，`AndroidFaceMatch`）：
 
-- 以 Multipaz `multipaz-facenet` 0.102.0 比對：BlazeFace 找臉、MobileFaceNet（Qualcomm AI Hub 的模型，隨 App 放在 `assets/facenet`）算 128 維特徵、MiniFASNetV2 做單張的被動活體判定。相機畫面是 Multipaz 的 `FaceMatcherPromptDialog`，參考照片是晶片讀出的 DG2（JPEG 或 JPEG 2000）。比對通過的條件是餘弦相似度達 0.63 且被動活體分數達 0.5（Multipaz 的預設值）。
+- 以 Multipaz `multipaz-facenet` 0.102.0 的流程比對：BlazeFace 找臉、ArcFace 四點對齊、MobileFaceNet（Qualcomm AI Hub 的模型，隨 App 放在 `assets/facenet`）算 128 維特徵、MiniFASNetV2 做單張的被動活體判定。Multipaz 的 Android 偵測與模型類別是 internal，錢包把同一段流程放在 `FacePipeline`（改寫自 `AndroidFaceDetector`、`AndroidFaceNetInterpreter`，模型相同），相機 session 是 `AveragedFaceSession`（`FaceNetSessionBase` 的子類別，姿勢引導、活體、連續兩次通過與逾時都沿用 Multipaz）：每次比對用最近連續 5 幀正臉特徵的平均，不用單幀；中間有一幀不是單一正臉就重新累積。相機畫面是 Multipaz 的 `FaceMatcherPromptDialog`，參考照片是晶片讀出的 DG2（JPEG 或 JPEG 2000）。比對通過的條件是平均特徵與 DG2 的餘弦相似度達 0.47 且被動活體分數達 0.5（活體分數是 Multipaz 的預設值；相似度門檻由 Multipaz 預設的 0.63 改為校準值，見下方）。
+- 選用模型 FaceNet-512（facenet-pytorch 的 VGGFace2 權重，MIT；`features/facenet` 隨選模組，Google Play 版在 zkPassport 設定安裝，GitHub 的完整 APK 內含）：設定「人臉比對模型」開啟後改用它（`WalletSettings.zkPassportFaceNet`），160 像素輸入、512 維特徵、門檻 0.74，同樣取 5 幀平均；沒有安裝時比對失敗並回報 `facematch_model`，不會默默改回內建模型。兩個模型的分數尺度不同，門檻各自校準。
 - `regular`：一次相機比對。`strict`：比對通過後再做一次轉頭檢查（正面、左、右，左右順序隨機），那一次拍到的正面照也要與 DG2 相符。
 - 比對在同意之後、向請求方回覆接受之前進行；沒有通過、取消或讀不到照片時不回覆接受，請求方收不到任何證明。相機影像、特徵與分數只在記憶體，不保存、不傳送、不寫入紀錄。
 - 2026-11-21 實機回報（台灣護照）：比對畫面的提示是英文，且不論戴不戴眼鏡都比對失敗（zkPassport 官方 App 也失敗），紀錄卻寫「已取消」。原因與處理：Multipaz FaceNet 0.102.0 的提示文字寫死在 session 裡（`FaceNetSessionBase`、`FaceNetLivenessSessionBase`），錢包以包裝的 session 逐字換成 App 的語言（`FaceMatchText`）；比對失敗時 Multipaz 的畫面兩秒後自行關閉，對錢包來說與持有者按關閉相同，現在依 session 狀態區分，並回報原因：不符（附最高相似度與門檻）、活體檢查、逾時、護照照片找不到人臉。JPEG 2000 的護照照片改由錢包自己的解碼器（hayro-jpeg2000，即文件詳情顯示照片所用）轉成 PNG 再交給 Multipaz，不再走 Multipaz 的 jj2000 備援解碼。門檻與模型不變；比對失敗的真正原因（照片與現在的樣貌、門檻或解碼）要看重測顯示的相似度才能判斷。相機權限的提示仍是 Multipaz 內建的英文（它只有簡體中文翻譯）。
+- 2026-11-26 門檻校準：重測回報最高相似度 0.46（門檻 0.63）。以 `tools/facematch-eval` 照 App 的流程在 LFW 上量測（4871 張、約 1186 萬組他人配對）：MobileFaceNet 在 0.63 的誤接受率約千萬分之 7.6，但同一人只有 59.8% 通過。使用者要求誤接受率達十萬分之一的安全程度，在這個標準下 MobileFaceNet 的門檻是 0.47（同一人 90.0% 通過），FaceNet-512 是 0.74（64.6%）：FaceNet-512 在每一種誤接受率下的通過率都較低，因為對齊方式是 ArcFace 的裁切，正是 MobileFaceNet 的訓練方式，FaceNet 則以保留邊緣的 MTCNN 裁切訓練。所以預設 MobileFaceNet、門檻 0.47，FaceNet-512 只做選用的備用模型。逐幀比對時冒用者每一幀都有一次機會；以同一工具模擬十幀的工作階段（臉部特徵點約 1 像素、亮度 10% 與雜訊的擾動），0.47 時逐幀的誤接受為十萬分之 1.24，5 幀平均為 1.13，單張對單張為 1.05，同一人的通過率三者相近（約 90%）。模擬的畫面差異比真實相機小、張數也少，實際差距應更大，要以實機資料再量。LFW 是同類照片，晶片照片對自拍的同一人分數會較低（0.46 與 0.47 只差一點），門檻之後可依實機資料以同一工具重新校準。
 - Multipaz 明說這個模組不保證比對準確度與防偽能力；被動活體擋得住的是翻拍照片與螢幕，擋不住的攻擊（高品質面具、注入相機畫面）不在保證範圍。這項限制寫在專門聲明裡。
 
 金鑰證明與種類的選擇：

@@ -4,4 +4,5 @@
     <string name="nfc_engagement_aid_group">ISO/IEC 18013-5 NFC 交握（NDEF）</string>
     <string name="nfc_data_transfer_aid_group">ISO/IEC 18013-5 NFC 資料傳輸</string>
     <string name="bb5_module_title">zkPassport 舊版電路驗證元件</string>
+    <string name="facenet_module_title">FaceNet-512 人臉比對模型</string>
 </resources>

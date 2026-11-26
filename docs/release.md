@@ -98,9 +98,9 @@ CI 產生的 Windows 檔案沒有 Authenticode 簽章。程式碼簽章憑證只
 
 ## Android 選用元件與 APK
 
-少數人需要、體積又大的原生元件放在隨選動態功能模組（`features/`），目前只有 `features/bb5`：Barretenberg 5（`native/zkpassport-bb5`），用來驗證 zkPassport 0.22.0 以前電路的證明。Google Play 版在用到時由 App 向 Play 要求安裝（設定的 zkPassport 區段或查驗結果頁的按鈕）；Play 政策不允許從 Play 以外下載可執行程式碼，所以不另外提供下載。
+少數人需要、體積又大的元件放在隨選動態功能模組（`features/`）：`features/bb5` 是 Barretenberg 5（`native/zkpassport-bb5`），用來驗證 zkPassport 0.22.0 以前電路的證明；`features/facenet` 是人臉比對的選用模型 FaceNet-512（約 24 MB 的模型檔，沒有程式碼，`tools/facematch-eval/README.md`），只有 Android 版有相機比對，所以沒有桌面版。Google Play 版在用到時由 App 向 Play 要求安裝（設定的 zkPassport 區段或查驗結果頁的按鈕）；Play 政策不允許從 Play 以外下載可執行程式碼，模型也照同樣方式只經由 Play 或完整 APK 提供。
 
-GitHub 的 APK 與 `.apks` 由 CI 用 `tools/bundle-apks.sh` 從 Google Play 收到的同一個 AAB 產生（bundletool，版本與 SHA-256 釘選在腳本裡），所以程式碼、版本號與簽章都和 Play 版相同：`.apk` 已含所有模組，`.apks` 的模組是獨立分割。電腦版把同一個函式庫放在 JAR 的資源裡，所以每個版本的功能一致。新增這類元件時照同樣方式：加一個 `features/` 模組並列入 `app` 的 `dynamicFeatures`，在 `ZkComponent` 的實作裡載入，桌面版放進資源。
+GitHub 的 APK 與 `.apks` 由 CI 用 `tools/bundle-apks.sh` 從 Google Play 收到的同一個 AAB 產生（bundletool，版本與 SHA-256 釘選在腳本裡），所以程式碼、版本號與簽章都和 Play 版相同：`.apk` 已含所有模組，`.apks` 的模組是獨立分割。電腦版把同一個函式庫放在 JAR 的資源裡，所以每個版本的功能一致。新增這類元件時照同樣方式：加一個 `features/` 模組並列入 `app` 的 `dynamicFeatures`，在 `ZkComponent` 的實作裡載入（原生函式庫用 `PlayFeatureComponent`，資料檔用 `PlayFeatureAsset`），桌面版放進資源。
 
 本機建置 Android 時要在 `DIW_ZK_FEATURES` 加上 `bb5`（需要 `zkpdf`），`native/build.sh` 才會建置 `native/dist/android-bb5`；沒有時模組是空的，App 會顯示元件不可用。bundletool 要求有原生程式碼的模組都支援和 base 相同的 ABI，而 base 含相依套件（JNA、Tesseract、CameraX 等）的 32 位元函式庫；32 位元沒有 Barretenberg（`diw_zk` 在 32 位元只有 runtime），所以 `build.sh` 在 `armeabi-v7a` 與 `x86` 放一個空的 `libdiw_bb5_none.so`，App 不會載入它。
 

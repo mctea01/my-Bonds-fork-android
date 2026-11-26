@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-21（線上查驗經服務端前先確認服務端開啟 `oid4vp`；查驗方 X.509 身分的 x5c 補齊中間憑證；Bonds 身分證卡可改用行動自然人憑證簽署；兩支本錢包之間的 zkPassport 可經服務端轉送、區網或藍牙，並可預先下載資料離線查驗；main 到 PR #165）。
+最後更新：2026-11-26（人臉比對門檻校準、5 幀平均與選用的 FaceNet-512；線上查驗經服務端前先確認服務端開啟 `oid4vp`；查驗方 X.509 身分的 x5c 補齊中間憑證；Bonds 身分證卡可改用行動自然人憑證簽署；兩支本錢包之間的 zkPassport 可經服務端轉送、區網或藍牙，並可預先下載資料離線查驗；main 到 PR #165）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -37,7 +37,7 @@ P4 之後合併的工作：
 | i18n：英文與繁體中文（PR #89） | 完成 | [i18n.md](design/i18n.md) |
 | Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |
-| zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；比對能否通過待重測 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
+| zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；重測最高相似度 0.46；2026-11-26 門檻以 LFW 校準為誤接受十萬分之一（`tools/facematch-eval`）：MobileFaceNet 0.47（同一人 90% 通過），每次比對取 5 幀正臉特徵平均（`AveragedFaceSession`）；FaceNet-512 做成選用隨選模組 `features/facenet`（門檻 0.74，同一人 65% 通過），在 zkPassport 設定切換與安裝；實機能否通過與 Play 隨選安裝待驗證 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
 | 原生依賴跨平台：Windows zkPDF（無 GPL 執行階段）、Linux ARM64、Android 32 位元（PR #121） | 完成 | [native-dependencies](research/native-dependencies/README.md) |
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
@@ -153,7 +153,7 @@ P4 之後合併的工作：
 | 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔在 contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |
 | 查驗方（P5） | 兩機線上查驗（服務端轉送與區網直連）、近距離 QR + 藍牙查驗與聲明、X.509 與 OpenPGP 卡證據、Bonds 藍牙加密與對原版 Bonds 的未加密傳輸 |
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
-| 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw` 與連結的 `diw_*` 參數）、兩支本錢包的 zkPassport 區網與藍牙交換及預先下載後的離線查驗、人臉比對的相機與轉頭檢查、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
+| 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw` 與連結的 `diw_*` 參數）、兩支本錢包的 zkPassport 區網與藍牙交換及預先下載後的離線查驗、人臉比對的相機與轉頭檢查（門檻 0.47 與 5 幀平均能否讓本人通過、選用 FaceNet-512 的 Play 隨選安裝與比對）、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
 | 桌面 | PC/SC 讀卡機、PKCS#11、Windows 與 Linux 安裝檔、原生版的中文輸入法與讀取 JVM 版留下的資料 |
 
 已有實機紀錄：D1 裝置的金鑰證明與 NFC 讀取自然人憑證（[device-results-D1-2026-10-10.md](research/device-results-D1-2026-10-10.md)）。開發期間使用者回報過的實機結果（TWDIW 舊版發證端領卡、DC API 選擇器、Verified ID 出示的修正）記在各階段的驗收與後續文件，沒有整理成完整的實機紀錄，平台改版後要重測。
