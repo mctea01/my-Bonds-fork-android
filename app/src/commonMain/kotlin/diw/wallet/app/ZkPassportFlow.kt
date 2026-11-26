@@ -471,7 +471,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             ?: throw ZkPassportAnswerFailure("facematch_photo")
         ui.value = OfflineUi.ZkPassportAnswerProving(incoming, null, comparing = true)
         val comparison = try {
-            service.compare(photo, strict)
+            service.compare(photo, strict, model.settings.zkPassportFaceNet)
         } catch (e: FaceMatchFailure) {
             throw ZkPassportAnswerFailure("facematch_" + e.code)
         }
@@ -858,6 +858,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             code == "facematch_unavailable" -> tr(Res.string.zkp_answer_unsupported_facematch_device)
             code == "facematch_remote" -> tr(Res.string.zkp_answer_err_facematch_remote)
             code == "facematch_photo" -> tr(Res.string.zkp_answer_err_facematch_photo)
+            code == "facematch_model" -> tr(Res.string.zkp_answer_err_facematch_model)
             code == "facematch_cancelled" -> tr(Res.string.zkp_answer_err_facematch_cancelled)
             code == "facematch_no_match" -> tr(Res.string.zkp_answer_err_facematch_no_match)
             code.startsWith("facematch_mismatch:") -> code.split(':').let { tr(Res.string.zkp_answer_err_facematch_mismatch, it.getOrElse(1) { "-" }, it.getOrElse(2) { "-" }) }

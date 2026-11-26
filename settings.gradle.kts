@@ -19,6 +19,7 @@ dependencyResolutionManagement {
     }
 }
 rootProject.name = "diw-wallet"
-include(":core", ":test-servers", ":app", ":zk-prover-server", ":bb5")
+include(":core", ":test-servers", ":app", ":zk-prover-server", ":bb5", ":facenet")
 project(":bb5").projectDir = file("features/bb5")
+project(":facenet").projectDir = file("features/facenet")
 project(":zk-prover-server").projectDir = file("tools/zk-prover-server")

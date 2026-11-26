@@ -244,6 +244,8 @@ data class WalletSettings(
     val zkPassportSepoliaRpc: String = "",
     /** Let zkPassport's verifier service decide when this device cannot verify the proofs itself. Off by default. */
     val zkPassportVerifierApi: Boolean = false,
+    /** Face match with the optional FaceNet-512 model instead of the built-in MobileFaceNet (docs/design/zkpassport.md 5.6). */
+    val zkPassportFaceNet: Boolean = false,
     /**
      * zkPassport requests also take an answer of another copy of this wallet nearby, over the local network and
      * (Android) BLE, without the Internet (docs/design/zkpassport.md 5.8).

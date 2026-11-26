@@ -16,7 +16,8 @@ class FaceKeyAttestation(val chain: List<ByteArray>, val signature: ByteArray, v
  * Why a comparison did not pass: `cancelled` (the holder closed the camera), `photo` (no usable face in the
  * document's photo), `mismatch:<best>:<threshold>` (the face did not reach the pass mark; the best similarity and the
  * mark, two decimals), `liveness` (the passive or head turn liveness check did not pass), `timeout` (no steady frontal
- * face in time), `no_match` (any other failed comparison) or `unavailable` (no camera screen).
+ * face in time), `model` (the chosen FaceNet-512 model is not installed), `no_match` (any other failed comparison) or
+ * `unavailable` (no camera screen).
  */
 class FaceMatchFailure(val code: String) : Exception(code)
 
@@ -41,7 +42,13 @@ interface FaceMatchService {
      * Shows the camera and compares the holder's face with [portrait] (JPEG or JPEG 2000) together with a passive
      * liveness check; [strict] adds a head turn challenge. Throws [FaceMatchFailure] unless the face matched.
      */
-    suspend fun compare(portrait: ByteArray, strict: Boolean): FaceComparison
+    suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean = false): FaceComparison
+
+    /**
+     * The optional FaceNet-512 model that [compare] uses when `alternate` is set (docs/design/zkpassport.md 5.6): an
+     * on-demand module on Google Play, part of every other package; null where the platform has none.
+     */
+    val alternateModel: diw.wallet.core.zk.ZkComponent? get() = null
 
     /**
      * Signs [toSign] with a new attested hardware key; null where the device gives no hardware key attestation the

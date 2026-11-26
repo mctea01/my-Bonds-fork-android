@@ -575,7 +575,68 @@ internal fun ZkPassportSettingsSection(model: WalletModel) {
             Text(stringResource(Res.string.zkp_verifier_api_note), style = MaterialTheme.typography.bodySmall)
         }
     }
+    ZkPassportFaceModelSection(model)
     ZkPassportOfflineSection(model)
+}
+
+/**
+ * Which model answers face match requests (docs/design/zkpassport.md 5.6): the built-in MobileFaceNet or the optional
+ * FaceNet-512, with its state and an install button where the app can fetch it (Google Play). Shows nothing where the
+ * platform has no camera comparison.
+ */
+@Composable
+private fun ZkPassportFaceModelSection(model: WalletModel) {
+    val component = model.platform.faceMatch?.alternateModel ?: return
+    val settings by model.settingsFlow.collectAsState()
+    val scope = rememberCoroutineScope()
+    var present by remember { mutableStateOf<Boolean?>(null) }
+    var progress by remember { mutableStateOf<Float?>(null) }
+    var error by remember { mutableStateOf<String?>(null) }
+    LaunchedEffect(component) {
+        present = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { component.present() }.getOrDefault(false) }
+    }
+    SectionTitle(stringResource(Res.string.zkp_face_model_title))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Switch(checked = settings.zkPassportFaceNet, onCheckedChange = { on -> model.updateSettings { it.copy(zkPassportFaceNet = on) } })
+        Column {
+            Text(stringResource(Res.string.zkp_face_model_facenet))
+            Text(stringResource(Res.string.zkp_face_model_note), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    when (present) {
+        null -> {}
+        true -> Text(stringResource(Res.string.zkp_face_model_installed), style = MaterialTheme.typography.bodySmall)
+        false -> Text(
+            stringResource(if (component.installable) Res.string.zkp_face_model_missing else Res.string.zkp_face_model_unavailable),
+            style = MaterialTheme.typography.bodySmall,
+            color = if (settings.zkPassportFaceNet) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurface,
+        )
+    }
+    error?.let { Text(stringResource(Res.string.zkp_face_model_error, it), style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error) }
+    val p = progress
+    when {
+        p != null -> {
+            Text(stringResource(Res.string.zkp_face_model_installing, (p * 100).toInt()), style = MaterialTheme.typography.bodySmall)
+            LinearProgressIndicator(progress = { p }, modifier = Modifier.fillMaxWidth())
+        }
+        present == false && component.installable -> OutlinedButton(onClick = {
+            scope.launch {
+                progress = 0f
+                error = null
+                val result = try {
+                    component.install { f -> progress = f }
+                } catch (e: kotlinx.coroutines.CancellationException) {
+                    throw e
+                } catch (e: Exception) {
+                    "install_failed"
+                } finally {
+                    progress = null
+                }
+                error = result
+                present = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { component.present() }.getOrDefault(false) }
+            }
+        }) { Text(stringResource(Res.string.zkp_face_model_install)) }
+    }
 }
 
 /**

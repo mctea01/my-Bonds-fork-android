@@ -174,6 +174,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 | `test-servers` | 測試伺服器與全部協議測試 |
 | `native` | 零知識證明的 Rust 工作區（OpenAC、TLSNotary、Noir 電路與 zkPDF 證明器、zkPassport、BBS） |
 | `features/bb5` | Android 隨選模組：舊 zkPassport 電路用的 Barretenberg 5 |
+| `features/facenet` | Android 隨選模組：人臉比對的選用模型 FaceNet-512 |
 | `templates` | 零知識證明版型包（zkTLS 查驗頁、zkPDF 版型） |
 | `tools` | 開發工具：內建根憑證產生器（`trust-roots`）、EU DSS 交叉驗證（`dss-check`）、自架 zkPDF 證明主機（`zk-prover-server`）、字串與 JSON-LD context 工具等 |
 | `distribution` | Google Play 商店圖像與版本說明 |
