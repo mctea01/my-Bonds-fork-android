@@ -481,7 +481,8 @@ class AndroidPlatform(private val context: Context) : PlatformServices {
 
     // The release network security configuration refuses clear text; http time stamps, OCSP, CRLs and AIA
     // certificates go through a plain socket instead, since each reply is checked by its signature.
-    override fun signedDataHttp(http: HttpClient): SignedDataHttp = SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp())
+    override fun signedDataHttp(http: HttpClient): SignedDataHttp =
+        SignedDataRoutes(KtorSignedDataHttp(http), CleartextHttp(beforeConnect = localNetwork::checkAddress))
 
     /**
      * Opens an issuer, sign-in or application page in a Custom Tab inside the wallet's own task, above MainActivity.

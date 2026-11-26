@@ -53,6 +53,11 @@ class LocalNetworkGate(private val context: Context, private val activity: () ->
         builder.dns { host -> Dns.SYSTEM.lookup(host).also { addresses -> if (addresses.any(::isLocal)) check() } }
     }
 
+    /** Checks the permission when [address] is on a local network; other addresses pass. */
+    fun checkAddress(address: InetAddress) {
+        if (isLocal(address)) check()
+    }
+
     /** [link] with the permission checked first: no addresses (and a permission prompt) while it is missing. */
     fun wrap(link: BondsLanLink): BondsLanLink = object : BondsLanLink {
         override fun localInterfaces(): List<LanInterface> = if (unavailableReason() != null) emptyList() else link.localInterfaces()

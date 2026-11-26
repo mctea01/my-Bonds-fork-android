@@ -34,6 +34,12 @@ class BondsLanLinkTest {
         val raw = CleartextHttp()
         assertEquals(404, raw.exchange(at.replace("secret", "other"), "x".encodeToByteArray(), "application/json", null).status)
         assertEquals(413, raw.exchange(at, ByteArray(5000), "application/json", null).status)
+        // The address check (the Android 17 local network permission) sees the resolved address before connecting.
+        val seen = mutableListOf<String>()
+        val refusing = CleartextHttp(beforeConnect = { seen += it.hostAddress; throw java.io.IOException("refused before connecting") })
+        assertEquals("refused before connecting", runCatching { refusing.exchange(at, "junk".encodeToByteArray(), null, null) }.exceptionOrNull()?.message)
+        assertEquals(listOf("127.0.0.1"), seen)
+        assertTrue(bodies.isEmpty(), "a refused address gets no request")
         assertEquals(200 to """{"status":"junk"}""", link.post(at, "junk".encodeToByteArray(), 10.seconds))
         assertFalse(served.isCompleted, "a body that is not the package does not end the exchange")
         assertEquals(200 to """{"status":"package"}""", link.post(at, "package".encodeToByteArray(), 10.seconds))
