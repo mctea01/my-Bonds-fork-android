@@ -381,10 +381,15 @@ object CertificateConstraints {
 
     private val SUPPORTED = setOf(GeneralName.Type.DNS, GeneralName.Type.RFC822, GeneralName.Type.URI, GeneralName.Type.IP, GeneralName.Type.DIRECTORY)
 
-    /** The names a certificate is checked on: its subject (when not empty), emailAddress attributes and subjectAltName. */
+    /**
+     * The names a certificate is checked on: its subject (when not empty) and subjectAltName; the subject's
+     * emailAddress attributes only when there is no subjectAltName (RFC 5280 4.2.1.10).
+     */
     private fun namesOf(d: X509Details): List<GeneralName> = buildList {
         if (!d.subject.empty) add(GeneralName(GeneralName.Type.DIRECTORY, d.subject.text, ByteArray(0), d.subject))
-        d.subject.attributes.filter { it.oid == X509Names.EMAIL_ADDRESS }.forEach { add(GeneralName(GeneralName.Type.RFC822, it.value, ByteArray(0))) }
+        if (d.extension(X509Names.SUBJECT_ALT_NAME) == null) {
+            d.subject.attributes.filter { it.oid == X509Names.EMAIL_ADDRESS }.forEach { add(GeneralName(GeneralName.Type.RFC822, it.value, ByteArray(0))) }
+        }
         addAll(d.subjectAltNames)
     }
 

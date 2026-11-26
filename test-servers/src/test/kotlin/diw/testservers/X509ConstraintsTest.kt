@@ -459,4 +459,17 @@ class X509ConstraintsTest {
         // The same chain sent complete gives the same result.
         assertEquals(d, registry.decide(TrustRole.DOCUMENT, listOf(l, m)))
     }
+
+    /** The subject's emailAddress is held to rfc822Name constraints only when there is no subjectAltName (RFC 5280 4.2.1.10). */
+    @Test
+    fun legacyEmailOnlyWithoutSubjectAltName() {
+        val nc = Ext(Extension.nameConstraints, true, NameConstraints(arrayOf(GeneralSubtree(GeneralName(GeneralName.rfc822Name, "allowed.tw"))), null))
+        val m = mid(ca(), caUsage, nc)
+        val r = root()
+        fun check(vararg ext: Ext) = CertificateConstraints.check(
+            listOf(leaf(*ext, subject = "CN=Mail,O=Test,C=TW,E=legacy@elsewhere.tw"), m, r), CertificatePurpose.DOCUMENT, now, anchored = true,
+        )
+        assertFalse(check(signUsage, san(GeneralName(GeneralName.rfc822Name, "current@allowed.tw"))).failed)
+        assertTrue(check(signUsage).failed)
+    }
 }
