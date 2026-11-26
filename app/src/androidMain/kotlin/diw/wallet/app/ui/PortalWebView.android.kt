@@ -81,18 +81,21 @@ private val BLOB_HOOK = """
 @Composable
 actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -> Unit, onExternal: (String) -> Unit, onError: (String) -> Unit, autofill: PortalAutofill?) {
     val scope = rememberCoroutineScope()
-    var view by remember { mutableStateOf<WebView?>(null) }
+    val slot = remember { WebViewSlot() }
     var canGoBack by remember { mutableStateOf(false) }
-    BackHandler(enabled = canGoBack) { view?.goBack() }
-    DisposableEffect(Unit) { onDispose { view?.destroy() } }
+    BackHandler(enabled = canGoBack) { slot.goBack() }
+    DisposableEffect(Unit) { onDispose { slot.destroy() } }
     AndroidView(
         modifier = modifier,
         factory = { context ->
-            WebView(context).apply {
+            val web = WebView(context)
+            // Source sites never read this app's content:// or file:// URIs.
+            val settings = web.settings
+            settings.allowContentAccess = false
+            settings.allowFileAccess = false
+            web.apply {
                 settings.javaScriptEnabled = true
                 settings.domStorageEnabled = true
-                settings.allowFileAccess = false
-                settings.allowContentAccess = false
                 CookieManager.getInstance().setAcceptCookie(true)
                 CookieManager.getInstance().setAcceptThirdPartyCookies(this, true)
                 addJavascriptInterface(object {
@@ -160,8 +163,9 @@ actual fun PortalWebView(url: String, modifier: Modifier, onFile: (PickedFile) -
                     }
                 }
                 loadUrl(url)
-                view = this
             }
+            slot.hold(web)
+            web
         },
     )
 }

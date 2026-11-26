@@ -148,7 +148,7 @@ class DesktopPlatform(
         if (Desktop.isDesktopSupported() && Desktop.getDesktop().isSupported(Desktop.Action.BROWSE)) {
             Desktop.getDesktop().browse(URI(url))
         } else {
-            ProcessBuilder("xdg-open", url).start()
+            xdgOpen(url)
         }
     }
 
@@ -251,3 +251,15 @@ internal fun desktopZkInfo(dataDir: File): ZkPlatformInfo {
         isDesktop = true,
     )
 }
+
+/**
+ * Opens [target] with the desktop's xdg-open where AWT cannot browse (some Linux desktops). Only the system's own
+ * copies are run, never one found through PATH or the working directory.
+ */
+internal fun xdgOpen(target: String): Process {
+    val program = XDG_OPEN.firstOrNull { java.io.File(it).canExecute() }
+        ?: throw java.io.IOException("xdg-open not found in /usr/bin or /usr/local/bin")
+    return ProcessBuilder(program, target).start()
+}
+
+private val XDG_OPEN = listOf("/usr/bin/xdg-open", "/usr/local/bin/xdg-open")
