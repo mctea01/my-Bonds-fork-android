@@ -14,19 +14,16 @@ import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlin.coroutines.resume
 
 /**
- * A native library in an on-demand feature module ([module], under features/). Google Play installs it when asked;
- * APKs made with every module (the GitHub release) already carry it among their own libraries, so loading is tried
- * first in every case. [activity] shows Play's confirmation when a download needs one.
+ * An on-demand feature module ([module], under features/). Google Play installs it when asked; APKs made with every
+ * module (the GitHub release) already carry it, so [load] is tried first in every case. [activity] shows Play's
+ * confirmation when a download needs one.
  */
-class PlayFeatureComponent(
-    private val context: Context,
+abstract class PlayFeature(
+    protected val context: Context,
     private val module: String,
-    private val library: String,
     private val activity: () -> Activity?,
 ) : ZkComponent {
     private val manager by lazy { SplitInstallManagerFactory.create(context) }
-
-    @Volatile private var loaded = false
 
     /** Only Google Play delivers feature modules; another installer cannot add one to this app. */
     override val installable: Boolean
@@ -34,28 +31,7 @@ class PlayFeatureComponent(
             context.packageManager.getInstallSourceInfo(context.packageName).installingPackageName == PLAY_STORE
         }.getOrDefault(false)
 
-    override fun present(): Boolean = loaded || module in runCatching { manager.installedModules }.getOrDefault(emptySet()) || load() != null
-
-    override fun load(): String? {
-        if (loaded) return "lib$library.so"
-        val ok = try {
-            System.loadLibrary(library)
-            true
-        } catch (_: UnsatisfiedLinkError) {
-            // A module installed in this process is not yet on the class loader's library path.
-            try {
-                SplitCompat.install(context)
-                SplitInstallHelper.loadLibrary(context, library)
-                true
-            } catch (_: Throwable) {
-                false
-            }
-        } catch (_: Throwable) {
-            false
-        }
-        loaded = ok
-        return if (ok) "lib$library.so" else null
-    }
+    override fun present(): Boolean = module in runCatching { manager.installedModules }.getOrDefault(emptySet()) || load() != null
 
     override suspend fun install(progress: (Float) -> Unit): String? {
         if (load() != null) return null
@@ -101,8 +77,57 @@ class PlayFeatureComponent(
         }
     }
 
-    companion object {
-        private const val PLAY_STORE = "com.android.vending"
-        private const val CONFIRMATION_REQUEST = 7301
+    private companion object {
+        const val PLAY_STORE = "com.android.vending"
+        const val CONFIRMATION_REQUEST = 7301
+    }
+}
+
+/** A native library in an on-demand feature module, loaded into the process. */
+class PlayFeatureComponent(context: Context, module: String, private val library: String, activity: () -> Activity?) :
+    PlayFeature(context, module, activity) {
+    @Volatile private var loaded = false
+
+    override fun present(): Boolean = loaded || super.present()
+
+    override fun load(): String? {
+        if (loaded) return "lib$library.so"
+        val ok = try {
+            System.loadLibrary(library)
+            true
+        } catch (_: UnsatisfiedLinkError) {
+            // A module installed in this process is not yet on the class loader's library path.
+            try {
+                SplitCompat.install(context)
+                SplitInstallHelper.loadLibrary(context, library)
+                true
+            } catch (_: Throwable) {
+                false
+            }
+        } catch (_: Throwable) {
+            false
+        }
+        loaded = ok
+        return if (ok) "lib$library.so" else null
+    }
+}
+
+/** A data file among the assets of an on-demand feature module; [load] gives the asset's name once it can be read. */
+class PlayFeatureAsset(context: Context, module: String, private val asset: String, activity: () -> Activity?) :
+    PlayFeature(context, module, activity) {
+
+    override fun load(): String? = asset.takeIf { runCatching { open { true } }.getOrDefault(false) }
+
+    /** The asset's bytes, or null when the module is not here. */
+    fun read(): ByteArray? = runCatching { open { it.readBytes() } }.getOrNull()
+
+    private fun <T> open(use: (java.io.InputStream) -> T): T {
+        try {
+            return context.assets.open(asset).use(use)
+        } catch (_: java.io.IOException) {
+            // A module installed in this process is only in a fresh context's assets.
+            SplitCompat.install(context)
+            return context.createPackageContext(context.packageName, 0).assets.open(asset).use(use)
+        }
     }
 }

@@ -4495,6 +4495,15 @@
     <string name="zkp_unverified_suffix"> (domain as entered, not verified)</string>
     <string name="zkp_verifier_api">Let zkPassport's verifier service decide</string>
     <string name="zkp_verifier_api_note">Only when this phone cannot verify a proof itself; the proofs and the request are then sent to zkPassport. Off by default.</string>
+    <string name="zkp_face_model_title">Face match model</string>
+    <string name="zkp_face_model_facenet">Use FaceNet-512 instead of the built-in MobileFaceNet</string>
+    <string name="zkp_face_model_note">Both models are set to about 1 false accept in 100,000 comparisons on public face photos (LFW). At that level MobileFaceNet lets 90% of genuine attempts pass and FaceNet-512 65%, so FaceNet-512 is a fallback for when the built-in model does not suit your face. Each comparison averages five camera frames. About 24 MB.</string>
+    <string name="zkp_face_model_installed">FaceNet-512 is installed.</string>
+    <string name="zkp_face_model_missing">FaceNet-512 is not installed.</string>
+    <string name="zkp_face_model_unavailable">FaceNet-512 is not part of this package of the app. Install the full APK from GitHub or the Google Play version to use it.</string>
+    <string name="zkp_face_model_install">Install FaceNet-512</string>
+    <string name="zkp_face_model_installing">Installing FaceNet-512 (%1$d%%)</string>
+    <string name="zkp_face_model_error">Installation failed: %1$s</string>
     <string name="zkp_route_relay">your server's relay (%1$s)</string>
     <string name="zkp_route_lan">local network</string>
     <string name="zkp_route_ble">Bluetooth</string>
@@ -4658,6 +4667,7 @@
     <string name="zkp_answer_comparing">Comparing your face with the passport photo...</string>
     <string name="zkp_answer_err_facematch_remote">The prover returned no face match proof. Prove on this device, or update the prover.</string>
     <string name="zkp_answer_err_facematch_photo">The stored passport read has no photo in which a face can be found.</string>
+    <string name="zkp_answer_err_facematch_model">The FaceNet-512 model chosen in the zkPassport settings is not installed. Install it there, or switch back to the built-in model. The requester received nothing.</string>
     <string name="zkp_answer_err_facematch_cancelled">The face match was cancelled. The requester received nothing.</string>
     <string name="zkp_answer_err_facematch_no_match">The face match did not pass. The requester received nothing.</string>
     <string name="zkp_answer_err_facematch_mismatch">The face match did not pass: the best similarity to the passport photo was %1$s, below the pass mark of %2$s. The requester received nothing.</string>

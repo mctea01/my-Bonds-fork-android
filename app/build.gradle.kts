@@ -312,6 +312,7 @@ kotlin {
             implementation(libs.multipaz.compose)
             // Face comparison for zkPassport FaceMatch answers (docs/design/zkpassport.md 5.6).
             implementation(libs.multipaz.facenet)
+            implementation(libs.litert)
             implementation(libs.multipaz.dcapi)
             implementation(libs.tesseract4android)
             implementation(libs.androidx.camera.core)
@@ -445,8 +446,9 @@ android {
     // Every language stays in the base APK: switching the language in the app must not lose the Android resources
     // (app name, NFC service names) that a Play language split would leave out.
     bundle { language { enableSplit = false } }
-    // On-demand native components (ZkComponent); every package not from Google Play includes them.
-    dynamicFeatures += setOf(":bb5")
+    // On-demand components (ZkComponent: Barretenberg 5, the FaceNet-512 model); every package not from Google Play
+    // includes them.
+    dynamicFeatures += setOf(":bb5", ":facenet")
     androidResources { generateLocaleConfig = false }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

@@ -73,7 +73,9 @@ change.
   zkPassport FaceMatch answers) - Apache License 2.0. It embeds the MediaPipe
   BlazeFace short-range face detection model (Google, Apache License 2.0) and
   the MiniFASNetV2 passive anti-spoofing model (Silent-Face-Anti-Spoofing,
-  Minivision, Apache License 2.0)
+  Minivision, Apache License 2.0). The wallet's FacePipeline
+  (app/src/androidMain/kotlin/diw/wallet/app/android/FacePipeline.kt) is
+  adapted from its AndroidFaceDetector and AndroidFaceNetInterpreter
 - LiteRT (com.google.ai.edge.litert:litert and litert-support, the
   TensorFlow Lite runtime those models run on) - Apache License 2.0
 - MobileFaceNet face embedding model (Qualcomm Technologies, Qualcomm AI Hub
@@ -82,6 +84,18 @@ change.
   2254b01065c1f69ff501e9501042441b85323710e3d5a7b6be04a5084b647651, the copy
   in the Multipaz repository's multipaz-facenet-test-data) - Apache License
   2.0. Model card: https://huggingface.co/qualcomm/MobileFaceNet
+- FaceNet face embedding model, the optional on-demand module features/facenet:
+  InceptionResnetV1 with the VGGFace2 weights of facenet-pytorch (Copyright (c)
+  2019 Timothy Esler, MIT License; 20180402-114759-vggface2.pt from release
+  v2.2.9, SHA-256
+  281cebca8662831adb987a874bdcb36e73f5b1c6dc5ee5878f305e985625d99b), a port of
+  David Sandberg's facenet model 20180402-114759 (Copyright (c) 2016 David
+  Sandberg, MIT License). Converted by this project to TFLite with int8
+  weights as described in tools/facematch-eval/README.md;
+  features/facenet/src/main/assets/facenet/facenet_512.tflite, SHA-256
+  4913ec9ad500ca9c977ac1386190dae274d5bcec6d997b9589c1d55e5f3e5746.
+  https://github.com/timesler/facenet-pytorch
+  https://github.com/davidsandberg/facenet
 
 ========================================================================
 3. Desktop only

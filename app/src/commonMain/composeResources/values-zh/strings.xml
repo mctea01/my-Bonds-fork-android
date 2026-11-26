@@ -4495,6 +4495,15 @@
     <string name="zkp_unverified_suffix">（網域依輸入，未經驗證）</string>
     <string name="zkp_verifier_api">允許 zkPassport 查驗服務判定</string>
     <string name="zkp_verifier_api_note">只在這支手機無法自行驗證證明時使用；證明與請求會送到 zkPassport。預設關閉。</string>
+    <string name="zkp_face_model_title">人臉比對模型</string>
+    <string name="zkp_face_model_facenet">改用 FaceNet-512，不用內建的 MobileFaceNet</string>
+    <string name="zkp_face_model_note">兩個模型都設定為在公開人臉照片（LFW）上約十萬次比對誤接受一次。在這個標準下，MobileFaceNet 讓 90% 的本人比對通過，FaceNet-512 為 65%，所以 FaceNet-512 是內建模型不適合你的臉時的備用選項。每次比對取五幀相機畫面平均。約 24 MB。</string>
+    <string name="zkp_face_model_installed">FaceNet-512 已安裝。</string>
+    <string name="zkp_face_model_missing">FaceNet-512 尚未安裝。</string>
+    <string name="zkp_face_model_unavailable">這個 App 安裝檔沒有附 FaceNet-512。要使用請改裝 GitHub 的完整 APK 或 Google Play 版。</string>
+    <string name="zkp_face_model_install">安裝 FaceNet-512</string>
+    <string name="zkp_face_model_installing">正在安裝 FaceNet-512（%1$d%%）</string>
+    <string name="zkp_face_model_error">安裝失敗：%1$s</string>
     <string name="zkp_route_relay">你的服務端轉送（%1$s）</string>
     <string name="zkp_route_lan">區域網路</string>
     <string name="zkp_route_ble">藍牙</string>
@@ -4658,6 +4667,7 @@
     <string name="zkp_answer_comparing">正在比對您的臉與護照照片...</string>
     <string name="zkp_answer_err_facematch_remote">證明主機沒有回傳人臉比對證明。請改在本機產生，或更新證明主機。</string>
     <string name="zkp_answer_err_facematch_photo">保存的護照讀取資料沒有可辨識人臉的照片。</string>
+    <string name="zkp_answer_err_facematch_model">zkPassport 設定選用的 FaceNet-512 模型尚未安裝。請在該處安裝，或改回內建模型。請求方沒有收到任何資料。</string>
     <string name="zkp_answer_err_facematch_cancelled">已取消人臉比對，請求方沒有收到任何資料。</string>
     <string name="zkp_answer_err_facematch_no_match">人臉比對沒有通過，請求方沒有收到任何資料。</string>
     <string name="zkp_answer_err_facematch_mismatch">人臉比對沒有通過：與護照照片的相似度最高 %1$s，未達門檻 %2$s。請求方沒有收到任何資料。</string>
