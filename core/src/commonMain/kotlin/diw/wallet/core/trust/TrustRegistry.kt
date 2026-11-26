@@ -103,7 +103,10 @@ data class AnchorMatch(
 data class ChainEvaluation(
     val match: AnchorMatch?,
     val rejected: AnchorMatch?,
+    /** The findings, whose indexes are positions in [path]. */
     val constraints: ConstraintReport,
+    /** The certificates checked, leaf first: up to the anchor, or as far as the presented chain links. */
+    val path: List<X509Cert> = emptyList(),
 )
 
 /** An intermediate CA certificate the user imported: it only links chains to anchors and never sets a tier. */
@@ -481,13 +484,14 @@ class TrustRegistry(
     private fun judge(role: TrustRole, chain: List<X509Cert>, m: AnchorMatch?, atTime: Instant, docType: String?): ChainEvaluation {
         val purpose = CertificatePurpose.of(role, docType)
         if (m == null) {
-            val report = CertificateConstraints.check(linked(chain), purpose, atTime, anchored = false)
-            return ChainEvaluation(null, null, report)
+            val linked = linked(chain)
+            val report = CertificateConstraints.check(linked, purpose, atTime, anchored = false)
+            return ChainEvaluation(null, null, report, linked)
         }
         val path = pathTo(chain, m.anchor)
         val report = CertificateConstraints.check(path, purpose, atTime, anchored = true)
         val judged = m.copy(path = path, constraints = report)
-        return if (report.failed) ChainEvaluation(null, judged, report) else ChainEvaluation(judged, null, report)
+        return if (report.failed) ChainEvaluation(null, judged, report, path) else ChainEvaluation(judged, null, report, path)
     }
 
     /**
@@ -748,8 +752,10 @@ class TrustRegistry(
         if (chain.isEmpty()) return TrustPath(emptyList(), emptyList(), null, emptyList())
         var m: AnchorMatch? = null
         var decision: TrustDecision? = null
+        var evaluation: ChainEvaluation? = null
         if (role != null) {
             val (ev, completed) = evaluateCompleting(role, chain, atTime, docType)
+            evaluation = ev
             // A path rejected by the usage rules is still drawn up to the anchor it leads to.
             m = ev.match ?: ev.rejected
             decision = decision(ev, completed)
@@ -830,9 +836,18 @@ class TrustRegistry(
             }
             BuiltInPublicRoots.importableRoots.filter { it.certificate == top }.forEach { add(RootListing(RootListing.Kind.IMPORTABLE, it.name)) }
         }
-        // The usage and path rules on the path as drawn, for the role asked (path rules only without a role).
-        val anchoredTop = m?.anchor == top || (top.selfIssuedRoot && steps.last().signatureValid == true)
-        val constraints = CertificateConstraints.check(certs, role?.let { CertificatePurpose.of(it, docType) }, atTime, anchored = anchoredTop)
+        // For a role, the findings of the evaluation the decision came from, placed on the certificates as drawn (the
+        // drawn path may go on above the anchor, whose issuers the decision does not rely on). Without a role, the
+        // path rules on the path as drawn.
+        val constraints = if (evaluation != null) {
+            val checked = evaluation.path
+            ConstraintReport(evaluation.constraints.findings.mapNotNull { f ->
+                checked.getOrNull(f.index)?.let { c -> certs.indexOf(c) }?.takeIf { it >= 0 }?.let { f.copy(index = it) }
+            })
+        } else {
+            val anchoredTop = top.selfIssuedRoot && steps.last().signatureValid == true
+            CertificateConstraints.check(certs, null, atTime, anchored = anchoredTop)
+        }
         return TrustPath(steps, presented.filter { it !in certs }.distinct(), decision, listings, constraints)
     }
 

@@ -420,4 +420,28 @@ class X509ConstraintsTest {
         assertTrue(ConstraintRule.SIGNATURE_ALGORITHM in ev.constraints.rules(ConstraintSeverity.WEAK), ev.constraints.toString())
         assertEquals(TrustTier.T3, registry.decision(ev).tier)
     }
+
+    /**
+     * An intermediate trust anchor signed with SHA-1: the decision does not rely on that signature, and the chain
+     * screen, drawn on to the root above the anchor, shows the decision's findings rather than checking again.
+     */
+    @Test
+    fun chainScreenUsesTheDecisionsFindings() = runBlocking<Unit> {
+        val rsaRoot = KeyPairGenerator.getInstance("RSA").apply { initialize(2048) }.generateKeyPair()
+        val rootName = "CN=Old Root,C=TW"
+        val midName = "CN=Anchored CA,C=TW"
+        val r = cert(rootName, rootName, rsaRoot, rsaRoot, listOf(ca(), caUsage))
+        val m = cert(midName, rootName, midKey, rsaRoot, listOf(ca(), caUsage), algorithm = "SHA1withRSA")
+        val l = leaf(signUsage, issuerName = midName)
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.USER, m, "Anchored CA", official = false, source = "test")
+        val d = registry.decide(TrustRole.DOCUMENT, listOf(l, m, r))
+        assertEquals(TrustTier.T2, d.tier, d.reasons.toString())
+        val p = registry.path(listOf(l, m, r), TrustRole.DOCUMENT)
+        assertEquals(listOf(l, m, r), p.steps.map { it.certificate })
+        assertEquals(d, p.decision)
+        assertFalse(p.constraints.weak || p.constraints.failed, p.constraints.toString())
+        // Without a role only the path rules apply to the path as drawn, and the root's SHA-1 signature on the CA shows.
+        assertTrue(registry.path(listOf(l, m, r)).constraints.weak)
+    }
 }
