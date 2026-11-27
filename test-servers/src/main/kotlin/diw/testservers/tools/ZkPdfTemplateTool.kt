@@ -80,7 +80,8 @@ object ZkPdfTemplateTool {
             }
         } catch (e: PdfException) {
             println("這份 PDF 不符合 zkPDF 的要求（只能有一個文件簽章、ByteRange 只空出簽章內容、證明頁是單一內容串流、字型有 ToUnicode、" +
-                "其他頁要隱藏的串流不與其他串流共用 SHA-256 區塊），或版型的頁面、私密圖片不存在")
+                "其他頁要隱藏的串流不與其他串流共用 SHA-256 區塊、其他頁沒有註解文字或書籤、結構樹沒有替代文字、" +
+                "證明頁的資源沒有列出只有其他頁才畫的圖片或表單），或版型的頁面、私密圖片不存在")
             exitProcess(1)
         }
     }

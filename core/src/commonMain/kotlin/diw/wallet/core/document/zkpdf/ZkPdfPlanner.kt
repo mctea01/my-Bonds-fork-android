@@ -166,8 +166,8 @@ object ZkPdfPlanner {
         val thumbs = provenPages.mapNotNull { (pages[it]["Thumb"] as? PdfRef)?.num?.takeIf { n -> signed.getObject(n) is PdfStream } }
         val shown = provenPages.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet() - private - thumbs.toSet()
         val others = pages.indices.filter { it !in provenPages }
-        // Masking clears stream data only: text kept in the annotation dictionaries of another page would stay public.
-        require(others.none { PdfZkSupport.keepsAnnotationText(signed, pages[it]) }) { "Annotation text on another page" }
+        // Masking clears stream data only: text kept in dictionaries (annotations, outlines, structure tree) would stay public.
+        require(!PdfZkSupport.keepsTextOutsideStreams(signed, others)) { "Text outside streams" }
         val hidden = (others.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) } + thumbs)
             .distinct().filter { it !in shown && it !in private && PdfZkSupport.streamExtent(signed, it).count() > 0 }
         val parts = own.map { (content, images) ->

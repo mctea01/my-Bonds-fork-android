@@ -66,6 +66,7 @@ object PdfZkSupport {
             else -> {}
         }
         stream(page["Thumb"])
+        stream(page["Metadata"])
         resources(page["Resources"], 0)
         pdf.array(page["Annots"])?.forEach { a ->
             val annotation = pdf.dict(a) ?: return@forEach
@@ -110,6 +111,67 @@ object PdfZkSupport {
             }
             false
         } ?: false
+    }
+
+    /** Object numbers of the page objects, in the order of [PdfTextExtractor.pages]. */
+    fun pageObjects(pdf: PdfFile): List<Int> = zkPdfInput {
+        val out = ArrayList<Int>()
+        val seen = HashSet<PdfObject>()
+        fun walk(node: PdfObject?, depth: Int) {
+            if (depth > 64 || (node is PdfRef && !seen.add(node))) return
+            val d = pdf.dict(node) ?: return
+            val kids = pdf.array(d["Kids"])
+            if (kids != null && d.name("Type") != "Page") kids.forEach { walk(it, depth + 1) }
+            else out += (node as? PdfRef)?.num ?: error("Page stored directly")
+        }
+        walk(pdf.catalog["Pages"], 0)
+        out
+    }
+
+    /**
+     * Whether text that masking cannot clear (it is not stream data) would stay in the file: annotation text or page
+     * piece data on one of the [hidden] pages, an outline item that leads to one of them, or alternate or actual text
+     * anywhere in the structure tree (it repeats page content, so it would expose proven pages as well). Outline items
+     * whose destination is not an explicit page count as leading to a hidden page.
+     */
+    fun keepsTextOutsideStreams(pdf: PdfFile, hidden: List<Int>): Boolean = zkPdfInput {
+        val pages = PdfTextExtractor.pages(pdf)
+        if (hidden.any { keepsAnnotationText(pdf, pages[it]) || pages[it]["PieceInfo"] != null }) return@zkPdfInput true
+        var budget = 200_000
+        val seen = HashSet<Int>()
+        fun hasText(d: PdfDict) = listOf("Alt", "ActualText", "E").any { (pdf.resolve(d[it]) as? PdfString)?.bytes?.isNotEmpty() == true }
+        fun structure(o: PdfObject?, depth: Int): Boolean {
+            require(depth <= 128 && budget-- > 0) { "Structure tree too large" }
+            if (o is PdfRef && !seen.add(o.num)) return false
+            return when (val v = pdf.resolve(o)) {
+                is PdfArray -> v.any { structure(it, depth + 1) }
+                is PdfDict -> hasText(v) || structure(v["K"], depth + 1)
+                else -> false
+            }
+        }
+        if (structure(pdf.dict(pdf.catalog["StructTreeRoot"])?.get("K"), 0)) return@zkPdfInput true
+        if (hidden.isEmpty()) return@zkPdfInput false
+        val numbers = pageObjects(pdf)
+        require(numbers.size == pages.size)
+        val private = hidden.map { numbers[it] }.toSet()
+        fun leadsToHidden(item: PdfDict): Boolean {
+            val destination = item["Dest"] ?: pdf.dict(item["A"])?.takeIf { it.name("S") == "GoTo" }?.get("D") ?: return false
+            val page = pdf.array(destination)?.firstOrNull() as? PdfRef ?: return true
+            return page.num in private
+        }
+        val visited = HashSet<Int>()
+        val stack = ArrayList<PdfObject>()
+        pdf.dict(pdf.catalog["Outlines"])?.get("First")?.let { stack += it }
+        while (stack.isNotEmpty()) {
+            val node = stack.removeAt(stack.size - 1)
+            require(budget-- > 0) { "Outlines too large" }
+            if (node is PdfRef && !visited.add(node.num)) continue
+            val item = pdf.dict(node) ?: continue
+            if (leadsToHidden(item) && (pdf.resolve(item["Title"]) as? PdfString)?.bytes?.isNotEmpty() == true) return@zkPdfInput true
+            item["Next"]?.let { stack += it }
+            item["First"]?.let { stack += it }
+        }
+        false
     }
 
     /**

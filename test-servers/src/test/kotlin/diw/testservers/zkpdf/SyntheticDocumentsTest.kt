@@ -140,6 +140,16 @@ class SyntheticDocumentsTest {
         val normal = SyntheticDocuments.multiPage(fonts, material)
         assertFalse(PdfZkSupport.keepsAnnotationText(PdfFile(normal), PdfTextExtractor.pages(PdfFile(normal))[2]))
 
+        // Actual text in the structure tree and a bookmark title to page 3 are dictionaries too.
+        for (variant in listOf("structure", "outline")) {
+            val document = SyntheticDocuments.multiPage(fonts, material, variant)
+            assertTrue(PdfZkSupport.keepsTextOutsideStreams(PdfFile(document), listOf(2)), variant)
+            assertFailsWith<PdfException>(variant) { ZkPdfPlanner.plan(document, profile) }
+        }
+        val outline = PdfFile(SyntheticDocuments.multiPage(fonts, material, "outline"))
+        assertFalse(PdfZkSupport.keepsTextOutsideStreams(outline, listOf(1)))
+        assertFalse(PdfZkSupport.keepsTextOutsideStreams(PdfFile(normal), listOf(1, 2)))
+
         val unused = SyntheticDocuments.multiPage(fonts, material, "shared-unused")
         assertFailsWith<PdfException> { ZkPdfPlanner.plan(unused, profile) }
         // Drawn on the proven page as well, the form is public there anyway, and the rest of page 3 stays private.

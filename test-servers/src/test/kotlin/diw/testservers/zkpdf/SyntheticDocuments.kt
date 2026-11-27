@@ -164,14 +164,20 @@ object SyntheticDocuments {
      * streams, a form XObject, a thumbnail and a free-text annotation appearance. Not a committed fixture.
      * [variant] `annotation-text` gives the annotation a text value; `shared-unused` lists the form of page 3 in the
      * resources of page 1 as well, and `shared-drawn` also draws it on page 1; `soft-mask` adds a graphics state on
-     * page 3 whose soft mask group draws text.
+     * page 3 whose soft mask group draws text; `structure` adds a structure element with actual text, and `outline`
+     * a bookmark to page 3.
      */
     fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
         val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
         fun flate(text: String) = compressed(text.toByteArray())
         out.append("%PDF-1.7\n")
-        out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R >>")
+        val extra = when (variant) {
+            "structure" -> " /StructTreeRoot 23 0 R /MarkInfo << /Marked true >>"
+            "outline" -> " /Outlines 25 0 R"
+            else -> ""
+        }
+        out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R$extra >>")
         out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R 12 0 R 14 0 R] /Count 3 >>")
         val shared = if (variant.startsWith("shared")) " /Fm 17 0 R" else ""
         out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << $fontResources /XObject << /Qr 10 0 R$shared >> >> >>")
@@ -202,7 +208,16 @@ object SyntheticDocuments {
                 "Group" to PdfDict.of("S" to PdfName("Transparency"))),
                 flate("BT /FLatin 14 Tf 1 0 0 1 55 500 Tm ($HIDDEN_LATIN) Tj ET\n"))
         }
-        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(if (mask) 23 else 21), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
+        if (variant == "structure") {
+            out.obj(23, 0, "<< /Type /StructTreeRoot /K 24 0 R >>")
+            out.obj(24, 0, "<< /Type /StructElem /S /P /P 23 0 R /Pg 14 0 R /ActualText ($HIDDEN_LATIN) /K 0 >>")
+        }
+        if (variant == "outline") {
+            out.obj(25, 0, "<< /Type /Outlines /First 26 0 R /Last 26 0 R /Count 1 >>")
+            out.obj(26, 0, "<< /Title ($HIDDEN_LATIN) /Parent 25 0 R /Dest [14 0 R /Fit] >>")
+        }
+        val size = when (variant) { "soft-mask" -> 23; "structure" -> 25; "outline" -> 27; else -> 21 }
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(size), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }
 
