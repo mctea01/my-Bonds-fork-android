@@ -127,6 +127,13 @@ object SyntheticDocuments {
         val image = if (travel) "" else "/XObject << /Qr 10 0 R >>"
         out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /FLatin 5 0 R /FHanzi 6 0 R >> $image >> >>")
         out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, travel, variant).toByteArray()))
+        shared(out, fonts)
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(12), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
+        return out.bytes()
+    }
+
+    /** The Latin and CID fonts, their ToUnicode map and font file, and the QR image: objects 5 to 11. */
+    private fun shared(out: PdfOutput, fonts: Fonts) {
         // Helvetica is the PDF standard-14 font: no third-party font bytes are distributed for this resource.
         out.obj(5, 0, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
         out.obj(6, 0, "<< /Type /Font /Subtype /Type0 /BaseFont /ZKPDFX+NotoSansCJKsc-Regular /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 8 0 R >>")
@@ -146,9 +153,45 @@ object SyntheticDocuments {
         }
         out.stream(10, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Image"), "Width" to PdfNumber.of(size), "Height" to PdfNumber.of(size), "ColorSpace" to PdfName("DeviceGray"), "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(pixels))
         out.obj(11, 0, "<< /Type /FontDescriptor /FontName /ZKPDFX+NotoSansCJKsc-Regular /Flags 4 /FontBBox [-1000 -1000 3000 3000] /ItalicAngle 0 /Ascent 1160 /Descent -288 /CapHeight 733 /StemV 80 /FontFile3 9 0 R >>")
-        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(12), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
+    }
+
+    /** Text that only page 3 of [multiPage] draws, so a test can show that it never reaches the verifier. */
+    const val HIDDEN_NAME = "林測試"
+    const val HIDDEN_LATIN = "SYN0000001"
+
+    /**
+     * Three pages, signed: the student page, the travel page, and a page that draws text through two content
+     * streams, a form XObject, a thumbnail and a free-text annotation appearance. Not a committed fixture.
+     */
+    fun unsignedMultiPage(fonts: Fonts): ByteArray {
+        val out = PdfOutput()
+        val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
+        fun flate(text: String) = compressed(text.toByteArray())
+        out.append("%PDF-1.7\n")
+        out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R >>")
+        out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R 12 0 R 14 0 R] /Count 3 >>")
+        out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << $fontResources /XObject << /Qr 10 0 R >> >> >>")
+        out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, false, "normal").toByteArray()))
+        shared(out, fonts)
+        out.obj(12, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 13 0 R /Resources << $fontResources >> >>")
+        out.stream(13, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, true, "normal").toByteArray()))
+        out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >> >> >>")
+        out.stream(15, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("BT /FHanzi 14 Tf 1 0 0 1 55 790 Tm <${fonts.encode(HIDDEN_NAME)}> Tj ET\n"))
+        out.stream(16, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("q 1 0 0 1 0 -60 cm /Fm Do Q\n"))
+        val form = PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
+            "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(595), PdfNumber.of(842))))
+        out.stream(17, 0, form, flate("BT /FLatin 14 Tf 1 0 0 1 55 700 Tm ($HIDDEN_LATIN) Tj ET\n"))
+        out.stream(18, 0, PdfDict.of("Width" to PdfNumber.of(1), "Height" to PdfNumber.of(1), "ColorSpace" to PdfName("DeviceGray"),
+            "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(byteArrayOf(127)))
+        out.obj(19, 0, "<< /Type /Annot /Subtype /FreeText /Rect [55 600 300 630] /Contents () /DA (/FLatin 12 Tf 0 g) /AP << /N 20 0 R >> >>")
+        out.stream(20, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
+            "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(245), PdfNumber.of(30)))),
+            flate("BT /FLatin 12 Tf 2 10 Td ($HIDDEN_LATIN) Tj ET\n"))
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(21), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }
+
+    suspend fun multiPage(fonts: Fonts, material: Material): ByteArray = signWithContainer(unsignedMultiPage(fonts), material.signer)
 
     private fun encrypt(bytes: ByteArray): ByteArray = Loader.loadPDF(bytes).use { document ->
         document.documentId = FIXED_MILLIS
@@ -174,7 +217,7 @@ object SyntheticDocuments {
         output.toByteArray()
     }
 
-    /** The student document with a blank second page, signed; not a committed fixture (zkPDF v1 refuses it). */
+    /** The student document with a blank second page, signed; not a committed fixture. */
     suspend fun twoPages(fonts: Fonts, material: Material): ByteArray {
         val unsigned = Loader.loadPDF(unsigned(fonts, false)).use { document ->
             document.documentId = FIXED_MILLIS

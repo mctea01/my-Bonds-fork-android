@@ -33,7 +33,7 @@ pub fn policy(spec: &ZkPdfVerifierSpec, bundle: &ZkPdfBundle) -> Result<ZkPdfVer
     require(bundle.composition == spec.composition && spec.binding.len() == 32)?;
     require(
         !spec.windows.is_empty()
-            && spec.windows.len() <= 2
+            && spec.windows.len() <= crate::MAX_WINDOWS
             && spec.windows.iter().filter(|x| x.role == "content").count() == 1,
     )?;
     // The maximum-length document may have one additional empty final pair.

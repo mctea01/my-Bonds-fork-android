@@ -23,6 +23,57 @@ object PdfZkSupport {
         ref.num
     }
 
+    /**
+     * Object numbers of the streams that [page] shows besides its fonts, in the order they are found: its content
+     * streams, its thumbnail, every XObject of its resources (form XObjects with the XObjects and patterns of their
+     * own resources, images with their masks), tiling patterns, and the appearance streams of its annotations with
+     * their resources, except those of signature fields (the signature itself stays public). These are the streams whose data a masked file must not keep for a page that is not proven
+     * (p4-circuits.md 3.11). Only object structure is read, so it works on the masked file as well.
+     */
+    fun drawnStreams(pdf: PdfFile, page: PdfDict): List<Int> = zkPdfInput {
+        val out = LinkedHashSet<Int>()
+        fun stream(o: PdfObject?): PdfStream? {
+            val ref = o as? PdfRef ?: return null
+            if (ref.num in out) return null
+            val s = pdf.getObject(ref.num) as? PdfStream ?: return null
+            out.add(ref.num)
+            return s
+        }
+        lateinit var resources: (PdfObject?, Int) -> Unit
+        fun xobject(s: PdfStream, depth: Int) {
+            when (s.dict.name("Subtype")) {
+                "Form" -> resources(s.dict["Resources"], depth + 1)
+                "Image" -> { stream(s.dict["SMask"]); stream(s.dict["Mask"]) }
+            }
+        }
+        fun appearance(o: PdfObject?, depth: Int) {
+            stream(o)?.let { resources(it.dict["Resources"], depth + 1); return }
+            pdf.dict(o)?.entries?.values?.forEach { state -> stream(state)?.let { resources(it.dict["Resources"], depth + 1) } }
+        }
+        resources = fun(o: PdfObject?, depth: Int) {
+            require(depth <= 16) { "Resources nested too deeply" }
+            val r = pdf.dict(o) ?: return
+            pdf.dict(r["XObject"])?.entries?.values?.forEach { x -> stream(x)?.let { xobject(it, depth) } }
+            pdf.dict(r["Pattern"])?.entries?.values?.forEach { p -> stream(p)?.let { resources(it.dict["Resources"], depth + 1) } }
+        }
+        when (val contents = page["Contents"]) {
+            is PdfRef -> if (stream(contents) == null) pdf.array(contents)?.forEach { stream(it) }
+            is PdfArray -> contents.forEach { stream(it) }
+            else -> {}
+        }
+        stream(page["Thumb"])
+        resources(page["Resources"], 0)
+        pdf.array(page["Annots"])?.forEach { a ->
+            val annotation = pdf.dict(a) ?: return@forEach
+            // A signature field shows the signature, which the masked file keeps public anyway.
+            if (annotation.name("Subtype") == "Widget" &&
+                (annotation.name("FT") ?: pdf.dict(annotation["Parent"])?.name("FT")) == "Sig") return@forEach
+            val ap = pdf.dict(annotation["AP"]) ?: return@forEach
+            listOf("N", "R", "D").forEach { appearance(ap[it], 0) }
+        }
+        out.toList()
+    }
+
     fun streamExtent(pdf: PdfFile, num: Int): IntRange = zkPdfInput {
         require(!pdf.reconstructed)
         val offset = pdf.offsetOf(num) ?: error("Stream must be stored directly")

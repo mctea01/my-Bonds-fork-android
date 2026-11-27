@@ -140,7 +140,10 @@ estimated proof bytes and public input bytes. `AnchorInput.ordinal` is a require
 Zero or an unavailable occurrence fails with `anchor_ordinal` during both check
 and prove preparation, before asset access or progress callbacks. The independent
 verifier's ordinal/total policy is still mandatory. SHA segments follow the
-verifier's ordered windows. Inflate/lex segmentation is fixed by composition and
+verifier's ordered windows: one content window and up to 15 opaque windows per
+statement (`MAX_WINDOWS`, 16), so a multi-page document keeps the streams of the
+pages it does not prove private; each proven page is its own statement
+(docs/design/p4-circuits.md 3.13). Inflate/lex segmentation is fixed by composition and
 actual plaintext length; the latter remains private and is enforced by the
 circuits' full non-final segments and final/end checks.
 

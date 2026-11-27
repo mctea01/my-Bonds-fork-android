@@ -51,8 +51,8 @@ import kotlin.time.Instant
  * document's content unless asked. The PDF and the values never leave the machine and are never committed.
  *
  * Usage:
- * - `ZkPdfTemplateTool <pdf> --outline [--reveal 標籤1,標籤2 | --reveal @labels.txt]`: the text records of page 1 in
- *   order, each as its shape only (中 for a Han character, 9 for a digit, a/A for Latin letters, punctuation kept),
+ * - `ZkPdfTemplateTool <pdf> --outline [--page n] [--reveal 標籤1,標籤2 | --reveal @labels.txt]`: the text records of
+ *   page n (default 1) in order, each as its shape only (中 for a Han character, 9 for a digit, a/A for Latin letters, punctuation kept),
  *   whether its text is unique on the page, and the exact text of records equal to one of the --reveal candidates
  *   (a file holds one candidate per line, for shells that cannot pass Han characters). Use it to find labels.
  * - `ZkPdfTemplateTool <pdf> --template <json> [--show] [--prove <assets dir>] [--root <cer>]`: plans the template,
@@ -60,8 +60,9 @@ import kotlin.time.Instant
  *   and with --prove runs the real native proof and the full verifier (the signer's chain is trusted only if it
  *   reaches a root given with --root).
  *
- * Both list what stays public in the masked file the verifier receives: the images and forms of the page and the
- * shape of their text. A template must keep every image that carries personal data private, or not be published.
+ * Both list what stays public in the masked file the verifier receives: the images and forms of the proven pages and
+ * the shape of their text, and the windows that keep the other pages private. A template must keep every image that
+ * carries personal data private, or not be published.
  */
 object ZkPdfTemplateTool {
     @JvmStatic
@@ -74,18 +75,18 @@ object ZkPdfTemplateTool {
                 option("--template") != null -> runBlocking {
                     check(pdf, File(option("--template")!!), "--show" in args, option("--prove")?.let(::File), option("--root")?.let(::File))
                 }
-                "--outline" in args -> outline(pdf, labels(option("--reveal")))
+                "--outline" in args -> outline(pdf, labels(option("--reveal")), option("--page")?.toIntOrNull() ?: 1)
                 else -> usage()
             }
         } catch (e: PdfException) {
-            println("這份 PDF 不符合 zkPDF 的要求（單頁、只能有一個文件簽章、ByteRange 只空出簽章內容、單一內容串流、字型有 ToUnicode），" +
-                "或版型的私密圖片不存在")
+            println("這份 PDF 不符合 zkPDF 的要求（只能有一個文件簽章、ByteRange 只空出簽章內容、證明頁是單一內容串流、字型有 ToUnicode、" +
+                "其他頁要隱藏的串流不與其他串流共用 SHA-256 區塊），或版型的頁面、私密圖片不存在")
             exitProcess(1)
         }
     }
 
     private fun usage(): Nothing {
-        System.err.println("Usage: ZkPdfTemplateTool <pdf> --outline [--reveal a,b | --reveal @file] | --template <json> [--show] [--prove <assets dir>] [--root <cer>]")
+        System.err.println("Usage: ZkPdfTemplateTool <pdf> --outline [--page n] [--reveal a,b | --reveal @file] | --template <json> [--show] [--prove <assets dir>] [--root <cer>]")
         exitProcess(2)
     }
 
@@ -119,26 +120,28 @@ object ZkPdfTemplateTool {
 
     private fun nfkc(text: String): String = Normalizer.normalize(text, Normalizer.Form.NFKC)
 
-    private val probe = ZkPdfProfile("probe.outline/1", "outline", emptyList(),
-        listOf(ZkPdfFieldRule("x", "x", listOf("\u0000"), listOf("\u0001"), ZkPdfNormalize.TEXT)))
+    /** A template that proves only [page] (1-based), for listing that page. */
+    private fun probe(page: Int) = ZkPdfProfile("probe.outline/1", "outline", emptyList(),
+        listOf(ZkPdfFieldRule("x", "x", listOf("\u0000"), listOf("\u0001"), ZkPdfNormalize.TEXT, page)))
 
-    private fun texts(pdf: ByteArray, layout: ZkPdfLayout): List<Pair<String, String?>> {
+    private fun texts(pdf: ByteArray, layout: ZkPdfLayout, part: Int = 0): List<Pair<String, String?>> {
         val signed = PdfZkSupport.signedRevision(pdf, layout.byteRange)
-        val content = signed.decode(signed.getObject(layout.windows.first().objectNumber) as PdfStream)
-        return ZkPdfLexer.records(content).map { r -> r.font.decodeToString() to ZkPdfPlanner.decodeRecord(r, layout.decoders) }
+        val page = layout.pages[part]
+        val content = signed.decode(signed.getObject(layout.windows[page.windows.first()].objectNumber) as PdfStream)
+        return ZkPdfLexer.records(content).map { r -> r.font.decodeToString() to ZkPdfPlanner.decodeRecord(r, page.decoders) }
     }
 
-    private fun outline(pdf: ByteArray, reveal: List<String>) {
+    private fun outline(pdf: ByteArray, reveal: List<String>, page: Int) {
         val pages = runCatching { PdfTextExtractor.pages(PdfFile(pdf)).size }.getOrNull()
-        if (pages != null && pages != 1) println("這份 PDF 有 $pages 頁；zkPDF v1 只接受單頁文件，因為第 2 頁起會原樣留在查驗方收到的檔案中")
-        val layout = ZkPdfPlanner.layout(pdf, probe)
+        if (pages != null && pages != 1) println("這份 PDF 有 $pages 頁；以下列出第 $page 頁（--page 選擇其他頁），其他頁在查驗方收到的檔案中以私密視窗隱藏")
+        val layout = ZkPdfPlanner.layout(pdf, probe(page))
         val window = layout.windows.first()
         println("ByteRange ${layout.byteRange.joinToString(" ")}，內容視窗 ${window.length} bytes（${window.blocks} 區塊）" +
             if (window.keyStream != null) "，RC4 加密" else "")
         val texts = texts(pdf, layout)
         val counts = texts.groupingBy { it.second }.eachCount()
         val folded = reveal.map(::nfkc).toSet()
-        println("第 1 頁共 ${texts.size} 個文字運算子，${layout.decoders.size} 個字型")
+        println("第 $page 頁共 ${texts.size} 個文字運算子，${layout.decoders.size} 個字型")
         texts.forEachIndexed { i, (font, text) ->
             val unique = if (text != null && counts[text] == 1) "唯一" else "重複"
             val shown = when {
@@ -152,33 +155,53 @@ object ZkPdfTemplateTool {
         publicParts(pdf, layout)
     }
 
-    /** The images and forms that stay readable in the masked file, and the shape of the text those forms draw. */
+    /**
+     * The images and forms of each proven page that stay readable in the masked file, the shape of the text those
+     * forms draw, and the windows that keep the other pages private.
+     */
     private fun publicParts(pdf: ByteArray, layout: ZkPdfLayout) {
         val masked = ZkPdfProofs.masked(pdf.copyOf(layout.byteRange[2] + layout.byteRange[3]), layout)
         val file = PdfFile(masked)
         val private = layout.windows.filter { it.role == "opaque" }.map { it.objectNumber }.toSet()
-        val page = PdfTextExtractor.pages(file).first()
-        val xobjects = file.dict(file.dict(page["Resources"])?.get("XObject"))?.entries.orEmpty()
-        println("查驗方收到的遮蔽檔中，第 1 頁的圖片與表單：" + if (xobjects.isEmpty()) "無" else "")
-        for ((name, ref) in xobjects) {
-            val stream = file.resolveOrNull(ref) as? PdfStream ?: continue
-            val number = (ref as? PdfRef)?.num
-            when (stream.dict.name("Subtype")) {
-                "Image" -> {
-                    val width = (stream.dict["Width"] as? PdfNumber)?.int
-                    val height = (stream.dict["Height"] as? PdfNumber)?.int
-                    println("  圖片 $name（物件 $number，${width}×${height}，${stream.data.size} bytes）：" + if (number in private) "私密" else "公開")
+        val all = PdfTextExtractor.pages(file)
+        for (proven in layout.pages) {
+            val page = all[proven.page]
+            val xobjects = file.dict(file.dict(page["Resources"])?.get("XObject"))?.entries.orEmpty()
+            println("查驗方收到的遮蔽檔中，第 ${proven.page + 1} 頁的圖片與表單：" + if (xobjects.isEmpty()) "無" else "")
+            for ((name, ref) in xobjects) {
+                val stream = file.resolveOrNull(ref) as? PdfStream ?: continue
+                val number = (ref as? PdfRef)?.num
+                when (stream.dict.name("Subtype")) {
+                    "Image" -> {
+                        val width = (stream.dict["Width"] as? PdfNumber)?.int
+                        val height = (stream.dict["Height"] as? PdfNumber)?.int
+                        println("  圖片 $name（物件 $number，${width}×${height}，${stream.data.size} bytes）：" + if (number in private) "私密" else "公開")
+                    }
+                    "Form" -> {
+                        val drawn = PdfDict(page.entries + ("Contents" to PdfStream(PdfDict(emptyMap()), "/$name Do".encodeToByteArray())))
+                        val text = runCatching { PdfTextExtractor.pageText(file, drawn) }.getOrNull()
+                        val lines = text?.lines()?.map { it.trim() }?.filter { it.isNotEmpty() }
+                        println("  表單 $name（物件 $number）公開的文字：" + when {
+                            lines == null -> "無法解讀"
+                            lines.isEmpty() -> "無"
+                            else -> lines.joinToString(" / ") { shape(it) }
+                        })
+                    }
                 }
-                "Form" -> {
-                    val drawn = PdfDict(page.entries + ("Contents" to PdfStream(PdfDict(emptyMap()), "/$name Do".encodeToByteArray())))
-                    val text = runCatching { PdfTextExtractor.pageText(file, drawn) }.getOrNull()
-                    val lines = text?.lines()?.map { it.trim() }?.filter { it.isNotEmpty() }
-                    println("  表單 $name（物件 $number）公開的文字：" + when {
-                        lines == null -> "無法解讀"
-                        lines.isEmpty() -> "無"
-                        else -> lines.joinToString(" / ") { shape(it) }
-                    })
-                }
+            }
+        }
+        val proven = layout.pages.map { it.page }.toSet()
+        val others = all.indices.filter { it !in proven }
+        if (others.isNotEmpty()) {
+            val opaque = layout.windows.filter { it.role == "opaque" }
+            println("私密視窗（私密圖片與第 ${others.joinToString("、") { (it + 1).toString() }} 頁的串流）：" +
+                opaque.groupBy { it.objectNumber }.entries.joinToString("、") { (num, ws) ->
+                    "物件 $num ${ws.sumOf { it.length }} bytes（${ws.size} 個視窗）"
+                }.ifEmpty { "無" })
+            for (i in others) {
+                val text = runCatching { PdfTextExtractor.pageText(file, all[i]) }.getOrNull()
+                val left = text?.lines()?.map { it.trim() }?.filter { it.isNotEmpty() }.orEmpty()
+                println("  遮蔽後第 ${i + 1} 頁還讀得到的文字：" + if (left.isEmpty()) "無" else left.joinToString(" / ") { shape(it) })
             }
         }
     }
@@ -186,17 +209,19 @@ object ZkPdfTemplateTool {
     private suspend fun check(pdf: ByteArray, templateFile: File, show: Boolean, assets: File?, root: File?) {
         val profile = ZkPdfProfile.parse(DiwJson.parseToJsonElement(templateFile.readText(Charsets.UTF_8)) as JsonObject)
         val plan = ZkPdfPlanner.plan(pdf, profile)
-        println("版型 ${profile.id}「${profile.title}」：${plan.slots.size}/${profile.fields.size} 個欄位可證明，${plan.anchors.size} 個錨點，" +
+        println("版型 ${profile.id}「${profile.title}」：${plan.slots.size}/${profile.fields.size} 個欄位可證明，" +
+            "證明第 ${plan.parts.joinToString("、") { (it.page + 1).toString() }} 頁，${plan.parts.sumOf { it.anchors.size }} 個錨點，" +
             "${plan.layout.windows.size} 個私密視窗（${plan.layout.windows.joinToString("、") { "${it.role} ${it.length} bytes" }}）")
         profile.fields.forEach { f ->
             val slot = plan.slots.firstOrNull { it.claim == f.claim }
             when {
-                slot != null -> println("  可證明  ${f.label}（${f.claim}）：" + if (show) slot.value else shape(slot.value))
+                slot != null -> println("  可證明  第 ${f.page} 頁 ${f.label}（${f.claim}）：" + if (show) slot.value else shape(slot.value))
                 else -> println("  無法證明 ${f.label}（${f.claim}）：${plan.unavailable[f.claim]}")
             }
         }
+        if (plan.slots.isEmpty()) return
         publicParts(pdf, plan.layout)
-        if (assets == null || plan.slots.isEmpty()) return
+        if (assets == null) return
         val dir = Files.createTempDirectory("zkpdf-native").toFile()
         val client = HttpClient(Java)
         try {

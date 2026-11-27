@@ -52,13 +52,79 @@ class SyntheticDocumentsTest {
         }
     }
 
-    @Test fun secondPagesAreRefusedBecauseTheyWouldStayPublic() = runBlocking<Unit> {
+    @Test fun blankSecondPageNoLongerBlocksTheFirst() = runBlocking<Unit> {
         val profile = ZkPdfProfile("test.two-pages/1", "Synthetic", emptyList(),
             listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
-        assertEquals(listOf("name"), ZkPdfPlanner.plan(generated.getValue("student.pdf"), profile).slots.map { it.claim })
         val two = SyntheticDocuments.twoPages(fonts, material)
         assertEquals(2, PdfTextExtractor.pages(PdfFile(two)).size)
-        assertFailsWith<PdfException> { ZkPdfPlanner.plan(two, profile) }
+        val plan = ZkPdfPlanner.plan(two, profile)
+        assertEquals(listOf("name"), plan.slots.map { it.claim })
+        // The added page draws nothing, so nothing else needs to be hidden.
+        assertEquals(listOf("content"), plan.layout.windows.map { it.role })
+        assertEquals(2, plan.layout.pageCount)
+    }
+
+    /**
+     * Fields on pages 1 and 2 are proven as two statements; every stream page 3 draws (both content streams, the
+     * form XObject, the thumbnail and the annotation appearance) becomes an opaque window, so its text cannot be
+     * read from the masked file while the proven pages still can.
+     */
+    @Test fun fieldsOnSeveralPagesAndAHiddenPage() = runBlocking<Unit> {
+        val pdf = SyntheticDocuments.multiPage(fonts, material)
+        val file = PdfFile(pdf)
+        val pages = PdfTextExtractor.pages(file)
+        assertEquals(3, pages.size)
+        assertTrue(SyntheticDocuments.HIDDEN_LATIN in PdfTextExtractor.pageText(file, pages[2]))
+        val profile = ZkPdfProfile("test.multi-page/1", "Synthetic", listOf(ZkPdfImageRef(1, "Qr")),
+            listOf(
+                ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT),
+                ZkPdfFieldRule("documentNumber", "Document", listOf("證件號"), listOf("出生日期"), ZkPdfNormalize.COMPACT, page = 2),
+            ), test = true)
+        assertEquals(listOf(1, 2), profile.pages)
+        val plan = ZkPdfPlanner.plan(pdf, profile)
+        assertEquals(listOf(0, 1), plan.parts.map { it.page })
+        assertEquals(mapOf("name" to "林測試", "documentNumber" to "SYN0000001"), plan.slots.associate { it.claim to it.value })
+        assertEquals(listOf(0, 1), plan.slots.map { it.page })
+        val layout = plan.layout
+        val hidden = file.dict(pages[2]["Resources"])!!.let { r -> (file.dict(r["XObject"])!!["Fm"] as PdfRef).num }
+        val opaque = layout.windows.filter { it.role == "opaque" }.map { it.objectNumber }.toSet()
+        val page3 = PdfZkSupport.drawnStreams(file, pages[2]).toSet()
+        assertEquals(5, page3.size)
+        assertTrue(hidden in page3 && page3.all { it in opaque })
+        // The QR image of page 1 stays private as the template asks; page 2 has no images.
+        val qr = (file.dict(file.dict(pages[0]["Resources"])!!["XObject"])!!["Qr"] as PdfRef).num
+        assertTrue(qr in opaque)
+        assertEquals(opaque, page3 + qr)
+        // Each statement starts with its own content window and holds at most 16.
+        assertEquals(2, layout.pages.size)
+        layout.pages.forEach { p ->
+            assertEquals("content", layout.windows[p.windows.first()].role)
+            assertTrue(p.windows.size <= ZkPdfPlanner.MAX_STATEMENT_WINDOWS)
+        }
+        assertEquals(layout.windows.indices.toList(), layout.pages.flatMap { it.windows }.sorted())
+
+        val masked = ZkPdfProofs.masked(pdf.copyOf(layout.byteRange[2] + layout.byteRange[3]), layout)
+        val maskedFile = PdfFile(masked)
+        val maskedPages = PdfTextExtractor.pages(maskedFile)
+        val third = runCatching { PdfTextExtractor.pageText(maskedFile, maskedPages[2]) }.getOrDefault("")
+        assertFalse(SyntheticDocuments.HIDDEN_LATIN in third || SyntheticDocuments.HIDDEN_NAME in third)
+        val annotation = maskedFile.dict(maskedFile.array(maskedPages[2]["Annots"])!!.single())!!
+        val appearance = maskedFile.resolve(maskedFile.dict(annotation["AP"])!!["N"]) as PdfStream
+        assertTrue(appearance.data.all { it == 0.toByte() })
+
+        // A template for page 2 only hides page 1 as well, including its QR image.
+        val second = ZkPdfProfile("test.multi-page-2/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("documentNumber", "Document", listOf("證件號"), listOf("出生日期"), ZkPdfNormalize.COMPACT, page = 2)),
+            test = true)
+        val only = ZkPdfPlanner.plan(pdf, second)
+        assertEquals(listOf(1), only.parts.map { it.page })
+        val content1 = (pages[0]["Contents"] as PdfRef).num
+        assertTrue(only.layout.windows.filter { it.role == "opaque" }.map { it.objectNumber }.containsAll(listOf(content1, qr) + page3))
+
+        // A field on a page the file does not have is reported, not proven.
+        val missing = ZkPdfProfile("test.multi-page-9/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT, page = 9)), test = true)
+        assertTrue(ZkPdfPlanner.plan(pdf, missing).slots.isEmpty())
     }
 
     @Test fun everyPdfHasAnIntactSignatureFromTheTestPki() = runBlocking<Unit> {

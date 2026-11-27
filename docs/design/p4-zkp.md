@@ -10,7 +10,7 @@ P4 要讓錢包與查驗端都能產生與驗證四種零知識證據，全部�
 
 | 證據 | 證明什麼 | 證明系統 | 第一批對象 | 產生時機 |
 |---|---|---|---|---|
-| zkPDF | 某機關簽章的 PDF，第 1 頁在指定標籤之間寫著這些值（或值滿足述詞），不交出整份文件 | Noir 電路，Barretenberg UltraHonk（零知識版本） | 福州大學學籍（在學）證明；大陸國家移民管理局出入境記錄、通行證與居住證關聯證明 | 產生衍生憑證時做一次，之後每次出示重用 |
+| zkPDF | 某機關簽章的 PDF，指定的頁在指定標籤之間寫著這些值（或值滿足述詞），不交出整份文件 | Noir 電路，Barretenberg UltraHonk（零知識版本） | 福州大學學籍（在學）證明；大陸國家移民管理局出入境記錄、通行證與居住證關聯證明 | 產生衍生憑證時做一次，之後每次出示重用 |
 | zkTLS | 官方查驗頁在一次真實的 TLS 連線中回了這些內容 | TLSNotary（alpha.15，Proxy 模式為預設） | 學信網學籍在線驗證報告；台灣移民署入出國日期證明書查驗頁 | 出示當下由查驗方一起執行（即時模式） |
 | 年齡證明（OpenAC） | 隱藏的出生日期不晚於查驗方給的日期 | 引用 Bonds 的 OpenAC 年齡述詞（zkID `jwt_2k` 與 `show`，Spartan2）；是可替換的後端之一，也是第一個端對端測試 | TWDIW 有生日欄位的卡片、Bonds 身分證卡 | 出示當下 |
 | mdoc ZK（Longfellow） | ISO mdoc 的指定欄位（如 age\_over\_18）由發行端簽過，隱藏 MSO 與簽章 | Multipaz `multipaz-longfellow` | 測試發行端的 mDL、PID | 出示當下 |
@@ -108,18 +108,19 @@ zkPDF 證據放在 P3 的文件衍生憑證（vct `urn:diw-wallet:vct:document-d
 
 | 鍵 | 型別 | 說明 |
 |---|---|---|
-| `v` | 整數 | 固定 `1` |
+| `v` | 整數 | `1` 或 `2`（2026-11-27）：單頁文件證明第 1 頁時寫 `1`，其他情況寫 `2` |
 | `type` | 字串 | 固定 `ZkPdfProof` |
 | `profile` | 字串 | 版型描述檔識別碼與版本，例如 `cn.fzu.student-status/1`；查驗端只接受已釘選的版型（V1） |
 | `composition` | 字串 | `zkpdf-v1-phone` 或 `zkpdf-v1-desktop`；決定各段電路與驗證金鑰，金鑰的 SHA-256 由原生程式依 `native/circuits/VERSIONS` 釘選（V1） |
 | `binding` | 字串 | base64url(SHA-256(衍生憑證 `cnf.jwk` 的 RFC 7638 thumbprint 的 UTF-8)) |
 | `document` | 物件 | `{"size":<位元組數>,"zlib":"<base64url>"}`：遮蔽後的**簽章所涵蓋版本**（截到 ByteRange 結尾，不含之後的增量更新），私密區段以 0x00 填滿 |
-| `windows[]` | 陣列 | 依版面順序（內容視窗在前）：`{"role":"content"|"opaque","offset":<檔案位移>,"length":<位元組數>,"blocks":<SHA-256 區塊數>,"midOut":"hex32"}`。查驗端自己由遮蔽檔與版型重算位移、長度、區塊數、head、tail 與 midIn，只取 `midOut` 接續雜湊，並在 V8 比對證明輸出的 midOut |
+| `windows[]` | 陣列 | 全部陳述的視窗，依陳述與版面順序（每份陳述的內容視窗在前）：`{"role":"content"|"opaque","offset":<檔案位移>,"length":<位元組數>,"blocks":<SHA-256 區塊數>,"midOut":"hex32"}`。查驗端自己由遮蔽檔與版型重算位移、長度、區塊數、head、tail 與 midIn，只取 `midOut` 接續雜湊，並在 V8 比對證明輸出的 midOut |
 | `anchors[]` | 陣列 | `{"record":"<base64url，v2 紀錄>","ordinal":1,"total":1}`；查驗端以公開字型解碼並比對版型標籤（V7） |
 | `slots[]` | 陣列 | `{"claim":"<欄位名>","slot":<0 起連號>,"before":<錨點索引>,"after":<錨點索引>}` |
 | `predicates[]` | 陣列 | `{"kind":"DATE_LE"|"DATE_GE","claim":"<日期欄位>","cutoff":<YYYYMMDD>}`；述詞在產生時決定，查驗方依自己的政策判斷是否足夠 |
 | `segments[]` | 陣列 | `{"kind":"sha_content"|"sha_opaque"|"inflate0"|"inflate"|"lex"|"claim"|"pred","index":<int>,"proof":"<base64url>","publicInputs":"<base64url>"}`，即原生 `ZkPdfBundle`；查驗端以自己組的陳述交給 `zkpdfVerify`，公開輸入必須完全相符 |
 | `createdAt` | 字串 | ISO 8601 |
+| `pages[]` | 陣列 | 只在 `v` 為 `2`：每個證明的頁依頁序一項 `{"page":<從 1 起算>,"anchors":[…],"slots":[…],"predicates":[…],"segments":[…]}`，最多 4 項；這時頂層沒有 `anchors`、`slots`、`predicates`、`segments`。每頁是一份陳述（p4-circuits.md 第 3.13 節），slot 在各頁內從 0 起連號，欄位名稱在整份證據唯一 |
 
 `zkOpen:<欄位名>` 的 `src` 是兩個錨點之間各運算子的 v2 紀錄依序串接；承諾為 SHA-256("diw-zkpdf-claim-v1" ‖ u8 slot ‖ salt ‖ u16 長度 ‖ src 補零到 384 bytes)，與欄位段輸出相同（V10）。
 
@@ -184,7 +185,7 @@ OpenID4VP（2026-11-06）：查驗方在 DCQL 的 `claims` 列出要的欄位與
 
 | 證據 | 判定依據 | 信任等級 | 畫面說法 |
 |---|---|---|---|
-| zkPDF | 遮蔽套件中的 CMS 簽章與憑證鏈，用 `TrustRole.DOCUMENT` 判定（例：福州大學經國富安 GFA 為 T2；國家移民管理局經 BJCA Global Root CA3 為 T2）；ZK 證明只負責「內容在簽章範圍內」 | 簽署者的等級，不會是 T1；外層衍生憑證仍為 T3 | 「○○簽章的文件第 1 頁寫著……（零知識證明）」 |
+| zkPDF | 遮蔽套件中的 CMS 簽章與憑證鏈，用 `TrustRole.DOCUMENT` 判定（例：福州大學經國富安 GFA 為 T2；國家移民管理局經 BJCA Global Root CA3 為 T2）；ZK 證明只負責「內容在簽章範圍內」 | 簽署者的等級，不會是 T1；外層衍生憑證仍為 T3 | 「○○簽章的文件第 n 頁寫著……（零知識證明）」 |
 | zkTLS 即時 | 查驗方自己參與連線；伺服器憑證以系統憑證庫與內建公開根憑證驗證 | T2（`SYSTEM_ANCHOR`）；網站是否官方由描述檔的主機清單標示，不升為 T1 | 「查驗方剛剛向 ○○ 網站確認……（zkTLS，Proxy 模式）」 |
 | 網頁證明（自架 notary） | notary 的 DID | T3，查驗方信任該 DID 後為 T2 | 「由持有人控制的公證服務簽發」 |
 | 裝置證明紀錄 | Android 金鑰證明鏈、App 簽章憑證摘要、verified boot | T3 | 「裝置證明，不是零知識證明」 |
@@ -214,8 +215,8 @@ zkPDF 的完整洩漏分析見 p4-circuits.md 第 3.9 節。同意畫面要以�
 
 - 等級只決定「建議」，不禁止（D3）。開始證明前，`ZkCapability` 依電路的量測資料估計記憶體峰值、時間與下載大小，與裝置可用的記憶體、磁碟比較，算力不足時顯示選擇畫面：
   - 仍在這台裝置產生：寫明預估時間與記憶體、可能被系統中止、可隨時取消；
-  - 在電腦版產生後匯入（M4c，2026-11-06）：手機先建立衍生憑證要用的金鑰，匯出證明請求 `.zkpdfreq`（`ZkPdfRemote`：電腦版組合的 statement，綁定這把金鑰的 β，加上第 1 頁內容串流、私密影像與欄位 salt，不含整份 PDF），等待中的請求連同金鑰別名與 salt 存在檔案紀錄（`StoredFile.zkPdfPending`）；電腦版在「零知識證明」設定頁開啟請求、以本機電路產生並自行驗證後存成 `.zkpdf`；手機匯入時核對請求編號，從 PDF 與等待中的金鑰重建 statement，由本機驗證器驗證每一段並比對輸出與開啟資料，通過才以同一把金鑰發出衍生憑證；
-  - 送到自架主機產生（只有 zkPDF；在設定的「零知識證明」頁加入主機網址與至少 24 字元的存取權杖後才出現，加入後每次產生都讓持有人選擇）：主機收到的與 `.zkpdfreq` 相同（第 1 頁內容與私密影像，不是整份文件），以 `RiskConfirmDialog` 列出風險，勾選後才送出；主機 `tools/zk-prover-server` 以與電腦版相同的原生程式庫在無頭模式執行，一次一個證明、結果保留一小時、不記錄請求內容；手機優先要求電腦版組合（主機沒有時用手機版），回傳的證明在手機上先驗證再使用（`RemoteZkPdfEngine`）。這兩種方式都只需要手機有驗證金鑰與 CRS，缺少時先詢問下載；
+  - 在電腦版產生後匯入（M4c，2026-11-06）：手機先建立衍生憑證要用的金鑰，匯出證明請求 `.zkpdfreq`（`ZkPdfRemote`：電腦版組合的 statement，綁定這把金鑰的 β，加上所證明各頁的內容串流、私密影像、其他頁的私密串流與欄位 salt，不含整份 PDF；只有一頁時為版本 1，多頁時版本 2 以 `parts` 逐頁列出），等待中的請求連同金鑰別名與 salt 存在檔案紀錄（`StoredFile.zkPdfPending`）；電腦版在「零知識證明」設定頁開啟請求、以本機電路產生並自行驗證後存成 `.zkpdf`；手機匯入時核對請求編號，從 PDF 與等待中的金鑰重建 statement，由本機驗證器驗證每一段並比對輸出與開啟資料，通過才以同一把金鑰發出衍生憑證；
+  - 送到自架主機產生（只有 zkPDF；在設定的「零知識證明」頁加入主機網址與至少 24 字元的存取權杖後才出現，加入後每次產生都讓持有人選擇）：主機收到的與 `.zkpdfreq` 相同（所證明各頁的內容與私密串流，不是整份文件），以 `RiskConfirmDialog` 列出風險，勾選後才送出；主機 `tools/zk-prover-server` 以與電腦版相同的原生程式庫在無頭模式執行，一次一個證明、結果保留一小時、不記錄請求內容；手機優先要求電腦版組合（主機沒有時用手機版），回傳的證明在手機上先驗證再使用（`RemoteZkPdfEngine`）。這兩種方式都只需要手機有驗證金鑰與 CRS，缺少時先詢問下載；
   - 不加零知識證據：衍生憑證照一般方式產生，並寫明隱私較低。
 - 只有原生函式庫無法載入或架構不支援（沒有對應 ABI）時才無法在本機產生；畫面寫明原因，其他選項照常提供。驗證不受等級限制。
 - 證明在背景執行，可取消，逾時（預設 zkPDF 10 分鐘、OpenAC 3 分鐘、zkTLS 2 分鐘，使用者選擇「仍在這台裝置產生」時 zkPDF 改為 60 分鐘、其他 30 分鐘）就停止並保留可重試狀態。
