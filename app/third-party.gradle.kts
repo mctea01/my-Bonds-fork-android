@@ -95,8 +95,10 @@ fun archiveTexts(file: File): List<Pair<String, String>> {
     if (!file.isFile || file.extension !in setOf("jar", "aar")) return found
     ZipFile(file).use { zip ->
         for (entry in zip.entries()) {
-            if (entry.isDirectory || entry.size > 256 * 1024) continue
+            if (entry.isDirectory) continue
+            // The size limit is for the texts only: an AAR's classes.jar is usually larger and is always searched.
             if (archiveText.matches(entry.name)) {
+                if (entry.size > 256 * 1024) continue
                 found += entry.name to zip.getInputStream(entry).use { it.readBytes() }.toString(Charsets.UTF_8)
             } else if (file.extension == "aar" && entry.name == "classes.jar") {
                 ZipInputStream(zip.getInputStream(entry)).use { nested ->
