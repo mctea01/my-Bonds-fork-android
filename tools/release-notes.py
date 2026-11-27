@@ -11,7 +11,8 @@ updates folded away.
 
 With --play-out DIR it writes the Google Play release notes instead: DIR/whatsnew-<language> for every language of
 distribution/play/listing that has release_notes_header.txt, the same changes as the release body in at most 500
-characters, then a link to the release. --dir is not needed then.
+characters, then a link to the release. --dir is not needed then. --ref names the commit of the release when it is
+not the checked-out one, so a newer copy of this script can write the notes of an older release.
 
   python3 -I tools/release-notes.py --channel nightly --version 0.5.3 --tag nightly --play-out whatsnew
 """
@@ -38,16 +39,16 @@ def size(path):
     return f"{path.stat().st_size / 1_000_000:.0f} MB"
 
 
-def changes(channel):
+def changes(channel, ref="HEAD"):
     """(range description, compare base, lines of features, lines of dependency updates, truncated)."""
-    head = "HEAD^" if channel == "stable" else "HEAD"
+    head = f"{ref}^" if channel == "stable" else ref
     previous = git("describe", "--tags", "--abbrev=0", "--match", "v[0-9]*", head)
     if previous:
-        rev_range = f"{previous}..HEAD"
+        rev_range = f"{previous}..{ref}"
         title = f"{previous} 以來的變更"
     else:
-        base = git("log", "-G^version=", "-1", "--format=%H", "--", "version.properties")
-        rev_range = f"{base}^..HEAD" if base and git("rev-parse", "-q", "--verify", f"{base}^") else "HEAD"
+        base = git("log", "-G^version=", "-1", "--format=%H", ref, "--", "version.properties")
+        rev_range = f"{base}^..{ref}" if base and git("rev-parse", "-q", "--verify", f"{base}^") else ref
         title = "這個版本線以來的變更"
     log = git("log", "--no-merges", "--format=%an%x1f%s", rev_range)
     features, deps = [], []
@@ -92,7 +93,7 @@ def play_notes(language_dir, version, url, features):
 
 
 def write_play(a):
-    _, _, features, _, _ = changes(a.channel)
+    _, _, features, _, _ = changes(a.channel, a.ref)
     url = f"https://github.com/{a.repo}/releases/tag/{a.tag}"
     out = pathlib.Path(a.play_out)
     out.mkdir(parents=True, exist_ok=True)
@@ -110,6 +111,7 @@ def main():
     ap.add_argument("--tag", required=True)
     ap.add_argument("--dir")
     ap.add_argument("--play-out")
+    ap.add_argument("--ref", default="HEAD", help="commit of the release (default HEAD); the script itself may be newer")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "mctea01/my-Bonds-fork-android"))
     a = ap.parse_args()
     if a.play_out:
@@ -129,7 +131,7 @@ def main():
         return next((link(n) for n in names if n in files), None)
 
     out = []
-    sha = git("rev-parse", "--short", "HEAD")
+    sha = git("rev-parse", "--short", a.ref)
     if a.channel == "stable":
         out.append(f"**DIW MY WALLET {v}** 穩定版（commit `{sha}`）。")
     else:
@@ -192,7 +194,7 @@ def main():
         out += ["", "</details>", ""]
     out += ["每個檔案的 SHA-256 列在本頁最下方的檔案清單。", ""]
 
-    title, previous, features, deps, truncated = changes(a.channel)
+    title, previous, features, deps, truncated = changes(a.channel, a.ref)
     out += [f"## {title}", ""]
     out += features or ["- 沒有功能變更"]
     if truncated:

@@ -83,7 +83,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 檔案：`.github/workflows/google-play.yml`（代理無法推送 workflow，修改時由使用者手動貼上）；`github-actions-ci.yml` 的 release 建置把 R8 mapping 一起發佈到 nightly（`DIW-MY-WALLET-<版本>-mapping.txt`）。
 
-做法：從 GitHub Release（預設 `nightly`，也可以填穩定版標籤如 `v0.5.25`）下載 release AAB 與 mapping，切到該 Release 的 commit，以 `tools/release-notes.py --play-out` 產生各語言的版本資訊（第 5.4 節），再由 `tools/play-store.py publish` 經 Google Play Developer API 在同一個 edit 內上傳並提交。不重新建置，所以上傳的檔案與 GitHub Release 完全相同。`tools/play-store.py` 只用 Python 標準函式庫與 `openssl` 命令簽署服務帳戶的權杖，不依賴第三方 Action。
+做法：從 GitHub Release（預設 `nightly`，也可以填穩定版標籤如 `v0.5.25`）下載 release AAB 與 mapping，以 `tools/release-notes.py --play-out --ref <Release 的 commit>` 產生各語言的版本資訊（第 5.4 節），再由 `tools/play-store.py publish` 經 Google Play Developer API 在同一個 edit 內上傳並提交。不重新建置，所以上傳的檔案與 GitHub Release 完全相同。`tools/play-store.py` 只用 Python 標準函式庫與 `openssl` 命令簽署服務帳戶的權杖，不依賴第三方 Action。
 
 觸發方式：
 
@@ -157,7 +157,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 ### 5.4 版本資訊
 
-版本資訊與 GitHub Release 內文的變更清單相同，由 `tools/release-notes.py --play-out <資料夾>` 產生 `whatsnew-<語言>`：第一行是 `release_notes_header.txt`，接著是上一個穩定版以來的變更（commit 標題，去掉 PR 編號，相依套件更新不列），依序放到 500 字為止，放不下的以 `release_notes_more.txt` 註明項數，最後是 GitHub Release 頁的連結。commit 標題以撰寫時的語言列出（多數為繁體中文），`zh-CN` 經 OpenCC 轉換。workflow 每次上傳時以該 Release 的 commit 產生，所以與 Release 頁一致。
+版本資訊與 GitHub Release 內文的變更清單相同，由 `tools/release-notes.py --play-out <資料夾>` 產生 `whatsnew-<語言>`：第一行是 `release_notes_header.txt`，接著是上一個穩定版以來的變更（commit 標題，去掉 PR 編號，相依套件更新不列），依序放到 500 字為止，放不下的以 `release_notes_more.txt` 註明項數，最後是 GitHub Release 頁的連結。commit 標題以撰寫時的語言列出（多數為繁體中文），`zh-CN` 經 OpenCC 轉換。workflow 每次上傳時以 `--ref` 指定該 Release 的 commit 產生，所以與 Release 頁一致；工具與商店資訊用執行 workflow 的分支上的版本，因此比工具更早的 Release（例如 `v0.5.25`）也能上傳。
 
 Play 不接受商店資訊沒有的語言的版本資訊，`tools/play-store.py` 會略過這些語言並列出；先以 `listing` 建立該語言即可。
 
