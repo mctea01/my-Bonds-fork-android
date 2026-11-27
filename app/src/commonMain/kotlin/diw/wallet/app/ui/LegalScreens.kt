@@ -1,5 +1,6 @@
 package diw.wallet.app.ui
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -23,6 +24,7 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -34,12 +36,17 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.AnnotatedString
+import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextDecoration
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.text.withStyle
 import androidx.compose.ui.unit.dp
 import diw.wallet.app.LegalConsent
@@ -68,6 +75,7 @@ private fun statusLine(c: LegalConsent, i: Integration): String {
     val r = c.record(i)
     return when {
         c.enabled(i) -> LegalStrings.enabledLine(r!!.version, r.date)
+        (r == null || r.version != LegalTexts.statement(i).document.version) && !c.offered(i) -> LegalStrings.DEFERRED_LINE
         r == null || r.version != LegalTexts.statement(i).document.version -> LegalStrings.PENDING_LINE
         else -> LegalStrings.DISABLED_LINE
     }
@@ -128,14 +136,14 @@ private fun TranslationNote() {
 }
 
 @Composable
-private fun SummaryCard(points: List<String>) {
+private fun SummaryCard(points: List<String>, title: String? = null) {
     Card(
         Modifier.fillMaxWidth(),
         shape = RoundedCornerShape(Tokens.CardRadius),
         colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.primaryContainer),
     ) {
         Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(6.dp)) {
-            Text(LegalStrings.SUMMARY, style = MaterialTheme.typography.titleSmall)
+            Text(title?.let { "$it・" + LegalStrings.SUMMARY } ?: LegalStrings.SUMMARY, style = MaterialTheme.typography.titleSmall)
             points.forEach { Text(legalAnnotated("・$it"), style = MaterialTheme.typography.bodyMedium) }
         }
     }
@@ -155,51 +163,102 @@ private fun PageColumn(page: Any? = null, content: @Composable () -> Unit) {
     }
 }
 
-@Composable
-private fun CheckRow(text: String, checked: Boolean, onChange: (Boolean) -> Unit) {
-    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }, verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = checked, onCheckedChange = onChange)
-        Text(text, style = MaterialTheme.typography.bodyMedium)
-    }
+internal enum class OnboardingStep { WELCOME, CONSENT, DONE }
+
+/** The first-start page to show: welcome, then one page with every text still to decide, then the summary. */
+internal fun onboardingStep(consent: LegalConsent, welcomed: Boolean): OnboardingStep = when {
+    !welcomed -> OnboardingStep.WELCOME
+    !consent.complete -> OnboardingStep.CONSENT
+    else -> OnboardingStep.DONE
 }
 
-private enum class OnboardingStep { WELCOME, BASICS, STATEMENTS, DONE }
-
 /**
- * The first-start pages: welcome, the terms and the privacy policy (required), each integration statement (agree to
- * enable or decline to switch it off), and a summary. After an update only the texts with a new version are asked.
+ * The first-start pages: welcome with what will be asked, one page of check boxes (the terms and the privacy policy,
+ * required; each integration statement, optional) whose document names open the full texts, and a summary. After an
+ * update only the texts with a new version are asked.
  */
 @Composable
 fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
     val consent by model.legal.consent.collectAsState()
     val firstStart = remember { consent.terms == null && consent.privacy == null }
-    val total = remember { consent.undecided.size }
     var welcomed by rememberSaveable { mutableStateOf(!firstStart) }
-    val step = when {
-        !welcomed -> OnboardingStep.WELCOME
-        !consent.basicsAccepted -> OnboardingStep.BASICS
-        consent.undecided.isNotEmpty() -> OnboardingStep.STATEMENTS
-        else -> OnboardingStep.DONE
-    }
-    PageColumn(page = step to consent.undecided.firstOrNull()) {
-        when (step) {
-            OnboardingStep.WELCOME -> WelcomePage(model) { welcomed = true }
-            OnboardingStep.BASICS -> BasicsPage(updated = !firstStart) { model.legal.acceptBasics() }
-            OnboardingStep.STATEMENTS -> {
-                val i = consent.undecided.first()
-                val index = (total - consent.undecided.size + 1).coerceAtLeast(1)
-                StatementPage(
-                    model, i, LegalStrings.statementProgress(index, maxOf(total, index)),
-                    updated = consent.record(i) != null,
-                )
+    var reading by rememberSaveable { mutableStateOf<String?>(null) }
+    val step = onboardingStep(consent, welcomed)
+    val doc = reading?.let { LegalTexts.byId(it) }
+    // A document opened from the consent page covers it, so the page keeps its check boxes and scroll position.
+    Box(Modifier.fillMaxSize()) {
+        PageColumn(page = step) {
+            when (step) {
+                OnboardingStep.WELCOME -> WelcomePage(model, consent.undecided.size) { welcomed = true }
+                OnboardingStep.CONSENT -> ConsentPage(model, consent, updated = !firstStart) { reading = it.id }
+                OnboardingStep.DONE -> DonePage(consent, onDone) { model.platform.openBrowser(USER_GUIDE_URL) }
             }
-            OnboardingStep.DONE -> DonePage(consent, onDone) { model.platform.openBrowser(USER_GUIDE_URL) }
+        }
+        // The system Back gesture closes the document instead of leaving the app; the screen model has no part in it.
+        SystemBackHandler(enabled = doc != null) { reading = null }
+        if (doc != null) {
+            Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
+                PageColumn(page = doc.id) { DocumentReader(doc) { reading = null } }
+            }
         }
     }
 }
 
+/** Tells whether a text must be accepted (the terms and the privacy policy) or is optional (a service statement). */
 @Composable
-private fun WelcomePage(model: WalletModel, onStart: () -> Unit) {
+private fun KindPill(required: Boolean) {
+    val c = MaterialTheme.colorScheme
+    Text(
+        if (required) LegalStrings.REQUIRED else LegalStrings.OPTIONAL,
+        Modifier.background(if (required) c.primaryContainer else c.secondaryContainer, RoundedCornerShape(50))
+            .padding(horizontal = 10.dp, vertical = 4.dp),
+        style = MaterialTheme.typography.labelMedium,
+        color = if (required) c.onPrimaryContainer else c.onSecondaryContainer,
+    )
+}
+
+@Composable
+private fun KindLine(required: Boolean, text: String) {
+    Row(verticalAlignment = Alignment.Top, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        KindPill(required)
+        Text(text, style = MaterialTheme.typography.bodyMedium, modifier = Modifier.padding(top = 2.dp))
+    }
+}
+
+/**
+ * [template] with its %1$s, %2$s ... placeholders replaced by [links], each shown as an underlined link that calls its
+ * action (plain text when the action is null); the rest is plain text.
+ */
+internal fun linkedText(template: String, links: List<Pair<String, (() -> Unit)?>>, color: Color): AnnotatedString = buildAnnotatedString {
+    var at = 0
+    for (m in Regex("%(\\d+)\\\$s").findAll(template)) {
+        append(template.substring(at, m.range.first))
+        val link = links.getOrNull(m.groupValues[1].toInt() - 1)
+        val action = link?.second
+        if (link == null) {
+            append(m.value)
+        } else if (action == null) {
+            append(link.first)
+        } else {
+            val style = TextLinkStyles(SpanStyle(color = color, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline))
+            withLink(LinkAnnotation.Clickable(link.first, style) { action() }) { append(link.first) }
+        }
+        at = m.range.last + 1
+    }
+    append(template.substring(at))
+}
+
+/** A check box whose label holds links; tapping the label outside a link toggles the box. */
+@Composable
+private fun LinkedCheckRow(text: AnnotatedString, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(Modifier.fillMaxWidth().clickable { onChange(!checked) }, verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = checked, onCheckedChange = onChange)
+        Text(text, style = MaterialTheme.typography.bodyLarge, modifier = Modifier.padding(vertical = 8.dp))
+    }
+}
+
+@Composable
+private fun WelcomePage(model: WalletModel, optionalCount: Int, onStart: () -> Unit) {
     Icon(WalletIcons.Wallet, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(48.dp))
     LanguageChooser(model)
     Text(LegalStrings.WELCOME_TITLE, style = MaterialTheme.typography.headlineSmall)
@@ -210,31 +269,87 @@ private fun WelcomePage(model: WalletModel, onStart: () -> Unit) {
             Text(text, style = MaterialTheme.typography.bodyMedium)
         }
     }
+    Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius)) {
+        Column(Modifier.padding(14.dp), verticalArrangement = Arrangement.spacedBy(10.dp)) {
+            Text(LegalStrings.STEPS_TITLE, style = MaterialTheme.typography.titleSmall)
+            KindLine(true, LegalStrings.STEPS_REQUIRED)
+            if (optionalCount > 0) KindLine(false, LegalStrings.stepsOptional(optionalCount))
+        }
+    }
     Button(onClick = onStart, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.WELCOME_START) }
 }
 
+/**
+ * Every text still to decide on one page. The terms and the privacy policy share one required check box; each
+ * integration has its own optional one, unticked by default, and its key points open when it is ticked. A name in a
+ * label opens the full text ([onRead]). Continuing records all choices at once; an unticked integration is declined.
+ */
 @Composable
-private fun BasicsPage(updated: Boolean, onAccept: () -> Unit) {
-    var terms by rememberSaveable { mutableStateOf(false) }
-    var privacy by rememberSaveable { mutableStateOf(false) }
+private fun ConsentPage(model: WalletModel, consent: LegalConsent, updated: Boolean, onRead: (LegalDocument) -> Unit) {
+    val link = MaterialTheme.colorScheme.primary
+    val basicsNeeded = !consent.basicsAccepted
+    val services = remember(consent.undecided) { consent.undecided }
+    var basics by rememberSaveable { mutableStateOf(false) }
+    var chosen by rememberSaveable { mutableStateOf(emptyList<String>()) }
     var refused by remember { mutableStateOf(false) }
-    Text(LegalStrings.BASICS_TITLE, style = MaterialTheme.typography.headlineSmall)
-    Text(if (updated) LegalStrings.BASICS_UPDATED else LegalStrings.BASICS_TEXT, style = MaterialTheme.typography.bodyMedium)
+    Text(LegalStrings.CONSENT_TITLE, style = MaterialTheme.typography.headlineSmall)
+    if (basicsNeeded) Text(LegalStrings.CONSENT_TEXT, style = MaterialTheme.typography.bodyMedium)
     TranslationNote()
-    listOf(LegalTexts.terms, LegalTexts.privacy).forEach { doc ->
+    if (basicsNeeded) {
         HorizontalDivider()
-        Text(doc.title, style = MaterialTheme.typography.titleMedium)
-        Text(LegalStrings.versionLine(doc.version, doc.effectiveDate), style = MaterialTheme.typography.bodySmall)
-        SummaryCard(doc.summary)
-        CollapsibleSection(doc.title + LegalStrings.FULL_TEXT, key = "onboarding-" + doc.id) {
-            LegalDocumentView(doc, withSummary = false)
+        KindTitle(LegalStrings.BASICS_TITLE, required = true)
+        if (updated) Text(LegalStrings.BASICS_UPDATED, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+        listOf(LegalTexts.terms, LegalTexts.privacy).forEach { doc -> SummaryCard(doc.summary, doc.title) }
+        LinkedCheckRow(
+            linkedText(
+                LegalStrings.AGREE_BASICS,
+                listOf(LegalStrings.LINK_TERMS to { onRead(LegalTexts.terms) }, LegalStrings.LINK_PRIVACY to { onRead(LegalTexts.privacy) }),
+                link,
+            ),
+            basics,
+        ) { basics = it }
+    }
+    if (services.isNotEmpty()) {
+        HorizontalDivider()
+        KindTitle(LegalStrings.OPTIONAL_TITLE, required = false)
+        Text(LegalStrings.OPTIONAL_HINT, style = MaterialTheme.typography.bodySmall)
+        services.forEach { i ->
+            val st = LegalTexts.statement(i)
+            val on = i.id in chosen
+            var points by rememberSaveable(i.id) { mutableStateOf(false) }
+            Card(Modifier.fillMaxWidth(), shape = RoundedCornerShape(Tokens.CardRadius)) {
+                Column(Modifier.padding(start = 4.dp, end = 14.dp, top = 4.dp, bottom = 4.dp)) {
+                    LinkedCheckRow(
+                        linkedText(LegalStrings.AGREE_STATEMENT, listOf(st.document.title to { onRead(st.document) }), link),
+                        on,
+                    ) { chosen = if (it) chosen + i.id else chosen - i.id }
+                    Column(Modifier.padding(start = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            Icon(i.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
+                            Text(LegalStrings.purpose(i), style = MaterialTheme.typography.bodyMedium)
+                        }
+                        OperatorLine(model, i)
+                        if (consent.record(i) != null) {
+                            Text(LegalStrings.STATEMENTS_UPDATED, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
+                        }
+                        if (on || points) SummaryCard(st.document.summary)
+                        if (!on) {
+                            TextButton(onClick = { points = !points }) { Text(if (points) LegalStrings.HIDE_POINTS else LegalStrings.SHOW_POINTS) }
+                        }
+                    }
+                }
+            }
         }
     }
     HorizontalDivider()
-    CheckRow(LegalStrings.AGREE_TERMS, terms) { terms = it }
-    CheckRow(LegalStrings.AGREE_PRIVACY, privacy) { privacy = it }
-    Button(onClick = onAccept, enabled = terms && privacy, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.AGREE_CONTINUE) }
-    OutlinedButton(onClick = { refused = true }, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.DISAGREE) }
+    Button(
+        onClick = { model.legal.decideAll(basicsNeeded, services.associateWith { it.id in chosen }) },
+        enabled = basics || !basicsNeeded,
+        modifier = Modifier.fillMaxWidth(),
+    ) { Text(LegalStrings.AGREE_CONTINUE) }
+    if (basicsNeeded) {
+        OutlinedButton(onClick = { refused = true }, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.DISAGREE) }
+    }
     if (refused) {
         AlertDialog(
             onDismissRequest = { refused = false },
@@ -245,27 +360,37 @@ private fun BasicsPage(updated: Boolean, onAccept: () -> Unit) {
     }
 }
 
-/** One statement with its two choices; used on the first-start pages. */
+/** The full text of a document opened from a link on the consent page. */
 @Composable
-private fun StatementPage(model: WalletModel, i: Integration, progress: String, updated: Boolean) {
+private fun DocumentReader(doc: LegalDocument, onBack: () -> Unit) {
+    TextButton(onClick = onBack) { Text(LegalStrings.BACK) }
+    Text(doc.title, style = MaterialTheme.typography.headlineSmall)
+    LegalDocumentView(doc)
+    Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.BACK) }
+}
+
+/** The operator of [i] with a link to its own page about the service, opened in the browser. */
+@Composable
+private fun OperatorLine(model: WalletModel, i: Integration) {
     val st = LegalTexts.statement(i)
-    Text(progress, style = MaterialTheme.typography.labelLarge, color = MaterialTheme.colorScheme.primary)
-    Text(LegalStrings.STATEMENTS_INTRO, style = MaterialTheme.typography.bodySmall)
-    if (updated) Text(LegalStrings.STATEMENTS_UPDATED, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
-    StatementHeader(i)
-    LegalDocumentView(st.document)
-    Button(onClick = { model.legal.decide(i, true) }, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.ACCEPT_ENABLE) }
-    OutlinedButton(onClick = { model.legal.decide(i, false) }, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.DECLINE_DISABLE) }
+    Text(
+        linkedText(
+            LegalStrings.OPERATOR_WITH_LINK,
+            listOf(LegalStrings.operatorLine(st.operator) to null, LegalStrings.OPERATOR_SITE to { model.platform.openBrowser(i.operatorUrl) }),
+            MaterialTheme.colorScheme.primary,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+    )
 }
 
 @Composable
-private fun StatementHeader(i: Integration) {
+private fun StatementHeader(model: WalletModel, i: Integration) {
     val st = LegalTexts.statement(i)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Icon(i.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
         Column {
             Text(st.document.title, style = MaterialTheme.typography.titleLarge)
-            Text(LegalStrings.operatorLine(st.operator), style = MaterialTheme.typography.bodySmall)
+            OperatorLine(model, i)
         }
     }
 }
@@ -273,7 +398,10 @@ private fun StatementHeader(i: Integration) {
 @Composable
 private fun DonePage(consent: LegalConsent, onDone: () -> Unit, onGuide: () -> Unit) {
     Text(LegalStrings.DONE_TITLE, style = MaterialTheme.typography.headlineSmall)
-    Integration.entries.filter { it.available }.forEach { i ->
+    SectionTitle(LegalStrings.DONE_REQUIRED)
+    LabelValue(LegalStrings.BASICS_TITLE, LegalStrings.DONE_ACCEPTED)
+    SectionTitle(LegalStrings.DONE_OPTIONAL)
+    Integration.entries.filter { consent.offered(it) }.forEach { i ->
         LabelValue(LegalTexts.statement(i).name, statusLine(consent, i))
     }
     Text(LegalStrings.DONE_TEXT, style = MaterialTheme.typography.bodySmall)
@@ -285,14 +413,14 @@ private fun DonePage(consent: LegalConsent, onDone: () -> Unit, onGuide: () -> U
 @Composable
 fun LegalSettingsPage(model: WalletModel) {
     val consent by model.legal.consent.collectAsState()
-    SectionTitle(LegalStrings.SETTINGS_BASICS)
+    KindTitle(LegalStrings.SETTINGS_BASICS, required = true)
     listOf(LegalTexts.terms to consent.terms, LegalTexts.privacy to consent.privacy).forEach { (doc, r) ->
         ActionRow(WalletIcons.Document, doc.title, r?.let { LegalStrings.acceptedLine(it.version, it.date) } ?: LegalStrings.PENDING_LINE) {
             model.screen.value = Screen.LegalText(doc.id)
         }
     }
     HorizontalDivider()
-    SectionTitle(LegalStrings.STATEMENTS_TITLE)
+    KindTitle(LegalStrings.STATEMENTS_TITLE, required = false)
     Text(LegalStrings.SETTINGS_STATEMENTS_TEXT, style = MaterialTheme.typography.bodySmall)
     Integration.entries.filter { it.available }.forEach { i ->
         ActionRow(i.icon, LegalTexts.statement(i).name, statusLine(consent, i)) { model.screen.value = Screen.IntegrationStatement(i) }
@@ -305,6 +433,14 @@ fun LegalSettingsPage(model: WalletModel) {
     HorizontalDivider()
     SectionTitle(LegalStrings.SETTINGS_ONLINE)
     LabelValue("GitHub", LegalTexts.onlineFolder, small = true) { model.platform.openBrowser(LegalTexts.onlineFolder) }
+}
+
+@Composable
+private fun KindTitle(text: String, required: Boolean) {
+    Row(verticalAlignment = Alignment.Bottom, horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+        SectionTitle(text)
+        KindPill(required)
+    }
 }
 
 /** The settings summary line of the legal page. */
@@ -340,7 +476,7 @@ fun IntegrationStatementScreen(model: WalletModel, screen: Screen.IntegrationSta
         screen.pendingUri?.let {
             Text(LegalStrings.pendingLink(st.name), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         }
-        StatementHeader(i)
+        StatementHeader(model, i)
         Text(statusLine(consent, i), style = MaterialTheme.typography.titleSmall)
         LegalDocumentView(st.document)
         if (consent.enabled(i)) {
