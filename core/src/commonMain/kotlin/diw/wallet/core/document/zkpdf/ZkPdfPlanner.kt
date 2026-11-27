@@ -165,7 +165,10 @@ object ZkPdfPlanner {
         // What proven pages show stays public as in a single-page proof, except their thumbnails (a picture of the page).
         val thumbs = provenPages.mapNotNull { (pages[it]["Thumb"] as? PdfRef)?.num?.takeIf { n -> signed.getObject(n) is PdfStream } }
         val shown = provenPages.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet() - private - thumbs.toSet()
-        val hidden = (pages.indices.filter { it !in provenPages }.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) } + thumbs)
+        val others = pages.indices.filter { it !in provenPages }
+        // Masking clears stream data only: text kept in the annotation dictionaries of another page would stay public.
+        require(others.none { PdfZkSupport.keepsAnnotationText(signed, pages[it]) }) { "Annotation text on another page" }
+        val hidden = (others.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) } + thumbs)
             .distinct().filter { it !in shown && it !in private && PdfZkSupport.streamExtent(signed, it).count() > 0 }
         val parts = own.map { (content, images) ->
             ArrayList(window(signed, message, range, "content", content) + images.flatMap { window(signed, message, range, "opaque", it) })
@@ -284,9 +287,26 @@ object ZkPdfPlanner {
                 return@zkPdfInput ZkPdfPlan(profile, ZkPdfLayout(range, emptyList(), emptyList(), pageCount), emptyList(), emptyList(), unavailable)
             }
             val layout = layout(pdf, profile, password, provenPages = withPredicates.map { it.page })
+            sharedStreamsAreShown(signed, withPredicates.map { it.page }, layout)
             val private = layout.windows.map { pdf.copyOfRange(it.fileOffset, it.fileOffset + it.length) }
             ZkPdfPlan(profile, layout, private, withPredicates, unavailable)
         }
+
+    /**
+     * A stream that another page draws stays public when a proven page lists it in its resources (V5 cannot tell
+     * what the masked content of a proven page really draws). Only the holder can check that: every such stream must
+     * really be drawn by a proven page, or a private image or form of another page would reach the verifier.
+     */
+    private fun sharedStreamsAreShown(signed: PdfFile, proven: List<Int>, layout: ZkPdfLayout) {
+        val pages = PdfTextExtractor.pages(signed)
+        val others = pages.indices.filter { it !in proven }.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet()
+        if (others.isEmpty()) return
+        val listed = proven.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet()
+        val shared = (others intersect listed) - layout.windows.map { it.objectNumber }.toSet()
+        if (shared.isEmpty()) return
+        val used = proven.flatMap { PdfZkSupport.usedStreams(signed, pages[it]) }.toSet()
+        require(shared.all { it in used }) { "A stream of another page is only listed on a proven page" }
+    }
 
     /** The anchors and slots of the fields [rules] of one page, from the text [records] of its content stream. */
     private fun planPage(

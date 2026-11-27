@@ -66,12 +66,107 @@ object PdfZkSupport {
         pdf.array(page["Annots"])?.forEach { a ->
             val annotation = pdf.dict(a) ?: return@forEach
             // A signature field shows the signature, which the masked file keeps public anyway.
-            if (annotation.name("Subtype") == "Widget" &&
-                (annotation.name("FT") ?: pdf.dict(annotation["Parent"])?.name("FT")) == "Sig") return@forEach
+            if (isSignatureWidget(pdf, annotation)) return@forEach
             val ap = pdf.dict(annotation["AP"]) ?: return@forEach
             listOf("N", "R", "D").forEach { appearance(ap[it], 0) }
         }
         out.toList()
+    }
+
+    private fun isSignatureWidget(pdf: PdfFile, annotation: PdfDict) = annotation.name("Subtype") == "Widget" &&
+        (annotation.name("FT") ?: pdf.dict(annotation["Parent"])?.name("FT")) == "Sig"
+
+    /**
+     * Whether an annotation of [page] keeps text outside any stream: the text of a note or free-text annotation
+     * (`/Contents`, `/RC`), its author and subject (`/T`, `/Subj`), or the value of a form field (`/V`, on the widget
+     * or a parent field). Masking clears stream data only, so a page that is not proven must not have any; signature
+     * fields are left out as in [drawnStreams]. Only object structure is read, so it works on the masked file as well.
+     */
+    fun keepsAnnotationText(pdf: PdfFile, page: PdfDict): Boolean = zkPdfInput {
+        fun present(o: PdfObject?): Boolean = when (val v = pdf.resolve(o)) {
+            null, PdfNull -> false
+            is PdfString -> v.bytes.isNotEmpty()
+            is PdfName -> v.name != "Off"
+            is PdfArray -> v.isNotEmpty()
+            else -> true
+        }
+        pdf.array(page["Annots"])?.any { a ->
+            val annotation = pdf.dict(a) ?: return@any false
+            if (isSignatureWidget(pdf, annotation)) return@any false
+            val widget = annotation.name("Subtype") == "Widget"
+            val keys = if (widget) listOf("Contents") else listOf("Contents", "RC", "T", "Subj")
+            if (keys.any { present(annotation[it]) }) return@any true
+            if (!widget) return@any false
+            // A field value may sit on the widget or on any field above it.
+            var field: PdfDict? = annotation
+            var depth = 0
+            while (field != null && depth++ < 16) {
+                if (present(field["V"]) || present(field["RV"])) return@any true
+                field = pdf.dict(field["Parent"])
+            }
+            false
+        } ?: false
+    }
+
+    /**
+     * Object numbers of the streams that [page] really draws: the XObjects its content streams name with `Do` and the
+     * patterns they name with `scn`/`SCN`, recursively through the forms and tiling patterns drawn, the masks of the
+     * images drawn, and the appearance streams of its annotations with what they draw. Unlike [drawnStreams] it reads
+     * stream data, so it is for the holder, on the file before masking.
+     */
+    fun usedStreams(pdf: PdfFile, page: PdfDict): Set<Int> = zkPdfInput {
+        val out = HashSet<Int>()
+        lateinit var draw: (ByteArray, PdfDict?, Int) -> Unit
+        fun named(resources: PdfDict?, category: String, name: String, depth: Int) {
+            val o = pdf.dict(resources?.get(category))?.get(name) ?: return
+            val stream = pdf.resolve(o) as? PdfStream ?: return
+            val num = (o as? PdfRef)?.num
+            if (num != null && !out.add(num)) return
+            if (category == "XObject" && stream.dict.name("Subtype") == "Image") {
+                listOf("SMask", "Mask").forEach { key -> (stream.dict[key] as? PdfRef)?.num?.let { out.add(it) } }
+                return
+            }
+            if (category == "XObject" && stream.dict.name("Subtype") != "Form") return
+            draw(pdf.decode(stream), pdf.dict(stream.dict["Resources"]) ?: resources, depth + 1)
+        }
+        draw = fun(data: ByteArray, resources: PdfDict?, depth: Int) {
+            require(depth <= 16) { "Resources nested too deeply" }
+            val operands = ArrayList<Any>()
+            for (token in PdfTextExtractor.tokens(data)) {
+                if (token !is PdfTextExtractor.Keyword) { operands += token; continue }
+                val name = (operands.lastOrNull() as? PdfName)?.name
+                if (name != null) when (token.word) {
+                    "Do" -> named(resources, "XObject", name, depth)
+                    "scn", "SCN" -> named(resources, "Pattern", name, depth)
+                }
+                operands.clear()
+            }
+        }
+        val resources = pdf.dict(page["Resources"])
+        val contents = when (val c = page["Contents"]) {
+            is PdfRef -> (pdf.getObject(c.num) as? PdfStream)?.let { listOf(it) }
+                ?: pdf.array(c)?.mapNotNull { pdf.resolve(it) as? PdfStream }.orEmpty()
+            is PdfArray -> c.mapNotNull { pdf.resolve(it) as? PdfStream }
+            else -> emptyList()
+        }
+        contents.forEach { draw(pdf.decode(it), resources, 0) }
+        fun appearance(o: PdfObject?) {
+            val num = (o as? PdfRef)?.num ?: return
+            val stream = pdf.getObject(num) as? PdfStream ?: return
+            if (!out.add(num)) return
+            draw(pdf.decode(stream), pdf.dict(stream.dict["Resources"]), 1)
+        }
+        pdf.array(page["Annots"])?.forEach { a ->
+            val annotation = pdf.dict(a) ?: return@forEach
+            if (isSignatureWidget(pdf, annotation)) return@forEach
+            val ap = pdf.dict(annotation["AP"]) ?: return@forEach
+            listOf("N", "R", "D").forEach { key ->
+                val entry = ap[key]
+                if (pdf.resolve(entry) is PdfStream) appearance(entry)
+                else pdf.dict(entry)?.entries?.values?.forEach { appearance(it) }
+            }
+        }
+        out
     }
 
     fun streamExtent(pdf: PdfFile, num: Int): IntRange = zkPdfInput {

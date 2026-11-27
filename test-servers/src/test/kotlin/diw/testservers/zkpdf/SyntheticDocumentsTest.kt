@@ -127,6 +127,33 @@ class SyntheticDocumentsTest {
         assertTrue(ZkPdfPlanner.plan(pdf, missing).slots.isEmpty())
     }
 
+    /**
+     * Masking clears stream data only. Text kept in an annotation dictionary of a hidden page, and a stream of a
+     * hidden page that a proven page lists but does not draw, would reach the verifier, so the holder refuses both.
+     */
+    @Test fun hiddenPagesThatCannotStayPrivateAreRefused() = runBlocking<Unit> {
+        val profile = ZkPdfProfile("test.multi-page-1/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
+        val noted = SyntheticDocuments.multiPage(fonts, material, "annotation-text")
+        assertTrue(PdfZkSupport.keepsAnnotationText(PdfFile(noted), PdfTextExtractor.pages(PdfFile(noted))[2]))
+        assertFailsWith<PdfException> { ZkPdfPlanner.plan(noted, profile) }
+        val normal = SyntheticDocuments.multiPage(fonts, material)
+        assertFalse(PdfZkSupport.keepsAnnotationText(PdfFile(normal), PdfTextExtractor.pages(PdfFile(normal))[2]))
+
+        val unused = SyntheticDocuments.multiPage(fonts, material, "shared-unused")
+        assertFailsWith<PdfException> { ZkPdfPlanner.plan(unused, profile) }
+        // Drawn on the proven page as well, the form is public there anyway, and the rest of page 3 stays private.
+        val drawn = SyntheticDocuments.multiPage(fonts, material, "shared-drawn")
+        val file = PdfFile(drawn)
+        val pages = PdfTextExtractor.pages(file)
+        val form = (file.dict(file.dict(pages[2]["Resources"])!!["XObject"])!!["Fm"] as PdfRef).num
+        assertTrue(form in PdfZkSupport.usedStreams(file, pages[0]))
+        val plan = ZkPdfPlanner.plan(drawn, profile)
+        val opaque = plan.layout.windows.filter { it.role == "opaque" }.map { it.objectNumber }.toSet()
+        assertFalse(form in opaque)
+        assertEquals((PdfZkSupport.drawnStreams(file, pages[1]) + PdfZkSupport.drawnStreams(file, pages[2])).toSet() - form, opaque)
+    }
+
     @Test fun everyPdfHasAnIntactSignatureFromTheTestPki() = runBlocking<Unit> {
         val trust = trust()
         for ((name, bytes) in generated.filterKeys { it.endsWith(".pdf") }) {

@@ -162,16 +162,20 @@ object SyntheticDocuments {
     /**
      * Three pages, signed: the student page, the travel page, and a page that draws text through two content
      * streams, a form XObject, a thumbnail and a free-text annotation appearance. Not a committed fixture.
+     * [variant] `annotation-text` gives the annotation a text value; `shared-unused` lists the form of page 3 in the
+     * resources of page 1 as well, and `shared-drawn` also draws it on page 1.
      */
-    fun unsignedMultiPage(fonts: Fonts): ByteArray {
+    fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
         val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
         fun flate(text: String) = compressed(text.toByteArray())
         out.append("%PDF-1.7\n")
         out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R >>")
         out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R 12 0 R 14 0 R] /Count 3 >>")
-        out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << $fontResources /XObject << /Qr 10 0 R >> >> >>")
-        out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, false, "normal").toByteArray()))
+        val shared = if (variant.startsWith("shared")) " /Fm 17 0 R" else ""
+        out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << $fontResources /XObject << /Qr 10 0 R$shared >> >> >>")
+        val first = content(fonts, false, "normal") + if (variant == "shared-drawn") "q 1 0 0 1 0 -400 cm /Fm Do Q\n" else ""
+        out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(first.toByteArray()))
         shared(out, fonts)
         out.obj(12, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 13 0 R /Resources << $fontResources >> >>")
         out.stream(13, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, true, "normal").toByteArray()))
@@ -183,7 +187,8 @@ object SyntheticDocuments {
         out.stream(17, 0, form, flate("BT /FLatin 14 Tf 1 0 0 1 55 700 Tm ($HIDDEN_LATIN) Tj ET\n"))
         out.stream(18, 0, PdfDict.of("Width" to PdfNumber.of(1), "Height" to PdfNumber.of(1), "ColorSpace" to PdfName("DeviceGray"),
             "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(byteArrayOf(127)))
-        out.obj(19, 0, "<< /Type /Annot /Subtype /FreeText /Rect [55 600 300 630] /Contents () /DA (/FLatin 12 Tf 0 g) /AP << /N 20 0 R >> >>")
+        val note = if (variant == "annotation-text") HIDDEN_LATIN else ""
+        out.obj(19, 0, "<< /Type /Annot /Subtype /FreeText /Rect [55 600 300 630] /Contents ($note) /DA (/FLatin 12 Tf 0 g) /AP << /N 20 0 R >> >>")
         out.stream(20, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
             "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(245), PdfNumber.of(30)))),
             flate("BT /FLatin 12 Tf 2 10 Td ($HIDDEN_LATIN) Tj ET\n"))
@@ -191,7 +196,8 @@ object SyntheticDocuments {
         return out.bytes()
     }
 
-    suspend fun multiPage(fonts: Fonts, material: Material): ByteArray = signWithContainer(unsignedMultiPage(fonts), material.signer)
+    suspend fun multiPage(fonts: Fonts, material: Material, variant: String = "normal"): ByteArray =
+        signWithContainer(unsignedMultiPage(fonts, variant), material.signer)
 
     private fun encrypt(bytes: ByteArray): ByteArray = Loader.loadPDF(bytes).use { document ->
         document.documentId = FIXED_MILLIS

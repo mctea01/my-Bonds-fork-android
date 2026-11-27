@@ -221,7 +221,9 @@ fn other_pages_stay_private_in_up_to_fifteen_opaque_windows() {
     while input.windows.len() < crate::MAX_WINDOWS {
         input.windows.push(opaque(64, 0, 0));
     }
-    let prepared = prepare::prepare(&input, field::number(42)).unwrap();
+    // The layout does not depend on the salt.
+    let salt = field::fresh_salt().unwrap();
+    let prepared = prepare::prepare(&input, salt).unwrap();
     let sha: Vec<_> = prepared
         .stages
         .iter()
@@ -238,7 +240,7 @@ fn other_pages_stay_private_in_up_to_fifteen_opaque_windows() {
     assert!(verify::policy(&spec, &bundle).is_ok());
     let mut more = input.clone();
     more.windows.push(opaque(64, 0, 0));
-    assert!(prepare::prepare(&more, field::number(42)).err() == Some(Error("windows")));
+    assert!(prepare::prepare(&more, salt).err() == Some(Error("windows")));
     let mut wider = spec.clone();
     wider.windows.push(wider.windows[1].clone());
     assert!(verify::policy(&wider, &bundle).is_err());
