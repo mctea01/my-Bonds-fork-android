@@ -114,6 +114,32 @@ class PdfFile(val bytes: ByteArray, password: String = "") {
     /** True when the newest cross-reference data marks [num] as free. */
     fun isFree(num: Int): Boolean = entries[num] is Entry.Free
 
+    /** The object stream that holds the newest definition of [num], or null when it is stored directly or free. */
+    fun containerOf(num: Int): Int? = (entries[num] as? Entry.InStream)?.stream
+
+    /**
+     * The object defined at [offset] with its number, decrypted like the newest objects; used to read an earlier
+     * version of an object that a later update wrote again.
+     */
+    fun objectAt(offset: Int): Pair<Int, PdfObject> {
+        if (offset < 0 || offset >= bytes.size) throw PdfException("Object outside the file")
+        val (num, gen, obj) = PdfParser(bytes, offset, ::streamLength).parseIndirect()
+        return num to decryptObject(obj, num, gen)
+    }
+
+    /** Every object that object stream [s] holds, including those that later updates replaced. */
+    fun objectStreamContents(s: PdfStream): Map<Int, PdfObject> {
+        val data = decode(s)
+        val n = (s.dict["N"] as? PdfNumber)?.int ?: 0
+        val first = (s.dict["First"] as? PdfNumber)?.int ?: 0
+        val p = PdfParser(data)
+        val header = (0 until n).map { (p.parseObject() as PdfNumber).int to (p.parseObject() as PdfNumber).int }
+        return header.associate { (objNum, off) ->
+            p.pos = first + off
+            objNum to p.parseObject()
+        }
+    }
+
     private fun readAt(offset: Int, expectedNum: Int): PdfObject {
         if (offset < 0 || offset >= bytes.size) throw PdfException("Object $expectedNum outside the file")
         val p = PdfParser(bytes, offset, ::streamLength)
@@ -133,16 +159,7 @@ class PdfFile(val bytes: ByteArray, password: String = "") {
     }
 
     private fun objectStream(num: Int): Map<Int, PdfObject> = objStmCache.getOrPut(num) {
-        val s = getObject(num) as? PdfStream ?: throw PdfException("Object stream $num missing")
-        val data = decode(s)
-        val n = (s.dict["N"] as? PdfNumber)?.int ?: 0
-        val first = (s.dict["First"] as? PdfNumber)?.int ?: 0
-        val p = PdfParser(data)
-        val header = (0 until n).map { (p.parseObject() as PdfNumber).int to (p.parseObject() as PdfNumber).int }
-        header.associate { (objNum, off) ->
-            p.pos = first + off
-            objNum to p.parseObject()
-        }
+        objectStreamContents(getObject(num) as? PdfStream ?: throw PdfException("Object stream $num missing"))
     }
 
     // ---------------------------------------------------------------- cross-reference data

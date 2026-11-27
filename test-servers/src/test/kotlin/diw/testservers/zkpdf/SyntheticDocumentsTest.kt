@@ -141,8 +141,8 @@ class SyntheticDocumentsTest {
         assertFalse(PdfZkSupport.keepsAnnotationText(PdfFile(normal), PdfTextExtractor.pages(PdfFile(normal))[2]))
 
         // Actual text in the structure tree, in a marked-content property and a bookmark title to page 3 are
-        // dictionaries too, and so are ink coordinates and the reference to an attached file.
-        for (variant in listOf("structure", "marked-content", "outline", "ink", "attachment")) {
+        // dictionaries too, and so are ink coordinates, the reference to an attached file and a field default value.
+        for (variant in listOf("structure", "marked-content", "outline", "ink", "attachment", "field-default")) {
             val document = SyntheticDocuments.multiPage(fonts, material, variant)
             assertTrue(PdfZkSupport.keepsTextOutsideStreams(PdfFile(document), listOf(2)), variant)
             assertFailsWith<PdfException>(variant) { ZkPdfPlanner.plan(document, profile) }
@@ -169,7 +169,7 @@ class SyntheticDocumentsTest {
     @Test fun streamsUpdatedBeforeSigningAreRefused() = runBlocking<Unit> {
         val profile = ZkPdfProfile("test.multi-page-1/1", "Synthetic", emptyList(),
             listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
-        for (variant in listOf("rewritten", "replaced")) {
+        for (variant in listOf("rewritten", "replaced", "cleared")) {
             val pdf = SyntheticDocuments.updatedBeforeSigning(fonts, material, variant)
             val range = ZkPdfPlanner.signature(PdfFile(pdf)).byteRange.map { it.toInt() }.toIntArray()
             assertTrue(PdfZkSupport.keepsUnreachableStreams(PdfZkSupport.signedRevision(pdf, range)), variant)
@@ -178,6 +178,11 @@ class SyntheticDocumentsTest {
         val normal = SyntheticDocuments.multiPage(fonts, material)
         val range = ZkPdfPlanner.signature(PdfFile(normal)).byteRange.map { it.toInt() }.toIntArray()
         assertFalse(PdfZkSupport.keepsUnreachableStreams(PdfZkSupport.signedRevision(normal, range)))
+        // An earlier catalog that the newest one only extends keeps nothing private.
+        val catalog = SyntheticDocuments.updatedBeforeSigning(fonts, material, "catalog")
+        val catalogRange = ZkPdfPlanner.signature(PdfFile(catalog)).byteRange.map { it.toInt() }.toIntArray()
+        assertFalse(PdfZkSupport.keepsUnreachableStreams(PdfZkSupport.signedRevision(catalog, catalogRange)))
+        ZkPdfPlanner.plan(catalog, profile)
     }
 
     /** A soft mask group of a graphics state draws like a form, so a hidden page's group is private too. */

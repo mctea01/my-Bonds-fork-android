@@ -101,6 +101,9 @@ object PdfZkSupport {
     /** Further keys of a form field widget: the field type, flags and design, and the value (checked on its own). */
     private val WIDGET_KEYS = setOf("FT", "Ff", "Kids", "H", "MK", "MaxLen", "DR", "TU", "TM", "Opt", "DV", "V", "RV")
 
+    /** Field entries that hold what a form field shows or offers: its value, default value and options. */
+    private val FIELD_CONTENT = listOf("V", "RV", "DV", "Opt", "I")
+
     /** Page keys that only describe its boxes, resources and the objects that [drawnStreams] hides. */
     private val PAGE_KEYS = setOf(
         "Type", "Parent", "LastModified", "Resources", "MediaBox", "CropBox", "BleedBox", "TrimBox", "ArtBox",
@@ -120,7 +123,8 @@ object PdfZkSupport {
      * Whether [page] keeps content outside any stream: a page entry other than its boxes, resources and drawn objects
      * (for example page piece data, actions, article beads or viewports), or an annotation that does. For annotations
      * that is the text of a note or free-text annotation (`/Contents`, `/RC`), its author and subject (`/T`, `/Subj`),
-     * the value of a form field (`/V`, on the widget or a parent field), or any entry beyond placement, style and
+     * the value, default value or options of a form field (`/V`, `/RV`, `/DV`, `/Opt`, `/I`, on the widget or a
+     * parent field), or any entry beyond placement, style and
      * appearance: ink and polygon coordinates, quad points, attached files, sounds, movies, link targets, actions and
      * replies all keep what a page shows or points to in dictionaries. Masking clears stream data only, so a page
      * that is not proven must not have any; signature fields are left out as in [drawnStreams]. Only object
@@ -142,7 +146,7 @@ object PdfZkSupport {
             var field: PdfDict? = annotation
             var depth = 0
             while (field != null && depth++ < 16) {
-                if (present(field["V"]) || present(field["RV"])) return@any true
+                if (FIELD_CONTENT.any { present(field[it]) }) return@any true
                 field = pdf.dict(field["Parent"])
             }
             false
@@ -150,18 +154,45 @@ object PdfZkSupport {
     }
 
     /**
-     * Whether the signed revision keeps stream data that masking would not reach: an earlier version of a stream (an
-     * object written again by a later update; found as an object header outside the newest streams at an offset the
-     * cross-reference data no longer points to), or a stream that nothing in the document refers to. Masking clears
-     * the newest streams that pages draw, so such bytes would reach the verifier. Cross-reference and object streams
-     * are part of the structure and are exempt, and so is document metadata (XMP `/Type /Metadata`, public like the
-     * document information dictionary; signing tools often rewrite it).
+     * Whether the signed revision keeps content that masking would not reach: an earlier version of an object (one
+     * written again by a later update; found as an object header outside the newest streams at an offset the
+     * cross-reference data no longer points to, or in an object stream that no longer holds its newest version) that
+     * holds stream data, or text and coordinates that the newest version dropped or changed, or an object that nothing
+     * in the document refers to and that holds either. Masking clears only the newest streams that pages draw, so such
+     * bytes would reach the verifier. Numbers, names, booleans and references of earlier versions only place, style
+     * or link, and array items that remain are kept anyway. Cross-reference and object streams are part of the
+     * structure, and document metadata (XMP `/Type /Metadata` and the document information dictionary of any revision)
+     * is public; signing tools often rewrite both.
      */
     fun keepsUnreachableStreams(pdf: PdfFile): Boolean = zkPdfInput {
         fun structural(s: PdfStream) = s.dict.name("Type") in setOf("XRef", "ObjStm", "Metadata")
+        val infos = pdf.revisions.mapNotNull { (it.trailer["Info"] as? PdfRef)?.num }.toSet()
+        var budget = 2_000_000
+        // Whether earlier version [old] keeps nothing that the newest version [new] dropped or changed.
+        fun kept(old: PdfObject, new: PdfObject?, depth: Int): Boolean {
+            require(depth <= 64 && budget-- > 0) { "Document too large" }
+            if (old == new) return true
+            val resolved = if (new is PdfRef) pdf.resolveOrNull(new) else new
+            if (old == resolved) return true
+            return when (old) {
+                is PdfString -> old.bytes.isEmpty()
+                is PdfArray -> {
+                    val items = (resolved as? PdfArray)?.items?.toSet().orEmpty()
+                    old.items.all { it in items || it is PdfRef || it is PdfName || it is PdfNull }
+                }
+                is PdfDict -> {
+                    val current = resolved as? PdfDict
+                    old.entries.all { (key, value) -> kept(value, current?.get(key), depth + 1) }
+                }
+                is PdfStream -> structural(old)
+                else -> true
+            }
+        }
+        fun current(num: Int): PdfObject? = runCatching { pdf.getObject(num) }.getOrNull()
+        fun contents(s: PdfStream): Map<Int, PdfObject>? = runCatching { pdf.objectStreamContents(s) }.getOrNull()
         val bytes = pdf.bytes
-        val current = pdf.storedObjects.associateWith { runCatching { pdf.getObject(it) }.getOrNull() }
-        val extents = current.filterValues { it is PdfStream }.keys
+        val stored = pdf.storedObjects.associateWith { current(it) }
+        val extents = stored.filterValues { it is PdfStream }.keys
             .mapNotNull { runCatching { streamExtent(pdf, it) }.getOrNull() }.sortedBy { it.first }
         val starts = extents.map { it.first }
         fun insideStream(position: Int): Boolean {
@@ -174,27 +205,39 @@ object PdfZkSupport {
             if (insideStream(position)) continue
             val num = m.groupValues[1].toIntOrNull() ?: continue
             if (pdf.offsetOf(num) == position) continue
-            val end = text.indexOf("endobj", m.range.last).let { if (it < 0) bytes.size else it }
-            if (text.indexOf("stream", m.range.last + 1).let { it < 0 || it >= end }) continue
-            val old = runCatching {
-                PdfParser(bytes, position) { d -> (pdf.resolve(d["Length"]) as? PdfNumber)?.int ?: 0 }.parseIndirect().third
-            }.getOrNull()
-            if (old !is PdfStream || !structural(old)) return@zkPdfInput true
+            val (found, old) = runCatching { pdf.objectAt(position) }.getOrNull() ?: return@zkPdfInput true
+            if (found != num) return@zkPdfInput true
+            if (num in infos) continue
+            if (old is PdfStream && old.dict.name("Type") == "ObjStm") {
+                val held = contents(old) ?: return@zkPdfInput true
+                if (held.any { (n, o) -> n !in infos && !kept(o, current(n), 0) }) return@zkPdfInput true
+            } else if (!kept(old, current(num), 0)) return@zkPdfInput true
+        }
+        // Earlier versions kept in object streams that are still listed, and the objects they still hold.
+        val compressed = HashMap<Int, PdfObject>()
+        for ((num, s) in stored) {
+            if (s !is PdfStream || s.dict.name("Type") != "ObjStm") continue
+            val held = contents(s) ?: return@zkPdfInput true
+            for ((n, o) in held) {
+                if (pdf.containerOf(n) == num) compressed[n] = o
+                else if (n !in infos && !kept(o, current(n), 0)) return@zkPdfInput true
+            }
         }
         val reached = HashSet<Int>()
         val pending = ArrayList<PdfObject>(pdf.trailer.entries.values)
-        var budget = 2_000_000
         while (pending.isNotEmpty()) {
             require(budget-- > 0) { "Document too large" }
             when (val o = pending.removeAt(pending.size - 1)) {
-                is PdfRef -> if (reached.add(o.num)) runCatching { pdf.getObject(o.num) }.getOrNull()?.let { pending.add(it) }
+                is PdfRef -> if (reached.add(o.num)) current(o.num)?.let { pending.add(it) }
                 is PdfDict -> pending.addAll(o.entries.values)
                 is PdfArray -> pending.addAll(o.items)
                 is PdfStream -> pending.addAll(o.dict.entries.values)
                 else -> {}
             }
         }
-        current.any { (num, o) -> num !in reached && o is PdfStream && !structural(o) }
+        (stored + compressed).any { (num, o) ->
+            num !in reached && num !in infos && o != null && !(o is PdfStream && structural(o)) && !kept(o, null, 0)
+        }
     }
 
     /** Object numbers of the page objects, in the order of [PdfTextExtractor.pages]. */

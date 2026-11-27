@@ -167,7 +167,8 @@ object SyntheticDocuments {
      * page 3 whose soft mask group draws text; `structure` adds a structure element with actual text, and `outline`
      * a bookmark to page 3; `shading` paints page 3 with a shading and a shading pattern whose stream data carries
      * text, and `marked-content` gives page 3 a marked-content property with actual text; `ink` adds an ink
-     * annotation whose coordinates stay in its dictionary, and `attachment` a file attachment annotation.
+     * annotation whose coordinates stay in its dictionary, `attachment` a file attachment annotation, and
+     * `field-default` a text field whose default value is text.
      */
     fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
@@ -197,7 +198,7 @@ object SyntheticDocuments {
             marked -> " /Properties << /Mc << /ActualText ($HIDDEN_LATIN) >> >>"
             else -> ""
         }
-        val annotation = if (variant == "ink" || variant == "attachment") " 21 0 R" else ""
+        val annotation = if (variant in setOf("ink", "attachment", "field-default")) " 21 0 R" else ""
         out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R$annotation] /Resources << $fontResources /XObject << /Fm 17 0 R >>$states >> >>")
         out.stream(15, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("BT /FHanzi 14 Tf 1 0 0 1 55 790 Tm <${fonts.encode(HIDDEN_NAME)}> Tj ET\n"))
         val painted = when {
@@ -234,6 +235,7 @@ object SyntheticDocuments {
             out.stream(23, 0, mesh(), compressed(HIDDEN_LATIN.reversed().toByteArray()))
         }
         if (variant == "ink") out.obj(21, 0, "<< /Type /Annot /Subtype /Ink /Rect [55 400 300 430] /InkList [[60 405 80 425 100 405]] >>")
+        if (variant == "field-default") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Tx /T (f) /Rect [55 400 300 430] /DV ($HIDDEN_LATIN) >>")
         if (variant == "attachment") {
             out.obj(21, 0, "<< /Type /Annot /Subtype /FileAttachment /Rect [55 400 70 415] /FS << /Type /Filespec /F (a.txt) /EF << /F 22 0 R >> >> >>")
             out.stream(22, 0, PdfDict.of("Type" to PdfName("EmbeddedFile"), "Filter" to PdfName("FlateDecode")), compressed(HIDDEN_LATIN.toByteArray()))
@@ -246,7 +248,7 @@ object SyntheticDocuments {
             out.obj(25, 0, "<< /Type /Outlines /First 26 0 R /Last 26 0 R /Count 1 >>")
             out.obj(26, 0, "<< /Title ($HIDDEN_LATIN) /Parent 25 0 R /Dest [14 0 R /Fit] >>")
         }
-        val size = when (variant) { "ink" -> 22; "soft-mask", "attachment" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
+        val size = when (variant) { "ink", "field-default" -> 22; "soft-mask", "attachment" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
         out.xrefTable(PdfDict.of("Size" to PdfNumber.of(size), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }
@@ -257,10 +259,12 @@ object SyntheticDocuments {
     /**
      * The three pages with an update before signing that changes page 3: `rewritten` writes its first content stream
      * again under the same object number, `replaced` gives the page a new content stream and leaves the old one
-     * unreferenced. Either way the earlier text stays in the signed bytes.
+     * unreferenced. Either way the earlier text stays in the signed bytes. `cleared` starts from an annotation with
+     * text on page 3 and writes it again without, which keeps the text in the earlier version as well; `catalog`
+     * writes the catalog again with one more entry, which keeps nothing that the newest version lacks.
      */
     suspend fun updatedBeforeSigning(fonts: Fonts, material: Material, variant: String): ByteArray {
-        val base = unsignedMultiPage(fonts)
+        val base = unsignedMultiPage(fonts, if (variant == "cleared") "annotation-text" else "normal")
         val latin = String(CharArray(base.size) { (base[it].toInt() and 255).toChar() })
         val previous = Regex("startxref\\s+(\\d+)").findAll(latin).last().groupValues[1]
         val id = Regex("/ID\\s*(\\[[^\\]]*\\])").findAll(latin).last().groupValues[1]
@@ -273,14 +277,19 @@ object SyntheticDocuments {
         val data = compressed("BT /FLatin 14 Tf 1 0 0 1 55 790 Tm (Updated) Tj ET\n".toByteArray())
         val stream = "<< /Length ${data.size} /Filter /FlateDecode >>\nstream\n".toByteArray() + data + "\nendstream".toByteArray()
         val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
-        if (variant == "rewritten") obj(15, stream) else {
+        when (variant) {
+            "rewritten" -> obj(15, stream)
+            "cleared" -> obj(19, "<< /Type /Annot /Subtype /FreeText /Rect [55 600 300 630] /Contents () /DA (/FLatin 12 Tf 0 g) /AP << /N 20 0 R >> >>".toByteArray())
+            "catalog" -> obj(1, "<< /Type /Catalog /Pages 2 0 R /PageMode /UseNone >>".toByteArray())
+            else -> {
             obj(21, stream)
             obj(14, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [21 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >> >> >>".toByteArray())
+            }
         }
         val xref = out.size()
         out.write("xref\n0 1\n0000000000 65535 f \n".toByteArray())
         for ((num, offset) in offsets) out.write("$num 1\n${"%010d".format(offset)} 00000 n \n".toByteArray())
-        val size = if (variant == "rewritten") 21 else 22
+        val size = if (variant == "replaced") 22 else 21
         out.write("trailer\n<< /Size $size /Root 1 0 R /Prev $previous /ID $id >>\nstartxref\n$xref\n%%EOF\n".toByteArray())
         return signWithContainer(out.toByteArray(), material.signer)
     }
