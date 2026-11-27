@@ -50,11 +50,14 @@ App 內也能打開這份教程：右上角齒輪進入「設定」，第一列�
 
 ### Linux
 
+下載 `DIW-MY-WALLET-<版本>-x86_64.AppImage`，加上執行權限後直接執行，不需要安裝，也不需要另外安裝 Java：
+
 ```bash
-sudo apt install ./diw-my-wallet_<版本>_amd64.deb
+chmod +x DIW-MY-WALLET-<版本>-x86_64.AppImage
+./DIW-MY-WALLET-<版本>-x86_64.AppImage
 ```
 
-安裝後從應用程式選單開啟。較舊的系統或處理器會自動改用相容版的零知識元件，部分零知識功能（zkPDF、zkPassport）無法使用，見[專案現況](../STATUS.md#35-平台)。
+多數桌面也可以在檔案管理員的「內容」勾選「允許執行」後連按兩下開啟。不需要 FUSE：每個新版本第一次啟動時會先把程式解到 `~/.cache/diw-appimage`，要多等幾秒，之後就直接啟動；不再使用的舊版本兩週後自動清除。之前裝過 `.deb` 版的話，可以用 `sudo apt remove diw-my-wallet` 移除，證件與文件存在使用者資料夾，不會一起刪除。較舊的系統或處理器會自動改用相容版的零知識元件，部分零知識功能（zkPDF、zkPassport）無法使用，見[專案現況](../STATUS.md#35-平台)。
 
 ### macOS 與其他系統
 
@@ -77,7 +80,7 @@ cd DIW-MY-WALLET-<版本>-linux-x64-native
 ./diw-desktop
 ```
 
-Linux 原生版需要與建置主機（GitHub 的 ubuntu-latest）同樣新或更新的系統；較舊的系統請改用 `.deb` 或 `.jar`。
+Linux 原生版需要與建置主機（GitHub 的 ubuntu-latest）同樣新或更新的系統；較舊的系統請改用 `.AppImage` 或 `.jar`。
 
 ## 2. 第一次啟動
 

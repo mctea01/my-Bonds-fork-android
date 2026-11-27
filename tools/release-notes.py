@@ -83,7 +83,12 @@ def main():
         ("Android 模擬器、x86 平板", link(f"DIW-MY-WALLET-{v}-x86_64.apk"), ""),
         ("不確定是哪一種 Android", link(f"DIW-MY-WALLET-{v}.apk"), "通用版，含所有架構，檔案較大"),
         ("Windows 10、11", first(*[n for n in files if n.endswith(".msi")]), "安裝檔，內含 Java，不需要系統管理員權限"),
-        ("Linux（Debian、Ubuntu）", first(*[n for n in files if n.endswith(".deb")]), "`sudo apt install ./檔名.deb`，內含 Java"),
+        ("Linux x86_64", first(*[n for n in files if n.endswith(".AppImage")]),
+         "AppImage，內含 Java，不需安裝：`chmod +x 檔名.AppImage` 後執行"),
+        # Releases built before the AppImage step carry a .deb instead; it is listed only when there is no AppImage.
+        ("Linux（Debian、Ubuntu）",
+         None if any(n.endswith(".AppImage") for n in files) else first(*[n for n in files if n.endswith(".deb")]),
+         "`sudo apt install ./檔名.deb`，內含 Java"),
         ("macOS（Apple 晶片）", first(*[n for n in files if n.startswith("DIW-MY-WALLET-macos-")]),
          "先安裝 Java 21，以 `java -jar 檔名.jar` 執行"),
         ("其他已安裝 Java 21 的電腦",

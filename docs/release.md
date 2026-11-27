@@ -20,7 +20,7 @@
 | `DIW-MY-WALLET-<版本>.aab`、`DIW-MY-WALLET-<版本>-debug.aab` | release／debug App Bundle，供 Google Play 或 bundletool 使用，不能直接安裝 |
 | `DIW-MY-WALLET-<版本>-mapping.txt` | release 版的 R8 mapping，與 AAB 一起上傳 Google Play 以還原當機記錄 |
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
-| `diw-my-wallet_<版本>_amd64.deb` | Linux 安裝檔（同上） |
+| `DIW-MY-WALLET-<版本>-x86_64.AppImage` | Linux 版（同上，ProGuard 最佳化並內含 Java）：單一檔案，加上執行權限即可執行，不需安裝；CI 以 `:app:createReleaseDistributable` 的 jpackage 應用程式映像，由 `tools/linux-appimage.sh` 接上本專案自己的 AppImage 執行階段（`tools/appimage-runtime`，Rust、靜態 musl，以純 Rust 讀 SquashFS 與 gzip）與 SquashFS 組成，檔頭有 AppImage type 2 的 `AI 02`；官方 type2-runtime 靜態連結 LGPL 的 libfuse，不符合不散布 GPL 類原生程式碼的規則，所以不用。這個執行階段不掛載映像：第一次啟動把內容解到 `~/.cache/diw-appimage/<摘要>/`（多花幾秒），之後直接從那裡執行，不需要 FUSE；14 天沒用到的舊版快取由下次啟動清掉。CI 以 `--appimage-extract-and-run`（相容選項，行為相同）實際啟動檢查。2026-11-27 起取代 `.deb` |
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
 | `DIW-MY-WALLET-<版本>-windows-x64-native.zip`、`-linux-x64-native.tar.gz` | 實驗的 GraalVM 原生桌面版（不需要 Java），`desktop-native` 工作成功時才有，見下方 |
 | `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
@@ -31,7 +31,7 @@ Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，預設
 
 零知識原生函式庫在 CI 由獨立工作建置：`native-android`（Linux，每個 ABI 一個工作）、`native-linux`（Linux 桌面，也供測試使用）、`native-windows`（在 Linux 以 llvm-mingw 交叉建置 Windows 版）、`native-desktop`（macOS）。它們只上傳最終函式庫（`zk-native-android-<abi>`、`zk-native-<os>` Artifacts，保留 3 天），`test`、`build`、`desktop` 下載回 `native/dist` 並以 `DIW_ZK_NATIVE=prebuilt` 執行 Gradle，不再安裝 Rust、NDK 編譯工具或建置 Barretenberg。發佈只收 `android`、`windows`、`linux`、`macos`、`zk-templates` 這幾個 Artifacts，原生函式庫不會出現在 nightly。
 
-桌面版原生執行檔（實驗）由 `desktop-native` 工作以 GraalVM Community 25 和 `tools/desktop-native.sh` 建置（Linux、Windows；macOS 的 GraalVM 視窗支援無法載入 libawt，不建置），先跑執行檔的 `--self-check` 與定時啟動視窗，並以 java.awt.Robot 在視窗裡打字、右鍵、貼上與解鎖（`DIW_EXERCISE_INPUT`），通過後上傳為 `desktop-native-<os>` Artifact（保留 14 天）；Robot 的輸入沒送到視窗但經 AWT 事件佇列送入的點擊與按鍵能進入欄位時（結束碼 4），只發警告並照常上傳，輸入改由實機確認。這個工作 `continue-on-error`，失敗不影響其他工作；成功時 `release` 工作把兩個資料夾各打包成一個檔案（最上層一個同名資料夾），附在 nightly 與穩定版：`DIW-MY-WALLET-<版本>-windows-x64-native.zip`、`DIW-MY-WALLET-<版本>-linux-x64-native.tar.gz`（Artifact 不保留執行權限，打包時重設），Release 頁的下載指引把它們列在「實驗版」摺疊區；失敗時那次的 Release 就沒有這兩個檔案。原生版不設堆積上限，預設最多使用實體記憶體的 80%。桌面版（JVM 與原生）結束程式的錯誤會寫到資料夾的 `logs/error-*.txt`（Windows 在 `%APPDATA%\DIW-MY-WALLET\logs`），對話框會顯示檔案位置。
+桌面版原生執行檔（實驗）由 `desktop-native` 工作以 GraalVM Community 25 和 `tools/desktop-native.sh` 建置（Linux、Windows；macOS 的 GraalVM 視窗支援無法載入 libawt，不建置），先跑執行檔的 `--self-check` 與定時啟動視窗，並以 java.awt.Robot 在視窗裡打字、右鍵、貼上與解鎖（`DIW_EXERCISE_INPUT`），通過後上傳為 `desktop-native-<os>` Artifact（保留 14 天，內容就是發佈的資料夾：執行檔、它旁邊的程式庫、`LICENSE` 與 `NOTICE`）；自我檢查結果與冒煙執行的 stderr（`self-check.txt`、`self-check-jvm.txt`、`smoke-stderr.txt`）另存為 `native-check-<os>` Artifact，失敗時也上傳，不放進發佈的壓縮檔。Windows 執行檔在 native-image 連結時加入版本資源與圖示（`rc.exe` 編譯、`-H:NativeLinkerOption` 連結）：檔案描述與產品名稱「DIW MY WALLET」、檔案版本為 `主.次.修訂.0`、產品版本為 `tools/app-version.sh` 的完整版本（PR 建置帶 `-pr<編號>`，並標為預先發行）、著作權取 `NOTICE` 的第一行 Copyright 加上 Apache License 2.0、圖示為 `app/icons/app-icon.ico`；建置後以 Windows 讀回版本與圖示，不符即失敗；Robot 的輸入沒送到視窗但經 AWT 事件佇列送入的點擊與按鍵能進入欄位時（結束碼 4），只發警告並照常上傳，輸入改由實機確認。這個工作 `continue-on-error`，失敗不影響其他工作；成功時 `release` 工作把兩個資料夾各打包成一個檔案（最上層一個同名資料夾），附在 nightly 與穩定版：`DIW-MY-WALLET-<版本>-windows-x64-native.zip`、`DIW-MY-WALLET-<版本>-linux-x64-native.tar.gz`（Artifact 不保留執行權限，打包時重設），Release 頁的下載指引把它們列在「實驗版」摺疊區；失敗時那次的 Release 就沒有這兩個檔案。原生版不設堆積上限，預設最多使用實體記憶體的 80%。桌面版（JVM 與原生）結束程式的錯誤會寫到資料夾的 `logs/error-*.txt`（Windows 在 `%APPDATA%\DIW-MY-WALLET\logs`），對話框會顯示檔案位置。
 
 ## 版本號
 
@@ -85,7 +85,7 @@ CI 產生的 Windows 檔案沒有 Authenticode 簽章。程式碼簽章憑證只
 |---|---|---|
 | `Full`（預設） | `.\tools\windows-sign.ps1 -Tag v0.5.3` | 以系統管理安裝（`msiexec /a`）解開 MSI（補回 jpackage 不安裝、但 `--app-image` 需要的 `app\.jpackage.xml`，並移除重建時會再產生的 `app\.package`，否則 JDK 24 以上的 jpackage 交給 WiX 的檔案重複，出現 WIX0091），簽署啟動程式與所有尚未簽章的 .exe、.dll，以及 jar 內本專案的零知識原生程式庫（`zk/native/windows-x86_64/` 的 `diw_zk.dll`、`diw_bb5.dll`），再以 `jpackage --app-image` 依 CI 相同的名稱、版本、升級 UUID 與安裝選項重建 MSI 並簽署；Release 的 `DIW-MY-WALLET-windows-x64-<版本>-release.jar` 內的原生程式庫也一併簽署 |
 | `MsiOnly` | `.\tools\windows-sign.ps1 -Tag v0.5.3 -Mode MsiOnly` | 只簽 MSI 本身，裡面的程式不變；只需要 `signtool` |
-| `Native` | `.\tools\windows-sign.ps1 -Mode Native -Tag v0.5.3` | 實驗的 GraalVM 原生版：下載該 Release 的 `DIW-MY-WALLET-<版本>-windows-x64-native.zip`（或以 `-Path` 指定本機的檔案、資料夾或 Actions 的 `desktop-native-windows` Artifact），簽署 `diw-desktop.exe` 與旁邊所有尚未簽章的 .exe、.dll（native-image 複製的 JDK 程式庫、`jawt.dll` 等），以相同的檔名與資料夾結構重新打包並取代 |
+| `Native` | `.\tools\windows-sign.ps1 -Mode Native -Tag v0.5.3` | 實驗的 GraalVM 原生版：下載該 Release 的 `DIW-MY-WALLET-<版本>-windows-x64-native.zip`（或以 `-Path` 指定本機的檔案、資料夾或 Actions 的 `desktop-native-windows` Artifact），簽署 `diw-desktop.exe` 與同一資料夾及其子資料夾內所有尚未簽章的 .exe、.dll（native-image 複製的 JDK 程式庫、`j2pcsc.dll`、`jawt.dll` 與 `bin\jawt.dll`），列出每個簽署的檔案並確認沒有遺漏，以相同的檔名與資料夾結構重新打包並取代；舊版壓縮檔裡的 `self-check.txt`、`smoke-stderr.txt` 重新打包時移除 |
 
 說明：
 

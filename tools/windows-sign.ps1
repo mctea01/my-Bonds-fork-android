@@ -13,10 +13,11 @@
 # MsiOnly: sign the MSI as it is; the launcher and the native libraries inside stay unsigned. Needs only signtool.
 # Native: the experimental GraalVM executable (DIW-MY-WALLET-<version>-windows-x64-native.zip of the release, or with
 # -Path a local copy or the desktop-native-windows artifact of a CI run): sign diw-desktop.exe and every unsigned .exe
-# and .dll beside it (the JDK libraries native-image copies there, jawt.dll, j2pcsc.dll), then zip it again with the
-# release archive's name and layout. The ZK libraries are
-# compiled into the executable as resources and cannot be signed afterwards; the executable unpacks them only when
-# their SHA-256, pinned inside the signed executable, matches.
+# and .dll of its folder and the folders below it (the JDK libraries native-image copies there, j2pcsc.dll, jawt.dll
+# and its copy in bin\), check that none is left unsigned, then zip it again with the release archive's name and
+# layout (without the CI check files self-check.txt and smoke-stderr.txt that earlier archives carried). The ZK
+# libraries are compiled into the executable as resources and cannot be signed afterwards; the executable unpacks them
+# only when their SHA-256, pinned inside the signed executable, matches.
 # Third-party libraries that jars unpack at run time (Skiko, SQLite, JNA) are left as they are: their loaders check
 # their own digests, and they are not this project's code.
 #
@@ -124,6 +125,33 @@ function Sign-File([string]$path) {
     $script:Signer = $signature.SignerCertificate
 }
 
+# Every .exe and .dll in a folder and all folders below it, by extension (not -Include, whose matching depends on the
+# PowerShell version and the form of the path).
+function Get-Binaries([string]$dir) {
+    @(Get-ChildItem -LiteralPath $dir -Recurse -File -Force | Where-Object { $_.Extension -in @(".exe", ".dll") } | Sort-Object FullName)
+}
+
+function Get-Relative([string]$dir, [string]$path) {
+    if ($path.StartsWith($dir, [StringComparison]::OrdinalIgnoreCase)) { $path.Substring($dir.Length).TrimStart('\') } else { $path }
+}
+
+# Signs each .exe and .dll of a folder tree that has no valid signature yet (files a vendor already signed stay as they
+# are), then fails when any is still unsigned. Paths are printed relative to the folder.
+function Sign-Folder([string]$dir, [string]$what) {
+    $all = Get-Binaries $dir
+    $todo = @($all | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
+    Write-Host "Signing $($todo.Count) of $($all.Count) .exe and .dll files of $what"
+    foreach ($b in $todo) {
+        Write-Host "  $(Get-Relative $dir $b.FullName)"
+        Sign-File $b.FullName
+    }
+    $left = @(Get-Binaries $dir | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
+    if ($left.Count -gt 0) {
+        $left | ForEach-Object { Write-Host "  unsigned: $(Get-Relative $dir $_.FullName)" }
+        throw "$($left.Count) files of $what have no valid signature"
+    }
+}
+
 # The project's native libraries inside a jar: extract, sign, put back with a new .sha256 (lowercase hex and a
 # newline, as native/build.sh writes it). Returns how many were signed.
 Add-Type -AssemblyName System.IO.Compression, System.IO.Compression.FileSystem
@@ -184,9 +212,12 @@ if ($Mode -eq "Native") {
     $exe = Get-ChildItem $folder -Recurse -Filter "diw-desktop.exe" | Sort-Object { $_.FullName.Length } | Select-Object -First 1
     if (-not $exe) { throw "diw-desktop.exe not found in $Path" }
     $root = $exe.Directory.FullName
-    $binaries = @(Get-ChildItem $root -Recurse -Include "*.exe", "*.dll" | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
-    Write-Host "Signing $($binaries.Count) files of the native executable folder"
-    foreach ($b in $binaries) { Sign-File $b.FullName }
+    # CI check files that older archives carried beside the executable; they are not part of the app.
+    foreach ($name in @("self-check.txt", "smoke-stderr.txt")) {
+        $file = Join-Path $root $name
+        if (Test-Path -LiteralPath $file) { Remove-Item -LiteralPath $file -Force; Write-Host "Left out $name (a CI check file)" }
+    }
+    Sign-Folder $root "the native executable folder"
 
     # The same name and layout as the release archive (one top folder named like the archive), so the upload
     # replaces it: the name of the archive given, else the version of the tag.
@@ -198,6 +229,7 @@ if ($Mode -eq "Native") {
     $stage = Join-Path $WorkDir "native-stage\$base"
     New-Item -ItemType Directory -Path (Split-Path $stage) | Out-Null
     Move-Item $root $stage
+    $mainBinary = Join-Path $stage $exe.Name
     $signed = Join-Path $output $zipName
     [IO.Compression.ZipFile]::CreateFromDirectory($stage, $signed, [IO.Compression.CompressionLevel]::Optimal, $true)
     $uploads = @($signed)
@@ -296,9 +328,7 @@ if ($Mode -eq "Native") {
         if ($libraries -eq 0) { Write-Warning "No zk/native/windows-*/ library found in the app's jars: the zero-knowledge library stays unsigned" }
 
         # Every .exe and .dll that has no valid signature yet; the Java runtime's own files are already signed.
-        $binaries = @(Get-ChildItem $image -Recurse -Include "*.exe", "*.dll" | Where-Object { (Get-AuthenticodeSignature $_.FullName).Status -ne "Valid" })
-        Write-Host "Signing $($binaries.Count) files of the app image"
-        foreach ($b in $binaries) { Sign-File $b.FullName }
+        Sign-Folder $image "the app image"
 
         # --temp keeps jpackage's WiX sources and logs in the work folder, for a build that fails.
         $arguments = @("--type", "msi", "--app-image", $image, "--dest", $output, "--name", $PackageName,
@@ -316,6 +346,7 @@ if ($Mode -eq "Native") {
     }
 
     Sign-File $signed
+    $mainBinary = $signed
     $uploads = @($signed)
 
     # The Windows release jar carries the same native libraries.
@@ -344,7 +375,10 @@ if (-not $NoNotes) {
     $bodyFile = Join-Path $WorkDir "notes.md"
     $body = (& gh release view $Tag --repo $Repo --json body --jq .body | Out-String)
     if ($LASTEXITCODE -ne 0) { throw "gh release view failed" }
-    if (-not $Signer) { $Signer = (Get-AuthenticodeSignature $signed).SignerCertificate }
+    # Nothing was signed in this run when every file already carried a signature (a rerun of Native): name the signer
+    # of the executable or the MSI.
+    if (-not $Signer) { $Signer = (Get-AuthenticodeSignature $mainBinary).SignerCertificate }
+    if (-not $Signer) { throw "$mainBinary has no signature to name in the release notes" }
     $subject = $Signer.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
     $line = "$what 已以 $subject 的程式碼簽章憑證簽署（Authenticode）。"
 

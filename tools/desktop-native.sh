@@ -13,13 +13,19 @@
 #      run only records the ones it happened to use and GraalVM registers none of them;
 #   3. native-image with GraalVM 25. No heap limit is given: the executable may use up to 80 % of the machine's memory
 #      (GraalVM's default MaximumHeapSizePercent), and the proving libraries run outside the heap anyway;
-#   4. build/desktop-native/<os>/ holds the executable, the JDK libraries native-image puts beside it and the JAWT
-#      library where Skiko looks for it (the app points java.home at the executable's folder);
+#      On Windows the executable gets a version resource (file description, product name, the version of
+#      tools/app-version.sh, copyright from NOTICE) and the app icon (app/icons/app-icon.ico), compiled with rc.exe
+#      and linked in, and the build checks that Windows reads them back;
+#   4. build/desktop-native/<os>/ holds what is released: the executable, the JDK libraries native-image puts beside
+#      it, the JAWT library where Skiko looks for it (the app points java.home at the executable's folder), LICENSE
+#      and NOTICE;
 #   5. the executable must pass its self-check, show its first screen (DIW_EXIT_AFTER_SECONDS) and take the same
 #      typing, pasting and right-clicks as the JVM did (skipped with a warning when Robot did not work under the JVM).
-# Needs GRAALVM_HOME (GraalVM 25), ANDROID_HOME and Python 3; on Linux xvfb-run, on Windows Visual Studio's C++ tools
-# (found with vswhere when cl.exe is not on the PATH). NATIVE_IMAGE_XMX caps native-image's own memory (about 11 GB
-# are needed). Usage: tools/desktop-native.sh
+#      The self-check results and the smoke run's stderr go to build/desktop-native/check-<os>/ (a CI artifact of
+#      their own), not into the released folder.
+# Needs GRAALVM_HOME (GraalVM 25), ANDROID_HOME, Python 3 and the full git history (for the version); on Linux
+# xvfb-run, on Windows Visual Studio's C++ tools (found with vswhere when cl.exe is not on the PATH) and rc.exe of the
+# Windows SDK. NATIVE_IMAGE_XMX caps native-image's own memory (about 11 GB are needed). Usage: tools/desktop-native.sh
 set -euo pipefail
 cd "$(dirname "$0")/.."
 : "${GRAALVM_HOME:?Set GRAALVM_HOME to GraalVM 25}"
@@ -35,8 +41,9 @@ graal=$GRAALVM_HOME
 java="$graal/bin/java"
 out=build/desktop-native/$os
 work=build/desktop-native/work-$os
+check=build/desktop-native/check-$os
 meta=$work/meta
-rm -rf "$out" "$work" && mkdir -p "$out" "$meta"
+rm -rf "$out" "$work" "$check" && mkdir -p "$out" "$meta" "$check"
 # Paths handed to Gradle and to Windows programs.
 native_path() { if [ "$os" = windows ]; then cygpath -w "$PWD/$1"; else echo "$PWD/$1"; fi; }
 
@@ -144,6 +151,59 @@ args=(-cp "$work/app.jar" "-H:ConfigurationFileDirectories=$meta,$extra,$awt" --
 [ -n "${NATIVE_IMAGE_XMX:-}" ] && args+=("-J-Xmx$NATIVE_IMAGE_XMX")
 # A window application on Windows, without a console beside it.
 [ "$os" = windows ] && args+=(-H:NativeLinkerOption=/SUBSYSTEM:WINDOWS -H:NativeLinkerOption=/ENTRY:mainCRTStartup)
+
+# Windows: the version resource and the icon, linked into the executable as a compiled resource file. The version is
+# the one the release names its files with (tools/app-version.sh); the fixed part takes major.minor.patch, the strings
+# the whole version (with -pr<n> or -dev, which also marks the file as a prerelease).
+if [ "$os" = windows ]; then
+    version=$(bash tools/app-version.sh | sed 's/^APP_VERSION=//')
+    IFS=. read -r major minor patch <<< "${version%%-*}"
+    [[ "$major$minor$patch" =~ ^[0-9]+$ ]] || { echo "Unexpected version $version" >&2; exit 1; }
+    flags=0x0L
+    [ "$version" = "$major.$minor.$patch" ] || flags=0x2L
+    # The first copyright line of NOTICE, so a fork names its own holder; quotes are doubled for rc.
+    copyright=$(grep -m1 '^Copyright ' NOTICE | tr -d '\r' | sed 's/"/""/g')
+    [ -n "$copyright" ] || { echo "NOTICE has no Copyright line" >&2; exit 1; }
+    icon=$(cygpath -w "$PWD/app/icons/app-icon.ico" | sed 's/\\/\\\\/g')
+    cat > "$work/diw-desktop.rc" <<RC
+1 ICON "$icon"
+1 VERSIONINFO
+FILEVERSION $major,$minor,$patch,0
+PRODUCTVERSION $major,$minor,$patch,0
+FILEFLAGSMASK 0x3FL
+FILEFLAGS $flags
+FILEOS 0x40004L
+FILETYPE 0x1L
+FILESUBTYPE 0x0L
+BEGIN
+    BLOCK "StringFileInfo"
+    BEGIN
+        BLOCK "040904B0"
+        BEGIN
+            VALUE "CompanyName", "DIW MY WALLET"
+            VALUE "FileDescription", "DIW MY WALLET"
+            VALUE "FileVersion", "$major.$minor.$patch"
+            VALUE "InternalName", "diw-desktop"
+            VALUE "LegalCopyright", "$copyright. Licensed under the Apache License, Version 2.0."
+            VALUE "OriginalFilename", "diw-desktop.exe"
+            VALUE "ProductName", "DIW MY WALLET"
+            VALUE "ProductVersion", "$version"
+            VALUE "Comments", "GraalVM native executable (experimental)"
+        END
+    END
+    BLOCK "VarFileInfo"
+    BEGIN
+        VALUE "Translation", 0x409, 1200
+    END
+END
+RC
+    # rc.exe needs no Visual Studio environment for this file (it includes no headers): the PATH, else the newest
+    # x64 one of the Windows SDK.
+    rc=$(command -v rc.exe || ls -d "/c/Program Files (x86)/Windows Kits/10/bin/"*/x64/rc.exe 2> /dev/null | sort -V | tail -1)
+    [ -n "$rc" ] || { echo "rc.exe not found: install the Windows SDK" >&2; exit 1; }
+    "$rc" -nologo -fo "$(cygpath -w "$PWD/$work/diw-desktop.res")" "$(cygpath -w "$PWD/$work/diw-desktop.rc")"
+    args+=("-H:NativeLinkerOption=$(cygpath -w "$PWD/$work/diw-desktop.res")")
+fi
 args+=(diw.wallet.app.desktop.MainKt)
 if [ "$os" = windows ]; then
     # native-image needs the MSVC environment; a small batch file sets it up and runs native-image in it.
@@ -177,11 +237,37 @@ case $os in
     linux) cp "$graal/lib/libj2pcsc.so" "$out/" ;;
     windows) cp "$graal/bin/j2pcsc.dll" "$out/" ;;
 esac
+# The licence of this project and the notices of what the executable contains (GraalVM, the JDK, the libraries).
+cp LICENSE NOTICE "$out/"
+
+# Windows reads the version and the icon back from the executable as Explorer shows them.
+if [ "$os" = windows ]; then
+    cat > "$work/check-resources.ps1" <<'PS'
+$ErrorActionPreference = "Stop"
+$info = (Get-Item -LiteralPath $env:EXE).VersionInfo
+Write-Host ("FileDescription={0} ProductName={1} FileVersion={2}.{3}.{4}.{5} ProductVersion={6}" -f $info.FileDescription,
+    $info.ProductName, $info.FileMajorPart, $info.FileMinorPart, $info.FileBuildPart, $info.FilePrivatePart, $info.ProductVersion)
+Write-Host "LegalCopyright=$($info.LegalCopyright)"
+if ($info.ProductVersion -ne $env:VERSION -or $info.ProductName -ne "DIW MY WALLET" -or -not $info.LegalCopyright) { exit 1 }
+Add-Type -Namespace Diw -Name Shell -MemberDefinition @'
+[DllImport("shell32.dll", CharSet = CharSet.Unicode)]
+public static extern uint ExtractIconEx(string file, int index, System.IntPtr[] large, System.IntPtr[] small, uint count);
+'@
+$icons = [Diw.Shell]::ExtractIconEx($env:EXE, -1, $null, $null, 0)
+Write-Host "Icons=$icons"
+if ($icons -lt 1) { exit 1 }
+PS
+    EXE=$(cygpath -w "$PWD/$out/$exe") VERSION=$version \
+        powershell.exe -NoProfile -NonInteractive -ExecutionPolicy Bypass -File "$(cygpath -w "$PWD/$work/check-resources.ps1")" \
+        || { echo "The executable lacks its version resource or icon" >&2; exit 1; }
+fi
 
 echo "== native executable"
 code=0
 with_display "$out/$exe" --self-check "$work/self-check-native.txt" || code=$?
 cat "$work/self-check-native.txt" || true
+cp "$work/self-check-jvm.txt" "$check/self-check-jvm.txt"
+cp "$work/self-check-native.txt" "$check/self-check.txt" 2> /dev/null || true
 [ "$code" = 0 ] || { echo "The native self-check failed (exit $code)" >&2; exit 1; }
 # PC/SC never fails the self-check (a runner may have no service), but the native executable must reach it exactly as
 # the JVM did on the same machine: a different result means a library or registration the image lacks.
@@ -194,11 +280,11 @@ fi
 code=0
 DIW_WALLET_HOME="$work/smoke" DIW_EXIT_AFTER_SECONDS="${SMOKE_SECONDS:-30}" DIW_EXERCISE_INPUT=$exercise \
     with_display "$out/$exe" 2> "$work/smoke-stderr.txt" || code=$?
-# Missing registrations the run hit, once each, then the rest of stderr; the whole file goes into the artifact.
-cp "$work/smoke-stderr.txt" "$out/smoke-stderr.txt"
+# Missing registrations the run hit, once each, then the rest of stderr; the whole file goes into the check artifact.
+cp "$work/smoke-stderr.txt" "$check/smoke-stderr.txt"
 missing=$(grep -E "Missing[A-Za-z]*RegistrationError|MissingRegistration" "$work/smoke-stderr.txt" | sort | uniq -c | sort -rn || true)
 if [ -n "$missing" ]; then
-    echo "::warning::the native executable hit missing registrations (see smoke-stderr.txt in the artifact)"
+    echo "::warning::the native executable hit missing registrations (see smoke-stderr.txt in the native-check-$os artifact)"
     echo "$missing" | head -200
 fi
 head -c 200000 "$work/smoke-stderr.txt"
@@ -211,6 +297,5 @@ case $code in
     4) echo "::warning::Robot input did not reach the native window on this desktop; input posted through AWT worked (exit 4)" ;;
     *) echo "The native executable did not show its first screen (exit $code)" >&2; exit 1 ;;
 esac
-cp "$work/self-check-native.txt" "$out/self-check.txt"
 ls -l "$out"
 echo "Built $out/$exe"

@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（X.509 完整解析與金鑰、擴充限制檢查；首次啟動同意改為一頁勾選：必要與可選分開、文件名稱為連結、各項附重點摘要，法律文字不變；函式庫帶入的 Guava 提高到 33.8.0（GHSA-xxph-c9ww-hj94）；Dependabot 告警修補：cryptography 50、rustix 1.1.6，Renovate 規則；工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限與其拒絕、取消、返回的處理；文件簽署、憑證領取與 TWDIW 離線流程的取消與返回；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
+最後更新：2026-11-27（Linux 桌面版由 .deb 改為 AppImage（`tools/linux-appimage.sh`，執行階段為本專案的 `tools/appimage-runtime`，不含 LGPL 的 libfuse、不需 FUSE）；Windows 原生桌面版：執行檔加入版本資源與圖示，發佈資料夾附 LICENSE 與 NOTICE，自我檢查與冒煙執行的記錄移出發佈壓縮檔；`tools/windows-sign.ps1` 簽署子資料夾在內的所有 .exe、.dll 並確認沒有遺漏；main 到 PR #176）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -48,7 +48,7 @@ P4 之後合併的工作：
 | X.509 完整解析與金鑰、擴充限制 | 完成：憑證畫面顯示每個欄位與擴充（含未知擴充與 critical 旗標）；所有 X.509 判定都檢查終端憑證依用途的 keyUsage 與 extKeyUsage（TSA、OCSP 回應者、C2PA、mdoc 文件簽署者、文件簽章）、basicConstraints、pathLen、keyCertSign、nameConstraints（含錨點）、憑證政策樹、未知 critical 擴充與演算法強度；違規為 T4（`CERTIFICATE_CONSTRAINT`），SHA-1 與短 RSA 金鑰最高 T3（`WEAK_ALGORITHM`）；只有自動測試，未以真實憑證樣本逐一核對 | [x509-constraints.md](design/x509-constraints.md) |
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
 | 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
-| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，只上傳為 Artifact；macOS 不支援。JVM 版仍是正式發行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，附在 nightly 與穩定版的「實驗版」；macOS 不支援。JVM 版仍是正式發行。2026-11-27 Windows 執行檔加入版本資源（檔案描述、產品名稱、版本、著作權與 Apache License 2.0）與 App 圖示，CI 以 Windows 讀回檢查；發佈資料夾附 `LICENSE`、`NOTICE`，`self-check.txt`、`smoke-stderr.txt` 改放 `native-check-<os>` Artifact | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 | 一般使用者的使用教程 | 完成：[user-guide.md](guides/user-guide.md) 涵蓋安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版與常見問題，附測試資料繪製的畫面；App 在設定清單第一列、關於頁與首次啟動完成頁以瀏覽器開啟它。教程只有繁體中文 | [user-guide.md](guides/user-guide.md) |
 
 ## 3. 功能狀態
@@ -112,7 +112,7 @@ P4 之後合併的工作：
 | Android arm64-v8a、x86_64 | APK、AAB、分割 APK 組 | 全部；Barretenberg 5（舊 zkPassport 電路）在 Play 版是隨選模組 |
 | Android armeabi-v7a、x86 | 同一個 APK | 沒有證明後端，只有相片解碼 |
 | Windows x86_64 | .msi、jar | 年齡證明、zkTLS、zkPDF、zkPassport；沒有 Longfellow |
-| Linux x86_64 | .deb、jar | 全部（glibc 2.38、libstdc++ 13、x86-64-v2 以上）；較舊的系統或 CPU 自動改用相容版：年齡證明、zkTLS、OPRF、BBS，沒有 zkPDF 與 zkPassport |
+| Linux x86_64 | AppImage、jar | 全部（glibc 2.38、libstdc++ 13、x86-64-v2 以上）；較舊的系統或 CPU 自動改用相容版：年齡證明、zkTLS、OPRF、BBS，沒有 zkPDF 與 zkPassport |
 | macOS arm64（14 以上） | 只有 jar | 全部 |
 | Linux ARM64 | 沒有安裝檔與 CI | 原生函式庫可交叉建置；Linux 的 Barretenberg 改用 clang 編譯（GCC 版對 P-256 簽章電路算出不同的驗證金鑰）後，ARM64 交叉建置尚未重新驗證 |
 | iOS | 未開始（P6） | |
@@ -123,7 +123,7 @@ P4 之後合併的工作：
 |---|---|---|
 | P6 iOS | | 排程 |
 | 穩定版發佈 workflow | `stable-release.yml` 與 CI 的標籤發佈已貼上；`minor`、`major` 另需 `RELEASE_TOKEN`；尚未實際發佈過穩定版 | 第一次以 `Stable release` 發佈並確認 Release 頁 |
-| Windows 程式碼簽章 | `tools/windows-sign.ps1` 在本機以 YubiKey（或 `-SignCommand` 的 jsign 等命令）簽署 MSI、其中的程式與 jar 內的零知識原生程式庫（改寫 `.sha256`），或實驗原生版，並傳回 Release；2026-11-21 使用者在 Windows 實跑：exe、dll 簽章成功，以 WiX 7 重建 MSI 時的 WIX0091 已由 PR #165 修正 | 使用者重跑確認 MSI 能產生、安裝與零知識功能正常，見 [release.md](release.md#windows-程式碼簽章) |
+| Windows 程式碼簽章 | `tools/windows-sign.ps1` 在本機以 YubiKey（或 `-SignCommand` 的 jsign 等命令）簽署 MSI、其中的程式與 jar 內的零知識原生程式庫（改寫 `.sha256`），或實驗原生版，並傳回 Release；2026-11-21 使用者在 Windows 實跑：exe、dll 簽章成功，以 WiX 7 重建 MSI 時的 WIX0091 已由 PR #165 修正；2026-11-27 簽署改為列舉資料夾與子資料夾內所有 .exe、.dll（原生版的 `bin\jawt.dll`），簽完確認沒有遺漏，否則失敗 | 使用者重跑確認 MSI 能產生、安裝與零知識功能正常，見 [release.md](release.md#windows-程式碼簽章) |
 | Release 附上原生桌面版 | `release` 工作打包 `desktop-native` 的 Windows 與 Linux 執行檔附到 nightly 與穩定版，下載指引列在「實驗版」，README 與使用教程補上解壓與執行步驟；改過的 `github-actions-ci.yml` 已由使用者貼上（PR #168） | 合併後確認下一次 nightly 有這兩個檔案 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作（appHash 為 `tw.gov.moda.diw`，簽章金鑰是本錢包自己的應用配對），官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |

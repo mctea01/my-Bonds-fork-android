@@ -111,13 +111,19 @@ change.
 - Android Key Attestation library (com.android.keyattestation), cbor-java
   (co.nstant.in:cbor) - Apache License 2.0; Protocol Buffers (javalite,
   kotlin-lite) - BSD 3-Clause
-- Java runtime packaged in the .msi and .deb installers: a jlink image of
-  Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath Exception.
-  The jar distributions carry no Java runtime.
-- Experimental native executables (CI artifacts only, not part of a release)
-  are built with GraalVM Community native-image and contain its Substrate VM
-  runtime and the JDK class library - GNU GPL 2.0 with the Classpath
-  Exception
+- Java runtime packaged in the .msi installer and the Linux AppImage: a jlink
+  image of Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath
+  Exception. The jar distributions carry no Java runtime.
+- The Linux AppImage starts with this project's own runtime
+  (tools/appimage-runtime, Apache License 2.0), statically linked with musl
+  libc (MIT) and the Rust crates backhand, deku, flate2, zlib-rs and their
+  dependencies (MIT, Apache License 2.0, Zlib, BSL-1.0); no FUSE library.
+- Experimental native executables (the -native archives of a release, with
+  this NOTICE and LICENSE beside the executable) are built with GraalVM
+  Community native-image and contain its Substrate VM runtime and the JDK
+  class library; the JDK native libraries beside the executable (awt, jawt,
+  j2pcsc and others) come from the same GraalVM - GNU GPL 2.0 with the
+  Classpath Exception
 
 ========================================================================
 4. Native libraries (native/, Rust and C++)

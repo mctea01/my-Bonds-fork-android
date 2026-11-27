@@ -1,0 +1,18 @@
+[package]
+name = "diw-appimage-runtime"
+version = "1.0.0"
+edition = "2021"
+license = "Apache-2.0"
+publish = false
+description = "AppImage runtime without FUSE: unpacks the SquashFS once into the user's cache and runs AppRun"
+
+[dependencies]
+# SquashFS reader in pure Rust; gzip through flate2's pure-Rust backend (miniz_oxide). No C code, no GPL or LGPL.
+backhand = { version = "=0.25.5", default-features = false, features = ["gzip"] }
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true
