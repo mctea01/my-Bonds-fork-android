@@ -666,6 +666,18 @@ class C2paSigningTest {
         assertSignedAndTrusted(inspect(signed, "prefix.svg"), "svg with a taken prefix")
     }
 
+    @Test
+    fun svgMarkupInsideCdataOrACommentIsNotAManifest() = runBlocking<Unit> {
+        trustRoot()
+        val shown = "<text><![CDATA[<c2pa:manifest>example</c2pa:manifest>]]></text><!-- <c2pa:manifest>note</c2pa:manifest> -->"
+        val original = svg.decodeToString().replaceFirst("<title>", shown + "<title>").encodeToByteArray()
+        assertNull(C2paManifests.read(original), "text that looks like a manifest holds no store")
+        assertTrue(C2paContainers.strip(original, C2paFormat.SVG).contentEquals(original), "nothing is removed")
+        val signed = sign(original, request("向量圖.svg", C2paAuthoring.Opened)).bytes
+        assertTrue(signed.decodeToString().contains(shown), "the CDATA text and the comment stay")
+        assertSignedAndTrusted(inspect(signed, "cdata.svg"), "svg with cdata")
+    }
+
     /** A ZIP of stored entries written by hand, so that two entries may share a name. */
     private fun rawZip(entries: List<Pair<String, ByteArray>>): ByteArray {
         val local = ByteArrayOutputStream()

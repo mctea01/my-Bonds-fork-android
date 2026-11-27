@@ -698,11 +698,44 @@ object C2paContainers {
             return null
         }
 
-        /** Prefixes bound to the C2PA manifest namespace in the document (c2pa is always accepted). */
-        private fun prefixes(text: String): Set<String> {
+        /** A tag of the markup: its '<', the index after its '>', its name, and whether it closes or is empty. */
+        private class Tag(val start: Int, val end: Int, val name: String, val closing: Boolean, val empty: Boolean)
+
+        /**
+         * The element tags of [text] in order. Comments, CDATA sections, processing instructions and the DOCTYPE
+         * are skipped, so markup that only appears inside them (as text) is never taken for an element.
+         */
+        private fun tags(text: String): List<Tag> {
+            val out = ArrayList<Tag>()
+            var k = text.indexOf('<')
+            while (k >= 0) {
+                val next = when {
+                    text.startsWith("<!--", k) -> text.indexOf("-->", k + 4).let { if (it < 0) -1 else it + 3 }
+                    text.startsWith("<![CDATA[", k) -> text.indexOf("]]>", k + 9).let { if (it < 0) -1 else it + 3 }
+                    text.startsWith("<?", k) -> text.indexOf("?>", k + 2).let { if (it < 0) -1 else it + 2 }
+                    text.startsWith("<!", k) -> doctypeEnd(text, k + 2) ?: -1
+                    else -> {
+                        val closing = text.getOrNull(k + 1) == '/'
+                        val nameStart = if (closing) k + 2 else k + 1
+                        var n = nameStart
+                        while (n < text.length && !text[n].isWhitespace() && text[n] != '>' && text[n] != '/') n++
+                        val e = tagEnd(text, n) ?: -1
+                        if (e > 0 && n > nameStart) out.add(Tag(k, e, text.substring(nameStart, n), closing, !closing && text[e - 2] == '/'))
+                        e
+                    }
+                }
+                if (next < 0) break
+                k = text.indexOf('<', next)
+            }
+            return out
+        }
+
+        /** Prefixes bound to the C2PA manifest namespace in the start tags (c2pa is always accepted). */
+        private fun prefixes(text: String, tags: List<Tag>): Set<String> {
             val out = HashSet<String>()
             out.add("c2pa")
-            Regex("xmlns:([A-Za-z_][\\w.-]*)\\s*=\\s*([\"'])" + Regex.escape(NS) + "\\2").findAll(text).forEach { out.add(it.groupValues[1]) }
+            val decl = Regex("xmlns:([A-Za-z_][\\w.-]*)\\s*=\\s*([\"'])" + Regex.escape(NS) + "\\2")
+            for (t in tags) if (!t.closing) decl.findAll(text.substring(t.start, t.end)).forEach { out.add(it.groupValues[1]) }
             return out
         }
 
@@ -711,20 +744,12 @@ object C2paContainers {
          * attributes (such as its own namespace declaration) and white space; an empty element holds no store.
          */
         private fun element(text: String): IntArray? {
-            for (p in prefixes(text)) {
-                val open = "<$p:manifest"
-                var s = text.indexOf(open)
-                while (s >= 0) {
-                    val after = text.getOrNull(s + open.length)
-                    if (after != null && (after == '>' || after == '/' || after.isWhitespace())) {
-                        val textStart = tagEnd(text, s + open.length) ?: break
-                        if (text[textStart - 2] != '/') {
-                            val close = Regex("</" + Regex.escape(p) + ":manifest\\s*>").find(text, textStart) ?: break
-                            return intArrayOf(s, close.range.last + 1, textStart, close.range.first)
-                        }
-                    }
-                    s = text.indexOf(open, s + open.length)
-                }
+            val tags = tags(text)
+            val names = prefixes(text, tags).map { "$it:manifest" }.toSet()
+            for ((i, t) in tags.withIndex()) {
+                if (t.closing || t.empty || t.name !in names) continue
+                val close = tags.subList(i + 1, tags.size).firstOrNull { it.closing && it.name == t.name } ?: continue
+                return intArrayOf(t.start, close.end, t.end, close.start)
             }
             return null
         }
