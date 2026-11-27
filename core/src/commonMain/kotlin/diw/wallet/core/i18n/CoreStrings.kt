@@ -1003,6 +1003,7 @@ object CoreStrings {
         "core_x509_c_nc_excluded" to "名稱 %1\$s 被 %3\$s 的 nameConstraints 以 %2\$s 排除（RFC 5280 4.2.1.10）",
         "core_x509_c_nc_malformed" to "nameConstraints 無法解碼，必須拒絕這條路徑（RFC 5280 4.2.1.10）",
         "core_x509_c_nc_not_permitted" to "名稱 %1\$s 不在 %2\$s 允許的範圍內（RFC 5280 4.2.1.10）",
+        "core_x509_c_nc_uri_host" to "URI %1\$s 沒有以網域名稱表示的主機，無法套用 %2\$s 的 URI 名稱限制，必須拒絕這條路徑（RFC 5280 4.2.1.10）",
         "core_x509_c_nc_unsupported" to "%2\$s 限制了錢包無法檢查的 %1\$s 名稱，必須拒絕這條路徑（RFC 5280 4.2.1.10）",
         "core_x509_c_no_cert_sign" to "keyUsage（%1\$s）沒有 keyCertSign，這張憑證不能簽發憑證（RFC 5280 6.1.4 (n)）",
         "core_x509_c_not_ca" to "這張憑證簽發了其他憑證，但 basicConstraints 沒有 cA=TRUE（RFC 5280 6.1.4 (k)）",

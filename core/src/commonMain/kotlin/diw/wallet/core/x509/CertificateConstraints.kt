@@ -374,6 +374,13 @@ object CertificateConstraints {
                         add(ConstraintSeverity.FAIL, ConstraintRule.NAME_CONSTRAINTS, i, ct("core_x509_c_nc_unsupported", n.type.specName, displayName(certs[ca])))
                         continue
                     }
+                    // RFC 5280 4.2.1.10: under a URI constraint a URI must name a host by a fully qualified domain
+                    // name; one without an authority or with an IP address cannot be checked and is rejected.
+                    if (n.type == GeneralName.Type.URI && (ofType.isNotEmpty() || excluded.any { it.type == n.type }) &&
+                        uriHost(n.value)?.takeIf { isDomainName(it) } == null) {
+                        add(ConstraintSeverity.FAIL, ConstraintRule.NAME_CONSTRAINTS, i, ct("core_x509_c_nc_uri_host", n.text, displayName(certs[ca])))
+                        continue
+                    }
                     if (ofType.isNotEmpty() && ofType.none { matches(it, n) }) {
                         add(ConstraintSeverity.FAIL, ConstraintRule.NAME_CONSTRAINTS, i, ct("core_x509_c_nc_not_permitted", n.text, displayName(certs[ca])))
                     }
@@ -435,6 +442,10 @@ object CertificateConstraints {
         val c = constraint.lowercase()
         return if (c.startsWith(".")) h.endsWith(c) else h == c
     }
+
+    /** A host written as a domain name, not an IPv4 or IPv6 address. */
+    private fun isDomainName(host: String): Boolean =
+        ':' !in host && !host.all { it.isDigit() || it == '.' } && host.trimEnd('.').split('.').none { it.isEmpty() }
 
     private fun uriHost(uri: String): String? {
         val rest = uri.substringAfter("://", "").takeIf { it.isNotEmpty() } ?: return null

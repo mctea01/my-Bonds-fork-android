@@ -291,6 +291,16 @@ class X509ConstraintsTest {
             listOf(leaf(signUsage, san(GeneralName(GeneralName.registeredID, "1.2.3.4"))), mid(ca(), caUsage), root(other)), CertificatePurpose.DOCUMENT, now, anchored = true,
         )
         assertTrue(ConstraintRule.NAME_CONSTRAINTS in strict.rules(ConstraintSeverity.FAIL), strict.toString())
+        // Under a URI constraint, a URI without a domain name host fails closed; one with a host is compared.
+        val uriExcluded = Ext(Extension.nameConstraints, true, NameConstraints(null, arrayOf(GeneralSubtree(GeneralName(GeneralName.uniformResourceIdentifier, ".blocked.tw")))))
+        fun uri(value: String) = CertificateConstraints.check(
+            listOf(leaf(signUsage, san(GeneralName(GeneralName.uniformResourceIdentifier, value))), mid(ca(), caUsage), root(uriExcluded)), CertificatePurpose.DOCUMENT, now, anchored = true,
+        )
+        assertTrue(uri("urn:example:document").failed)
+        assertTrue(uri("https://192.0.2.1/").failed)
+        assertTrue(uri("https://[2001:db8::1]/").failed)
+        assertTrue(uri("https://www.blocked.tw/").failed)
+        assertFalse(uri("https://www.example.tw/doc").failed, uri("https://www.example.tw/doc").toString())
         // Subtree distances are not processed, so a constraint with a minimum or maximum fails closed.
         for ((min, max) in listOf(BigInteger.ONE to null, BigInteger.ZERO to BigInteger.TWO)) {
             val distance = Ext(Extension.nameConstraints, true, NameConstraints(arrayOf(GeneralSubtree(GeneralName(GeneralName.dNSName, "example.tw"), min, max)), null))
