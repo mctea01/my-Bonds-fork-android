@@ -239,7 +239,7 @@ object C2paBmff {
                     val w = if (box.version == 0) 4 else 8
                     for (k in 0 until n) patch(p + 4 + k * w, w)
                 }
-                "iloc" -> iloc(b, box, ::patch)
+                "iloc" -> iloc(b, box, move)
                 "tfhd" -> if ((box.flags ?: 0) and 1 != 0) patch(d + 4, 8)
                 "tfra" -> {
                     val sizes = B.u32(b, (d + 4).toInt())
@@ -256,7 +256,15 @@ object C2paBmff {
     private fun isSampleTable(roots: List<Box>, saio: Box): Boolean =
         select(roots, "/moov/trak/mdia/minf/stbl/saio").any { it.start == saio.start }
 
-    private fun iloc(b: ByteArray, box: Box, patch: (Long, Int) -> Unit) {
+    /**
+     * Item locations of file-offset construction: a non-zero base moves with [move], and each extent offset is
+     * rewritten relative to the new base, so data on the other side of the moved point than its base stays found.
+     */
+    private fun iloc(b: ByteArray, box: Box, move: (Long) -> Long) {
+        fun write(at: Long, n: Int, v: Long) {
+            if (v < 0 || (n < 8 && v >= (1L shl (8 * n)))) C2paContainers.fail("BMFF iloc offset overflow")
+            B.putN(b, at.toInt(), n, v)
+        }
         val v = box.version ?: return
         var p = box.start + box.header + 4
         val s1 = B.u8(b, p.toInt()); val s2 = B.u8(b, p.toInt() + 1)
@@ -274,10 +282,18 @@ object C2paBmff {
             p += baseSize
             val extents = B.u16(b, p.toInt()); p += 2
             val fileOffsets = method == 0 && dataRef == 0
-            if (fileOffsets && baseSize > 0 && base != 0L) patch(baseAt, baseSize)
+            val newBase = if (fileOffsets && base != 0L) move(base) else base
+            if (newBase != base) write(baseAt, baseSize, newBase)
             for (e in 0 until extents) {
                 p += indexSize
-                if (fileOffsets && base == 0L && offsetSize > 0 && B.uN(b, p.toInt(), offsetSize) != 0L) patch(p, offsetSize)
+                val off = if (offsetSize > 0) B.uN(b, p.toInt(), offsetSize) else 0L
+                if (fileOffsets && (base != 0L || off != 0L)) {
+                    val newOff = move(base + off) - newBase
+                    if (newOff != off) {
+                        if (offsetSize == 0) C2paContainers.fail("BMFF iloc extent without an offset field")
+                        write(p, offsetSize, newOff)
+                    }
+                }
                 p += offsetSize + lengthSize
             }
             if (p > box.end) C2paContainers.fail("BMFF iloc out of range")

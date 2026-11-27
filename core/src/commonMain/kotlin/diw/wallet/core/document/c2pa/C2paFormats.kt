@@ -535,19 +535,24 @@ object C2paContainers {
             return Ifd(offset, entries, nextAt, u(b, l, nextAt, l.offsetSize))
         }
 
-        /** The IFD chain (pages), at most 4096 of them, without loops. */
-        fun chain(b: ByteArray, l: Layout): List<Ifd> {
+        /** The IFD chain (pages), at most [MAX_PAGES] of them, without loops. */
+        fun chain(b: ByteArray, l: Layout): List<Ifd> = walk(b, l).first
+
+        /** The chain and whether it ends with a zero next pointer (no loop, no page past the limit or the file). */
+        private fun walk(b: ByteArray, l: Layout): Pair<List<Ifd>, Boolean> {
             val out = ArrayList<Ifd>()
             val seen = HashSet<Long>()
             var off = firstOffset(b, l)
-            while (off != 0L && off < b.size && seen.add(off) && out.size < 4096) {
+            while (off != 0L && off < b.size && seen.add(off) && out.size < MAX_PAGES) {
                 val d = ifd(b, l, off)
                 out.add(d)
                 off = d.next
             }
             if (out.isEmpty()) fail("TIFF without IFD")
-            return out
+            return out to (off == 0L)
         }
+
+        private const val MAX_PAGES = 4096
 
         fun isDng(b: ByteArray): Boolean = runCatching { val l = layout(b); chain(b, l).first().entries.any { it.tag == 0xC612 } }.getOrDefault(false)
 
@@ -565,7 +570,18 @@ object C2paContainers {
             return b.copyOfRange(e.value.toInt(), (e.value + e.count).toInt()) to C2paRange(e.value, e.count)
         }
 
-        fun cannotEmbed(b: ByteArray): String? = runCatching { val l = layout(b); chain(b, l); if (!l.big && b.size > 0xFFFF0000L) "TIFF over 4 GB" else null }.getOrElse { it.message }
+        fun cannotEmbed(b: ByteArray): String? = runCatching {
+            val l = layout(b)
+            val (pages, complete) = walk(b, l)
+            // The pages left once an earlier C2PA-only last IFD is stripped; a multi-page file then takes one more IFD.
+            val kept = if (pages.size > 1 && pages.last().entries.singleOrNull()?.tag == TAG) pages.size - 1 else pages.size
+            when {
+                !complete -> "TIFF directory chain that does not end (a loop, a bad offset or over $MAX_PAGES pages)"
+                kept > 1 && kept + 1 > MAX_PAGES -> "TIFF with too many pages for one more directory ($kept)"
+                !l.big && b.size > 0xFFFF0000L -> "TIFF over 4 GB"
+                else -> null
+            }
+        }.getOrElse { it.message }
 
         fun strip(b: ByteArray): ByteArray {
             val l = layout(b)

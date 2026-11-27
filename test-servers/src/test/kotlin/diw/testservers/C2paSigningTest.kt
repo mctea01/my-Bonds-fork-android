@@ -9,6 +9,7 @@ import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.c2pa.C2paAuthoring
 import diw.wallet.core.document.c2pa.C2paBinding
+import diw.wallet.core.document.c2pa.C2paBmff
 import diw.wallet.core.document.c2pa.C2paBoxHash
 import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paFormat
@@ -101,6 +102,7 @@ class C2paSigningTest {
     companion object {
         private val bc = BouncyCastleProvider()
         private val now = Date()
+        private const val BASE = 8
         private const val DOCUMENT_SIGNING = "1.3.6.1.5.5.7.3.36"
 
         private fun keys(ec: Boolean): KeyPair = if (ec) KeyPairGenerator.getInstance("EC").apply { initialize(ECGenParameterSpec("secp256r1")) }.generateKeyPair()
@@ -718,6 +720,46 @@ class C2paSigningTest {
         assertTrue(signed.copyOfRange(moved, moved + 32).contentEquals(expected), "stco points at the same samples")
         val stripped = C2paContainers.strip(signed, C2paFormat.BMFF)
         assertTrue(stripped.contentEquals(original), "removing the store restores the file")
+    }
+
+    @Test
+    fun ilocExtentsRelativeToABaseBeforeTheStoreFollowTheData() {
+        // iloc version 0: offset, length and base offset of 4 bytes; one item whose base lies in ftyp (before the
+        // store) and whose extent reaches into mdat (after it).
+        val ftyp = bmffBox("ftyp", "avif".encodeToByteArray() + be32(0) + "avifmif1".encodeToByteArray())
+        val data = ByteArray(64) { (it * 7 + 3).toByte() }
+        fun file(off: Int): ByteArray {
+            val iloc = bmffBox("iloc", be32(0) + byteArrayOf(0x44, 0x40) + byteArrayOf(0, 1) +
+                byteArrayOf(0, 1) + byteArrayOf(0, 0) + be32(BASE) + byteArrayOf(0, 1) + be32(off) + be32(data.size))
+            val meta = bmffBox("meta", be32(0) + iloc)
+            return ftyp + meta + bmffBox("mdat", data)
+        }
+        val probe = file(0)
+        val original = file(probe.size - data.size - BASE)
+        val signed = C2paBmff.embed(original, ByteArray(40)).bytes
+        val ilocAt = indexOf(signed, "iloc".encodeToByteArray()) - 4
+        val base = BigInteger(1, signed.copyOfRange(ilocAt + 20, ilocAt + 24)).toInt()
+        val off = BigInteger(1, signed.copyOfRange(ilocAt + 26, ilocAt + 30)).toInt()
+        assertEquals(BASE, base, "a base before the store stays")
+        assertTrue(signed.copyOfRange(base + off, base + off + data.size).contentEquals(data), "the extent still points at the item data")
+    }
+
+    @Test
+    fun tiffWithADirectoryChainPastTheLimitGetsASidecar() {
+        // Empty IFDs chained one after another: a header, then for each a zero count and the next offset.
+        fun chain(pages: Int, loop: Boolean = false): ByteArray {
+            val out = ByteArrayOutputStream()
+            out.write("II".encodeToByteArray() + byteArrayOf(42, 0) + le32(8))
+            for (k in 0 until pages) {
+                val next = if (k == pages - 1) (if (loop) 8 else 0) else 8 + (k + 1) * 6
+                out.write(byteArrayOf(0, 0) + le32(next))
+            }
+            return out.toByteArray()
+        }
+        assertNull(C2paContainers.cannotEmbed(chain(4095), C2paFormat.TIFF), "one more directory still fits")
+        assertNotNull(C2paContainers.cannotEmbed(chain(4096), C2paFormat.TIFF), "the new directory would not be read back")
+        assertNotNull(C2paContainers.cannotEmbed(chain(4200), C2paFormat.TIFF), "pages past the limit would be cut off")
+        assertNotNull(C2paContainers.cannotEmbed(chain(3, loop = true), C2paFormat.TIFF), "a loop has no last directory")
     }
 
     @Test
