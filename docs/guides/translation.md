@@ -1,6 +1,6 @@
 # 新增與維護介面翻譯
 
-性質：現行。2026-11-26 建立。說明怎麼手動加入一種新語言、怎麼維護簡體中文，以及之後改用 Weblate 或其他翻譯平台時要怎麼設定。字串的程式規則（`stringResource`、`tr`、`ct`）見 [i18n.md](../design/i18n.md)。
+性質：現行。2026-11-26 建立。說明怎麼手動加入一種新語言、怎麼維護簡體中文，之後改用 Weblate 或其他翻譯平台時要怎麼設定，以及 Google Play 商店資訊的翻譯（第 5 節）。字串的程式規則（`stringResource`、`tr`、`ct`）見 [i18n.md](../design/i18n.md)。
 
 ## 1. 翻譯檔在哪裡
 
@@ -120,3 +120,12 @@ zh:zh_Hant,zh-rCN:zh_Hans
 ### 其他平台
 
 Crowdin、Transifex、Lokalise、POEditor 等平台也支援 Android XML，來源檔與翻譯檔路徑照上表設定即可；資料夾名稱要符合第 1 節的寫法（多數平台可自訂語言代碼對應，例如把 `zh-CN` 對應到 `zh-rCN`）。不使用平台時，以第 2 節的 TSV 交給譯者，也可以用試算表或其他電腦輔助翻譯工具處理。
+
+## 5. Google Play 商店資訊
+
+商店的標題、簡短說明、完整說明與版本資訊的固定文字也是翻譯檔，在 `distribution/play/listing/<Play 語言代碼>/`（`zh-TW` 原文、`en-US`、`zh-CN`），規則與字數上限見 [google-play.md](../google-play.md) 第 5.2 節。
+
+- 新增語言：建立 `distribution/play/listing/<語言代碼>/`（Play 的代碼，例如 `ja-JP`），放入 `title.txt`、`short_description.txt`、`full_description.txt`，以及版本資訊的 `release_notes_header.txt`、`release_notes_more.txt`、`release_notes_footer.txt`（分別保留 `{version}`、`{count}`、`{url}`）。它和介面翻譯是分開的：介面有某個語言不代表商店也要有，反之亦然。
+- 簡體中文：`python3 tools/i18n/i18n.py play-hans` 從繁體中文補上缺的檔案，`play-hans 檔名` 重新轉換指定的檔案。
+- 檢查：`python3 -I tools/play-store.py check`，CI 的 `LocalizationTest` 也會檢查。
+- Weblate：另建一個元件，檔案格式選「App store metadata files」，檔案遮罩 `distribution/play/listing/*`，單語基礎語言檔 `distribution/play/listing/zh-TW`（來源語言為繁體中文；也可以改以 `en-US` 為基礎），語言代碼樣式選 BCP 樣式（`zh-TW`）。每個檔案是一個翻譯單位，佔位符要保留。

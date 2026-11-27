@@ -23,7 +23,7 @@
 | `templates/` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），簽章後隨 nightly 與穩定版發佈，格式見 `templates/README.md` |
 | `features/bb5`、`features/facenet` | Android 隨選動態功能模組：`bb5` 只含 Barretenberg 5 原生函式庫，`facenet` 只含選用的 FaceNet-512 人臉比對模型；Google Play 版用到時才安裝，其他版本內含（`docs/release.md`「Android 選用元件與 APK」） |
 | `tools/` | 開發與維護工具：`trust-roots`（內建根憑證、CSCA、C2PA 信任清單產生器）、`dss-check`（EU DSS 交叉驗證）、`zk-prover-server`（自架 zkPDF 證明主機，Gradle 模組）、`i18n`（字串搬移與檢查）、`ld`（JSON-LD context 產生器）、`twdiw`（應用金鑰產生）、`twdiw-jws`、`twdiw-assets`（TWDIW 研究用的離線工具）、`zkpdf-testdocs`、`test-fonts`（合成測試文件與字型）、`native-research`（原生依賴研究的探測程式）、`facematch-eval`（人臉比對門檻校準：以公開人臉資料照 App 的流程量測誤接受率，模擬多幀比對，產生 FaceNet-512 模型）、`app-version.sh`（版本號）、`stable-release.sh`（穩定版的版本與標籤）、`release-notes.py`（Release 頁內文）、`windows-sign.ps1`（在本機以 YubiKey 等智慧卡簽署 Windows 發佈檔並傳回 Release）、`bundle-apks.sh`、`desktop-native.sh` |
-| `distribution/` | Google Play 商店圖像（`play/`）與版本說明（`whatsnew/`） |
+| `distribution/` | Google Play 商店資訊：`play/listing/<語言>/` 放標題、說明、版本資訊範本與 `images/`（fastlane supply 排法，`docs/google-play.md` 第 5 節） |
 
 `core` 內的主要套件：
 
@@ -296,4 +296,4 @@ python3 -I tools/trust-roots/update_roots.py --report report.md   # 重新產生
 - `.github/workflows` 無法由代理推送（缺 workflow 權限）；需要修改時把完整檔案交給使用者手動貼上。
 - CI 的 `test` job 與 `build`（Android）、`desktop` 平行，測試失敗不擋建置；`release`（main 的 nightly，或 `v*` 標籤的穩定版）需要三者都成功。穩定版由手動的 `stable-release.yml` 經 `tools/stable-release.sh` 推標籤；Release 內文由 `tools/release-notes.py` 產生，下載指引只放在內文最上方一次，改說明改腳本即可。`update-trust-roots.yml`（由使用者手動加入）每月重新產生內建公開根憑證並開 PR，有需要人處理的警告時讓該次執行失敗。
 - 發佈流程與簽章 secrets 見 [docs/release.md](docs/release.md)。版本只記在 `version.properties`（主版號.次版號），修訂號為最後一次修改 `version=` 那一行之後的 commit 數（不用 CI 執行次數），Android versionCode 為主版號 × 1,000,000 + 次版號 × 10,000 + 修訂號；規則在 `app/build.gradle.kts`，CI 檔名用同規則的 `tools/app-version.sh`（需要 `fetch-depth: 0`）。PR 建置加 `-pr<N>`，本機為 `-dev`；debug 簽章金鑰由 `DIW_DEBUG_KEYSTORE_FILE` 指定。
-- Google Play 上架資訊在 [docs/google-play.md](docs/google-play.md)。新增權限、把資料傳出裝置的功能（含預設伺服器）、分析／當機回報／廣告 SDK，或從網路下載的檔案類型時，要同步更新其中的權限表與資料安全答案；不可下載或載入可執行程式碼（dex、jar、.so），Play 只允許下載資料。
+- Google Play 上架資訊在 [docs/google-play.md](docs/google-play.md)。商店文字是翻譯檔（`distribution/play/listing`）：功能、語言或平台改變時一併更新 zh-TW 與 en-US，再以 `python3 tools/i18n/i18n.py play-hans 檔名` 更新簡體中文；Play 版本資訊不手寫，由 `tools/release-notes.py --play-out` 從 commit 標題產生。新增權限、把資料傳出裝置的功能（含預設伺服器）、分析／當機回報／廣告 SDK，或從網路下載的檔案類型時，要同步更新其中的權限表與資料安全答案；不可下載或載入可執行程式碼（dex、jar、.so），Play 只允許下載資料。

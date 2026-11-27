@@ -36,6 +36,10 @@ App 內也能打開這份教程：右上角齒輪進入「設定」，第一列�
 
 ### Android
 
+Android 也可以從 [Google Play](https://play.google.com/store/apps/details?id=diw.wallet.app) 安裝，之後由 Play 自動更新。Play 目前還在測試階段，要先加入測試群組，步驟見 [README 的 Google Play 測試](../../README.md#google-play-測試)。Play 版與下面的 APK 簽章相同，可以互相覆蓋更新，資料會保留。
+
+從 GitHub 安裝 APK：
+
 1. 用手機下載 APK（Android 10 以上），在下載完成的通知或「檔案」App 中點它。
 2. 系統詢問是否允許瀏覽器或檔案 App 安裝未知的應用程式時，選擇允許。
 3. 安裝完成後開啟「DIW MY WALLET」。
