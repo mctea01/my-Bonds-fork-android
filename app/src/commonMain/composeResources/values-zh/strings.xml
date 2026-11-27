@@ -5107,4 +5107,6 @@
     <string name="legal_link_terms">用戶協議</string>
     <string name="legal_optional_hint">以下服務由各自的營運者集中提供，勾選才會啟用並連線到該營運者；不勾選不影響本 App 的其他功能。</string>
     <string name="legal_show_points">顯示重點摘要</string>
+    <string name="legal_operator_site">營運者官方說明</string>
+    <string name="legal_operator_with_link">%1$s・%2$s</string>
 </resources>

@@ -5107,4 +5107,6 @@
     <string name="legal_link_terms">terms of use</string>
     <string name="legal_optional_hint">Each service below is run by one central operator. It is turned on, and its operator contacted, only if you tick it; leaving it unticked does not affect the rest of the app.</string>
     <string name="legal_show_points">Show key points</string>
+    <string name="legal_operator_site">operator's page</string>
+    <string name="legal_operator_with_link">%1$s · %2$s</string>
 </resources>

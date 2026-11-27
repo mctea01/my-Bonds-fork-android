@@ -62,6 +62,9 @@ object LegalStrings {
     /** The optional check box of an integration; %1$s is the link to its statement. */
     val AGREE_STATEMENT: String @Composable get() = stringResource(Res.string.legal_agree_statement)
     val OPTIONAL_HINT: String @Composable get() = stringResource(Res.string.legal_optional_hint)
+    /** "%1$s, %2$s": the operator line and the link [OPERATOR_SITE] to the operator's own page about the service. */
+    val OPERATOR_WITH_LINK: String @Composable get() = stringResource(Res.string.legal_operator_with_link)
+    val OPERATOR_SITE: String @Composable get() = stringResource(Res.string.legal_operator_site)
     val SHOW_POINTS: String @Composable get() = stringResource(Res.string.legal_show_points)
     val HIDE_POINTS: String @Composable get() = stringResource(Res.string.legal_hide_points)
     val BACK: String @Composable get() = stringResource(Res.string.action_back)

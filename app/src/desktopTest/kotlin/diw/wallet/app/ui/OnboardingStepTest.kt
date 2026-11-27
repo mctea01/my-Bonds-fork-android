@@ -49,4 +49,16 @@ class OnboardingStepTest {
         assertEquals("privacy", opened)
         assertEquals("only %3\$s", linkedText("only %3\$s", emptyList(), Color.Blue).text)
     }
+
+    @Test
+    fun plainPartsHaveNoLink() {
+        val text = linkedText("%1\$s - %2\$s", listOf("operator" to null, "page" to {}), Color.Blue)
+        assertEquals("operator - page", text.text)
+        assertEquals(listOf("page"), text.getLinkAnnotations(0, text.length).map { text.text.substring(it.start, it.end) })
+    }
+
+    @Test
+    fun everyServiceLinksToItsOperatorOverHttps() {
+        Integration.entries.forEach { assertTrue(it.operatorUrl.startsWith("https://"), it.id) }
+    }
 }

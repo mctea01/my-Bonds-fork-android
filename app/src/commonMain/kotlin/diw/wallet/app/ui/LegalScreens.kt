@@ -224,18 +224,21 @@ private fun KindLine(required: Boolean, text: String) {
 
 /**
  * [template] with its %1$s, %2$s ... placeholders replaced by [links], each shown as an underlined link that calls its
- * action; the rest is plain text.
+ * action (plain text when the action is null); the rest is plain text.
  */
-internal fun linkedText(template: String, links: List<Pair<String, () -> Unit>>, color: Color): AnnotatedString = buildAnnotatedString {
+internal fun linkedText(template: String, links: List<Pair<String, (() -> Unit)?>>, color: Color): AnnotatedString = buildAnnotatedString {
     var at = 0
     for (m in Regex("%(\\d+)\\\$s").findAll(template)) {
         append(template.substring(at, m.range.first))
         val link = links.getOrNull(m.groupValues[1].toInt() - 1)
+        val action = link?.second
         if (link == null) {
             append(m.value)
+        } else if (action == null) {
+            append(link.first)
         } else {
             val style = TextLinkStyles(SpanStyle(color = color, fontWeight = FontWeight.Medium, textDecoration = TextDecoration.Underline))
-            withLink(LinkAnnotation.Clickable(link.first, style) { link.second() }) { append(link.first) }
+            withLink(LinkAnnotation.Clickable(link.first, style) { action() }) { append(link.first) }
         }
         at = m.range.last + 1
     }
@@ -322,7 +325,7 @@ private fun ConsentPage(model: WalletModel, consent: LegalConsent, updated: Bool
                             Icon(i.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(20.dp))
                             Text(LegalStrings.purpose(i), style = MaterialTheme.typography.bodyMedium)
                         }
-                        Text(LegalStrings.operatorLine(st.operator), style = MaterialTheme.typography.bodySmall)
+                        OperatorLine(model, i)
                         if (consent.record(i) != null) {
                             Text(LegalStrings.STATEMENTS_UPDATED, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.error)
                         }
@@ -363,14 +366,28 @@ private fun DocumentReader(doc: LegalDocument, onBack: () -> Unit) {
     Button(onClick = onBack, modifier = Modifier.fillMaxWidth()) { Text(LegalStrings.BACK) }
 }
 
+/** The operator of [i] with a link to its own page about the service, opened in the browser. */
 @Composable
-private fun StatementHeader(i: Integration) {
+private fun OperatorLine(model: WalletModel, i: Integration) {
+    val st = LegalTexts.statement(i)
+    Text(
+        linkedText(
+            LegalStrings.OPERATOR_WITH_LINK,
+            listOf(LegalStrings.operatorLine(st.operator) to null, LegalStrings.OPERATOR_SITE to { model.platform.openBrowser(i.operatorUrl) }),
+            MaterialTheme.colorScheme.primary,
+        ),
+        style = MaterialTheme.typography.bodySmall,
+    )
+}
+
+@Composable
+private fun StatementHeader(model: WalletModel, i: Integration) {
     val st = LegalTexts.statement(i)
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(12.dp)) {
         Icon(i.icon, contentDescription = null, tint = MaterialTheme.colorScheme.primary, modifier = Modifier.size(36.dp))
         Column {
             Text(st.document.title, style = MaterialTheme.typography.titleLarge)
-            Text(LegalStrings.operatorLine(st.operator), style = MaterialTheme.typography.bodySmall)
+            OperatorLine(model, i)
         }
     }
 }
@@ -456,7 +473,7 @@ fun IntegrationStatementScreen(model: WalletModel, screen: Screen.IntegrationSta
         screen.pendingUri?.let {
             Text(LegalStrings.pendingLink(st.name), style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.primary)
         }
-        StatementHeader(i)
+        StatementHeader(model, i)
         Text(statusLine(consent, i), style = MaterialTheme.typography.titleSmall)
         LegalDocumentView(st.document)
         if (consent.enabled(i)) {
