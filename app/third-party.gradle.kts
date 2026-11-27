@@ -295,8 +295,10 @@ abstract class GenerateThirdParty : DefaultTask() {
 val attachedPaths: List<String> = (readJson(thirdPartyDir.resolve("components.json"))["components"] as List<Map<String, Any?>>)
     .flatMap { (it["files"] as List<String>?).orEmpty() }
 
-fun registerThirdParty(name: String, platformName: String, configurationName: String, natives: List<String>) =
+fun registerThirdParty(name: String, platformName: String, configurationName: String, natives: List<String>, nativeBuild: String) =
     tasks.register<GenerateThirdParty>(name) {
+        // The native build writes the crate lists read here; with diw.zkNative=skip or prebuilt it does nothing.
+        dependsOn(nativeBuild)
         group = "build"
         description = "Writes the About page's third-party list for $platformName"
         platform.set(platformName)
@@ -311,5 +313,5 @@ fun registerThirdParty(name: String, platformName: String, configurationName: St
         outputDir.set(layout.buildDirectory.dir("generated/thirdParty/$platformName"))
     }
 
-registerThirdParty("generateThirdPartyAndroid", "android", "releaseRuntimeClasspath", listOf("native/dist/android", "native/dist/android-bb5"))
-registerThirdParty("generateThirdPartyDesktop", "desktop", "desktopRuntimeClasspath", listOf("native/dist/resources/zk/native"))
+registerThirdParty("generateThirdPartyAndroid", "android", "releaseRuntimeClasspath", listOf("native/dist/android", "native/dist/android-bb5"), "buildZkAndroid")
+registerThirdParty("generateThirdPartyDesktop", "desktop", "desktopRuntimeClasspath", listOf("native/dist/resources/zk/native"), ":core:buildZkDesktop")
