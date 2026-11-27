@@ -33,7 +33,7 @@ P4 之後合併的工作：
 | 全專案 Review 後續（OpenID Federation、PIV、CSC 補全、C2PA、可見簽章、付款交易、交換檔、直接分享） | 完成，剩餘項目見第 4 節 | [review-followups.md](design/review-followups.md) |
 | OpenPGP 與 OpenPGP 卡 | 完成 | [openpgp.md](design/openpgp.md) |
 | TWDIW 新版應用簽章（1.0.14 格式） | 實作完成；官方平台是否接受未驗收 | [twdiw-application-signature.md](acceptance/twdiw-application-signature.md) |
-| 法律聲明、首次啟動同意、專門聲明（PR #80） | 完成 | [legal/README.md](legal/README.md) |
+| 法律聲明、首次啟動同意、專門聲明（PR #80）；首次啟動改為一頁勾選（2026-11-27，Play 測試回饋「要同意的內容太多」） | 完成；用戶協議與隱私權政策為唯一的必要勾選項，各專門聲明為預設不勾選的可選項，文件名稱點開看全文，各項附重點摘要與營運者官方說明連結；行動自然人憑證只在有可用 SP（內建、手動或服務端）時才詢問；未勾選的服務之後可在設定開啟 | [legal/README.md](legal/README.md) |
 | i18n：英文與繁體中文（PR #89）；簡體中文與新增語言的方法（PR #173） | 完成；簡體中文由繁體中文轉換（OpenCC），法律文件顯示繁體原文 | [i18n.md](design/i18n.md)、[translation.md](guides/translation.md) |
 | Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |
@@ -45,6 +45,7 @@ P4 之後合併的工作：
 | 桌面版原生執行檔修正（PR #146） | 2026-11-15 修正 Windows 版無法輸入、右鍵即錯誤退出（AWT 原生回呼的 JNI 設定缺漏），CI 改以 Robot 實際打字、右鍵與貼上檢查；2026-11-19 Windows 原生版改用 Java2D 的 GDI 管線（JDK 25 的 Direct3D 管線經記憶體區段 VarHandle 寫入，原生映像缺註冊）；CI 上原生 Windows 版收不到 Robot 的鍵盤與滑鼠事件（桌面沒把視窗放在游標下），但經 AWT 事件佇列送入的點擊與按鍵能進入 PIN 欄位，這種情況以結束碼 4 警告並照常上傳 Artifact；2026-11-20 使用者在實體 Windows 確認原生版可輸入、右鍵與中文輸入法正常；2026-11-20 使用者回報原生版讀卡機顯示 TerminalFactory 無法初始化：native-image 把 javax.smartcardio 的 j2pcsc 當成自己會連結的 JDK 函式庫，System.loadLibrary 不會開啟任何檔案，第一次呼叫即 UnsatisfiedLinkError；改為隨執行檔附上 j2pcsc，由 PcscReaders 以完整路徑載入，並補 PC/SC 提供者的反射與 JNI 註冊，CI 比對 JVM 與原生版的 PC/SC 自我檢查結果須相同；同日修正原生版 Ctrl+V 貼上時 AssertionError（剪貼簿排序資料格式時以反射取 java.rmi.MarshalledObject 建構子），自我檢查加入剪貼簿來回測試；2026-11-20 使用者回報 SQLITE_BUSY（資料庫被鎖住）：同一資料夾同時開了兩個 App（含 JVM 版與原生版並開），改為以資料夾內的 app.lock 只允許一個執行 | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
 | bbs-2023（含三種可選功能，PR #123） | 完成 | [bbs-2023.md](design/bbs-2023.md) |
 | 信任鏈完整顯示到根憑證、T3 根憑證審閱後加入自訂信任 | 完成：文件簽章、時戳、mdoc 發行端與讀卡機、電子護照 CSCA、憑證的簽發者與狀態清單、查驗方都經同一個憑證畫面補齊到根憑證；CSCA 的鏈結憑證（新金鑰由舊金鑰簽署、名稱相同）不當成根，繼續走到自簽的 CSCA（2026-11-20 修正，台灣護照原本顯示「找不到根憑證」）；其他項目未經實機驗證 | [AGENTS.md](../AGENTS.md) 規則 3 |
+| X.509 完整解析與金鑰、擴充限制 | 完成：憑證畫面顯示每個欄位與擴充（含未知擴充與 critical 旗標）；所有 X.509 判定都檢查終端憑證依用途的 keyUsage 與 extKeyUsage（TSA、OCSP 回應者、C2PA、mdoc 文件簽署者、文件簽章）、basicConstraints、pathLen、keyCertSign、nameConstraints（含錨點）、憑證政策樹、未知 critical 擴充與演算法強度；違規為 T4（`CERTIFICATE_CONSTRAINT`），SHA-1 與短 RSA 金鑰最高 T3（`WEAK_ALGORITHM`）；只有自動測試，未以真實憑證樣本逐一核對 | [x509-constraints.md](design/x509-constraints.md) |
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
 | 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，附在 nightly 與穩定版的「實驗版」；macOS 不支援。JVM 版仍是正式發行。2026-11-27 Windows 執行檔加入版本資源（檔案描述、產品名稱、版本、著作權與 Apache License 2.0）與 App 圖示，CI 以 Windows 讀回檢查；發佈資料夾附 `LICENSE`、`NOTICE`，`self-check.txt`、`smoke-stderr.txt` 改放 `native-check-<os>` Artifact | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
@@ -187,7 +188,7 @@ P4 之後合併的工作：
 | Barretenberg、Noir | 6.0.0（另有 5.0.0 選用元件）、1.0.0-rc.3 |
 | TLSNotary | 0.1.0-alpha.15 |
 
-版本以 `gradle/libs.versions.toml`、根目錄 `build.gradle.kts` 與 `native/Cargo.lock` 為準；升級由 Renovate 開 PR。
+版本以 `gradle/libs.versions.toml`、根目錄 `build.gradle.kts` 與 `native/Cargo.lock` 為準；升級由 Renovate 開 PR。函式庫帶入的 Guava 由根目錄 `build.gradle.kts` 提高到版本目錄的 `guava` 下限（保留 -android／-jre），以避開 GHSA-xxph-c9ww-hj94。
 
 刻意不升或等上游的相依（2026-11-26 檢查 Dependabot 與 Renovate 儀表板）：
 

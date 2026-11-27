@@ -52,16 +52,16 @@ class LegalDocument(
 }
 
 /**
- * Services run by one central operator, each behind its own statement. Without the holder's consent to the current
+ * Services run by one central operator, each behind its own statement; [operatorUrl] is the operator's own page about it. Without the holder's consent to the current
  * statement the wallet does not contact the service; the standard paths are not affected.
  */
-enum class Integration(val id: String, val available: Boolean = true) {
-    TWDIW("twdiw"),
-    MS_VERIFIED_ID("microsoft-verified-id"),
-    MOBILE_MOICA("mobile-moica"),
-    MYDATA("mydata"),
+enum class Integration(val id: String, val operatorUrl: String, val available: Boolean = true) {
+    TWDIW("twdiw", "https://moda.gov.tw/major-policies/wallet/1695"),
+    MS_VERIFIED_ID("microsoft-verified-id", "https://learn.microsoft.com/entra/verified-id/"),
+    MOBILE_MOICA("mobile-moica", "https://fido.moi.gov.tw/pt/"),
+    MYDATA("mydata", "https://mydata.nat.gov.tw/"),
     /** zkPassport: verifying others (Z2) and answering requests (Z3), docs/design/zkpassport.md. Reading e-passports by NFC does not depend on it. */
-    ZKPASSPORT("zkpassport"),
+    ZKPASSPORT("zkpassport", "https://zkpassport.id/"),
 }
 
 /** The statement of an [integration]: [name] as the UI shows it and the statement itself. */

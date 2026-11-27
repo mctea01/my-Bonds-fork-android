@@ -50,6 +50,7 @@
 | [design/zkpassport.md](design/zkpassport.md) | 規格 | 電子護照與 zkPassport：請求與 bridge 協定、查驗與信任、Z1 到 Z4、自己的證明器、OPRF、法律聲明 |
 | [design/bbs-2023.md](design/bbs-2023.md) | 規格 | bbs-2023：原生 BBS、JSON-LD 與 RDFC-1.0、可選功能的 DIW 發證擴充、出示與查驗 |
 | [design/c2pa-cawg.md](design/c2pa-cawg.md) | 規格 | C2PA 簽署、CAWG 身分聲明的簽署與驗證、AI 來源宣告與 SynthID、RSA-PSS 與 c2pa-rs 互通 |
+| [design/x509-constraints.md](design/x509-constraints.md) | 現行 | X.509 完整解析、終端憑證依用途的金鑰用途、路徑限制（basicConstraints、nameConstraints、憑證政策、critical 擴充）、演算法強度與信任結果 |
 | [design/openpgp.md](design/openpgp.md) | 規格 | OpenPGP 與 OpenPGP 卡：APDU、簽署與解密、公開金鑰清單與信任等級 |
 | [design/i18n.md](design/i18n.md) | 規格 | 多語系：字串資源機制、語言切換、core 訊息代碼化、術語表 |
 | [design/review-followups.md](design/review-followups.md) | 紀錄 | 2026-10-29 全專案 Review 的查證結果與各項的處理 |

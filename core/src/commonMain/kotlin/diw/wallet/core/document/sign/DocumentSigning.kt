@@ -85,9 +85,27 @@ expect object DocumentSigning {
     /** A PKCS#12 (.p12, .pfx) key and certificate opened with [password], as a signer. */
     fun pkcs12Signer(p12: ByteArray, password: String): DocumentSigner
 
-    /** DER of a self-issued certificate for a wallet key ([publicKeyDer] SubjectPublicKeyInfo) signed by that key. */
-    suspend fun selfIssuedCertificate(publicKeyDer: ByteArray, subjectName: String, sign: suspend (ByteArray) -> ByteArray, keyType: SignerKeyType, validDays: Int): ByteArray
+    /**
+     * DER of a self-issued certificate for a wallet key ([publicKeyDer] SubjectPublicKeyInfo) signed by that key. Its
+     * extKeyUsage is [purposes] (OIDs; none when empty): by default documentSigning and emailProtection, which
+     * document, seal and C2PA claim signatures accept (RFC 9336, C2PA 14.5.1).
+     */
+    suspend fun selfIssuedCertificate(
+        publicKeyDer: ByteArray,
+        subjectName: String,
+        sign: suspend (ByteArray) -> ByteArray,
+        keyType: SignerKeyType,
+        validDays: Int,
+        purposes: List<String> = SELF_ISSUED_PURPOSES,
+    ): ByteArray
 
     /** Subject common name and serial number (hex) of a certificate, for display. */
     fun certificateSummary(der: ByteArray): Pair<String, String>?
 }
+
+/** The extKeyUsage of the wallet's self-issued signing certificates: documentSigning and emailProtection. */
+val SELF_ISSUED_PURPOSES: List<String> = listOf(diw.wallet.core.x509.X509Names.KP_DOCUMENT_SIGNING, diw.wallet.core.x509.X509Names.KP_EMAIL_PROTECTION)
+
+/** Whether a self-issued certificate made before its extKeyUsage was set lacks it, so it is made again. */
+fun selfIssuedNeedsRenewal(der: ByteArray): Boolean =
+    diw.wallet.core.x509.X509Details.orNull(org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(der)))?.extendedKeyUsage == null

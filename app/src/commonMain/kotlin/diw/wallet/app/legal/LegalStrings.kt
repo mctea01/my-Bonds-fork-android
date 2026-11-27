@@ -10,7 +10,6 @@ object LegalStrings {
     val SUMMARY: String @Composable get() = stringResource(Res.string.legal_summary)
     /** Shown above a translated legal text: the Chinese original prevails (empty in Chinese). */
     val TRANSLATION_NOTE: String @Composable get() = stringResource(Res.string.legal_translation_note)
-    val FULL_TEXT: String @Composable get() = stringResource(Res.string.legal_full_text)
     val OPEN_ONLINE: String @Composable get() = stringResource(Res.string.legal_open_online)
 
     @Composable
@@ -27,13 +26,18 @@ object LegalStrings {
             stringResource(Res.string.legal_welcome_point_2_title) to stringResource(Res.string.legal_welcome_point_2_text),
         )
     val WELCOME_START: String @Composable get() = stringResource(Res.string.legal_welcome_start)
+    val STEPS_TITLE: String @Composable get() = stringResource(Res.string.legal_steps_title)
+    val STEPS_REQUIRED: String @Composable get() = stringResource(Res.string.legal_steps_required)
+    @Composable
+    fun stepsOptional(count: Int) = stringResource(Res.string.legal_steps_optional, count)
+
+    /** Marks the terms and the privacy policy (required) and the integration statements (optional). */
+    val REQUIRED: String @Composable get() = stringResource(Res.string.legal_required)
+    val OPTIONAL: String @Composable get() = stringResource(Res.string.legal_optional)
 
     // Terms and privacy
     val BASICS_TITLE: String @Composable get() = stringResource(Res.string.legal_basics_title)
-    val BASICS_TEXT: String @Composable get() = stringResource(Res.string.legal_basics_text)
     val BASICS_UPDATED: String @Composable get() = stringResource(Res.string.legal_basics_updated)
-    val AGREE_TERMS: String @Composable get() = stringResource(Res.string.legal_agree_terms)
-    val AGREE_PRIVACY: String @Composable get() = stringResource(Res.string.legal_agree_privacy)
     val AGREE_CONTINUE: String @Composable get() = stringResource(Res.string.legal_agree_continue)
     val DISAGREE: String @Composable get() = stringResource(Res.string.legal_disagree)
     val DISAGREE_TITLE: String @Composable get() = stringResource(Res.string.legal_disagree_title)
@@ -42,20 +46,50 @@ object LegalStrings {
 
     // Statements
     val STATEMENTS_TITLE: String @Composable get() = stringResource(Res.string.legal_statements_title)
-    val STATEMENTS_INTRO: String @Composable get() = stringResource(Res.string.legal_statements_intro)
     val STATEMENTS_UPDATED: String @Composable get() = stringResource(Res.string.legal_statements_updated)
-    @Composable
-    fun statementProgress(index: Int, total: Int) = stringResource(Res.string.legal_statement_progress, index, total)
     @Composable
     fun operatorLine(operator: String) = stringResource(Res.string.legal_operator_line, operator)
     val ACCEPT_ENABLE: String @Composable get() = stringResource(Res.string.legal_accept_enable)
     val DECLINE_DISABLE: String @Composable get() = stringResource(Res.string.legal_decline_disable)
+
+    // The consent page
+    val CONSENT_TITLE: String @Composable get() = stringResource(Res.string.legal_consent_title)
+    val CONSENT_TEXT: String @Composable get() = stringResource(Res.string.legal_consent_text)
+    /** One check box for both required texts; %1$s and %2$s are the links [LINK_TERMS] and [LINK_PRIVACY]. */
+    val AGREE_BASICS: String @Composable get() = stringResource(Res.string.legal_agree_basics)
+    val LINK_TERMS: String @Composable get() = stringResource(Res.string.legal_link_terms)
+    val LINK_PRIVACY: String @Composable get() = stringResource(Res.string.legal_link_privacy)
+    /** The optional check box of an integration; %1$s is the link to its statement. */
+    val AGREE_STATEMENT: String @Composable get() = stringResource(Res.string.legal_agree_statement)
+    val OPTIONAL_HINT: String @Composable get() = stringResource(Res.string.legal_optional_hint)
+    /** "%1$s, %2$s": the operator line and the link [OPERATOR_SITE] to the operator's own page about the service. */
+    val OPERATOR_WITH_LINK: String @Composable get() = stringResource(Res.string.legal_operator_with_link)
+    val OPERATOR_SITE: String @Composable get() = stringResource(Res.string.legal_operator_site)
+    val SHOW_POINTS: String @Composable get() = stringResource(Res.string.legal_show_points)
+    val HIDE_POINTS: String @Composable get() = stringResource(Res.string.legal_hide_points)
+    val BACK: String @Composable get() = stringResource(Res.string.action_back)
+    val OPTIONAL_TITLE: String @Composable get() = stringResource(Res.string.legal_optional_title)
+
+    /** What the integration is for, in one line. */
+    @Composable
+    fun purpose(i: Integration): String = stringResource(
+        when (i) {
+            Integration.TWDIW -> Res.string.legal_purpose_twdiw
+            Integration.MS_VERIFIED_ID -> Res.string.legal_purpose_ms_verified_id
+            Integration.MOBILE_MOICA -> Res.string.legal_purpose_mobile_moica
+            Integration.MYDATA -> Res.string.legal_purpose_mydata
+            Integration.ZKPASSPORT -> Res.string.legal_purpose_zkpassport
+        },
+    )
 
     // Done
     val DONE_TITLE: String @Composable get() = stringResource(Res.string.legal_done_title)
     val DONE_TEXT: String @Composable get() = stringResource(Res.string.legal_done_text)
     val DONE_START: String @Composable get() = stringResource(Res.string.legal_done_start)
     val DONE_GUIDE: String @Composable get() = stringResource(Res.string.legal_done_guide)
+    val DONE_REQUIRED: String @Composable get() = stringResource(Res.string.legal_done_required)
+    val DONE_ACCEPTED: String @Composable get() = stringResource(Res.string.legal_done_accepted)
+    val DONE_OPTIONAL: String @Composable get() = stringResource(Res.string.legal_done_optional)
 
     // Settings
     val SETTINGS_SECTION: String @Composable get() = stringResource(Res.string.legal_settings_section)
@@ -72,6 +106,8 @@ object LegalStrings {
     fun enabledLine(version: Int, date: String) = stringResource(Res.string.legal_enabled_line, version, date)
     val DISABLED_LINE: String @Composable get() = stringResource(Res.string.legal_disabled_line)
     val PENDING_LINE: String @Composable get() = stringResource(Res.string.legal_pending_line)
+    /** The service cannot be used on this install yet (no SP account for the mobile citizen certificate); asked once it can. */
+    val DEFERRED_LINE: String @Composable get() = stringResource(Res.string.legal_deferred_line)
     val WITHDRAW: String @Composable get() = stringResource(Res.string.legal_withdraw)
     val WITHDRAW_TITLE: String @Composable get() = stringResource(Res.string.legal_withdraw_title)
     @Composable

@@ -15,6 +15,10 @@ import org.multipaz.trustmanagement.TrustManager
 import org.multipaz.trustmanagement.TrustMetadata
 import org.multipaz.trustmanagement.TrustEntryAlreadyExistsException
 import org.multipaz.trustmanagement.TrustEntryX509Cert
+import diw.wallet.core.x509.CertificateConstraints
+import diw.wallet.core.x509.CertificatePurpose
+import diw.wallet.core.x509.ConstraintReport
+import diw.wallet.core.x509.ConstraintSeverity
 import diw.wallet.core.x509.displaySubject
 import kotlin.time.Clock
 import kotlin.time.Instant
@@ -75,12 +79,34 @@ fun trustMetadata(
     }
 )
 
-/** Result of a chain lookup in one role across enabled environments. */
+/**
+ * Result of a chain lookup in one role across enabled environments.
+ *
+ * @property path the certificates from the leaf up to [anchor] that the match relied on.
+ * @property constraints the usage and path rules checked on [path] ([CertificateConstraints]); a match never holds a
+ *   failed report, only weak findings and notes.
+ */
 data class AnchorMatch(
     val environment: TrustEnvironment,
     val metadata: TrustMetadata,
     val official: Boolean,
     val anchor: X509Cert,
+    val path: List<X509Cert> = emptyList(),
+    val constraints: ConstraintReport = ConstraintReport.EMPTY,
+)
+
+/**
+ * A chain judged for a role: the anchor it leads to when the usage and path rules hold ([match]), the anchor it
+ * would lead to when they do not ([rejected]), and the rules' findings. A chain that leads to no anchor has its
+ * presented certificates checked all the same.
+ */
+data class ChainEvaluation(
+    val match: AnchorMatch?,
+    val rejected: AnchorMatch?,
+    /** The findings, whose indexes are positions in [path]. */
+    val constraints: ConstraintReport,
+    /** The certificates checked, leaf first: up to the anchor, or as far as the presented chain links. */
+    val path: List<X509Cert> = emptyList(),
 )
 
 /** An intermediate CA certificate the user imported: it only links chains to anchors and never sets a tier. */
@@ -395,7 +421,7 @@ class TrustRegistry(
         val out = chain.toMutableList()
         while (out.size < MAX_CHAIN) {
             val last = out.last()
-            if (last.selfIssuedRoot) break
+            if (signedItself(last)) break
             out.add(candidates.firstOrNull { c -> c !in out && issues(c, last) } ?: break)
         }
         return out
@@ -428,13 +454,88 @@ class TrustRegistry(
         chain: List<X509Cert>,
         atTime: Instant = Clock.System.now(),
         docType: String? = null,
-    ): AnchorMatch? {
-        if (chain.isEmpty()) return null
+    ): AnchorMatch? = evaluate(role, chain, atTime, docType).match
+
+    /**
+     * [chain] judged for [role]: the anchor it leads to (completed from the built-in and user intermediates as
+     * [match] does) and the certificate usage and path rules of [CertificateConstraints] on the path to it. A path
+     * that breaks a rule does not match; its would-be anchor is kept in [ChainEvaluation.rejected].
+     */
+    suspend fun evaluate(
+        role: TrustRole,
+        chain: List<X509Cert>,
+        atTime: Instant = Clock.System.now(),
+        docType: String? = null,
+    ): ChainEvaluation {
+        if (chain.isEmpty()) return ChainEvaluation(null, null, ConstraintReport.EMPTY)
         retireExpiredMdocTrustLists(role, atTime)
-        matchChain(role, chain, atTime, docType)?.let { return it }
-        val longer = extendFromPool(chain)
-        return if (longer.size > chain.size) matchChain(role, longer, atTime, docType) else null
+        var used = chain
+        var m = matchChain(role, chain, atTime, docType)
+        if (m == null) {
+            // The completed chain is checked even when it still leads to no anchor, so that an intermediate's
+            // constraints apply whether it came with the chain or from the pool.
+            val longer = extendFromPool(chain)
+            if (longer.size > chain.size) {
+                m = matchChain(role, longer, atTime, docType)
+                used = longer
+            }
+        }
+        val judged = judge(role, used, m, atTime, docType)
+        val rejected = judged.rejected ?: return judged
+        // Another enabled anchor lower on the same path (an intermediate the user or a list trusts) may give a
+        // shorter path that keeps the rules, so the leading parts of the path are tried before rejecting it.
+        for (k in judged.path.size - 1 downTo 1) {
+            val prefix = judged.path.subList(0, k)
+            val other = matchChain(role, prefix, atTime, docType) ?: continue
+            if (other.anchor == rejected.anchor) continue
+            val again = judge(role, prefix, other, atTime, docType)
+            if (again.match != null) return again
+        }
+        return judged
     }
+
+    private fun judge(role: TrustRole, chain: List<X509Cert>, m: AnchorMatch?, atTime: Instant, docType: String?): ChainEvaluation {
+        val purpose = CertificatePurpose.of(role, docType)
+        if (m == null) {
+            val linked = linked(chain)
+            val report = CertificateConstraints.check(linked, purpose, atTime, anchored = false)
+            return ChainEvaluation(null, null, report, linked)
+        }
+        val path = pathTo(chain, m.anchor)
+        val report = CertificateConstraints.check(path, purpose, atTime, anchored = true)
+        val judged = m.copy(path = path, constraints = report)
+        return if (report.failed) ChainEvaluation(null, judged, report, path) else ChainEvaluation(judged, null, report, path)
+    }
+
+    /**
+     * The certificates of [chain] from the leaf to [anchor]: the anchor itself when the leaf is the anchor, else the
+     * shortest leading part of the chain whose last certificate [anchor] issued, then the anchor (a chain may carry a
+     * cross-signed copy of a root above the certificate the anchor issued). Issued means the names and key
+     * identifiers link and the anchor's key verifies the signature: a key rollover certificate under the root's name
+     * is not skipped because a root without a subjectKeyIdentifier matches it by name.
+     */
+    private fun pathTo(chain: List<X509Cert>, anchor: X509Cert): List<X509Cert> {
+        if (chain.first() == anchor) return listOf(anchor)
+        val below = chain.takeWhile { it != anchor }
+        val k = below.indices.firstOrNull { issues(anchor, below[it]) && Pkix.signedBy(below[it], anchor) } ?: below.lastIndex
+        return below.subList(0, k + 1) + anchor
+    }
+
+    /** [chain] in issuing order from the leaf, as far as each certificate names the one above it and its key verifies. */
+    private fun linked(chain: List<X509Cert>): List<X509Cert> {
+        val out = mutableListOf(chain.first())
+        while (out.size < MAX_CHAIN && !signedItself(out.last())) {
+            val last = out.last()
+            out.add(chain.firstOrNull { it !in out && issues(it, last) && Pkix.signedBy(last, it) } ?: break)
+        }
+        return out
+    }
+
+    /**
+     * A root that signed itself: self-issued and its own key verifies its signature. A key rollover certificate
+     * under the same name is signed by the old key, so a chain goes on from it to the certificate of that key.
+     */
+    private fun signedItself(c: X509Cert): Boolean = c.selfIssuedRoot && Pkix.signedBy(c, c)
 
     private suspend fun matchChain(role: TrustRole, chain: List<X509Cert>, atTime: Instant, docType: String?): AnchorMatch? {
         var listsChecked = false
@@ -530,7 +631,7 @@ class TrustRegistry(
         var downloads = 0
         while (out.size < MAX_CHAIN && downloads < MAX_FETCHES) {
             val last = out.last()
-            if (last.selfIssuedRoot) break
+            if (signedItself(last)) break
             val urls = runCatching { DocCrypto.caIssuerUrls(last.encoded.toByteArray()) }.getOrDefault(emptyList())
             var next: X509Cert? = null
             for (url in urls) {
@@ -568,16 +669,50 @@ class TrustRegistry(
         atTime: Instant = Clock.System.now(),
         docType: String? = null,
     ): TrustDecision {
-        var m = match(role, chain, atTime, docType)
-        var completed = false
-        if (m == null && issuerFetcher != null) {
-            val longer = complete(extendFromPool(chain))
-            if (longer.size > chain.size) {
-                m = match(role, longer, atTime, docType)
-                completed = m != null
-            }
+        val (ev, completed) = evaluateCompleting(role, chain, atTime, docType)
+        return decision(ev, completed)
+    }
+
+    /** [evaluate], then once more with the issuers AIA caIssuers links name when the chain leads to no anchor. */
+    private suspend fun evaluateCompleting(role: TrustRole, chain: List<X509Cert>, atTime: Instant, docType: String?): Pair<ChainEvaluation, Boolean> {
+        val ev = evaluate(role, chain, atTime, docType)
+        if (ev.match != null || ev.rejected != null || issuerFetcher == null || chain.isEmpty()) return ev to false
+        val longer = complete(extendFromPool(chain))
+        if (longer.size <= chain.size) return ev to false
+        // Kept without an anchor too: the issuers AIA names are checked like those sent with the chain.
+        val again = evaluate(role, longer, atTime, docType)
+        return again to (again.match != null)
+    }
+
+    /**
+     * The decision for an [evaluate] result: a path that breaks a certificate usage or path rule is T4 (the
+     * certificate may not be used for this), labelled [TrustLabel.CERTIFICATE_CONSTRAINT], with the rules as reasons;
+     * otherwise as [decision] for its match.
+     */
+    fun decision(ev: ChainEvaluation, completed: Boolean = false): TrustDecision {
+        if (!ev.constraints.failed) {
+            val d = decision(ev.match, completed)
+            return if (ev.match == null) withFindings(d, ev.constraints) else d
         }
-        return decision(m, completed)
+        return TrustDecision(
+            tier = TrustTier.T4,
+            environment = null,
+            official = false,
+            anchorName = ev.rejected?.metadata?.displayName,
+            labels = setOf(TrustLabel.CERTIFICATE_CONSTRAINT),
+            reasons = ev.constraints.lines(ConstraintSeverity.WEAK),
+        )
+    }
+
+    /** [d] with the weak findings of [report]: at most T3, labelled [TrustLabel.WEAK_ALGORITHM]; notes added as reasons. */
+    private fun withFindings(d: TrustDecision, report: ConstraintReport): TrustDecision {
+        if (report.findings.isEmpty()) return d
+        val weak = report.weak
+        return d.copy(
+            tier = if (weak && d.tier.highlyTrusted) TrustTier.T3 else d.tier,
+            labels = if (weak) d.labels + TrustLabel.WEAK_ALGORITHM else d.labels,
+            reasons = d.reasons + report.lines(ConstraintSeverity.WEAK),
+        )
     }
 
     /**
@@ -609,14 +744,14 @@ class TrustRegistry(
             }
             if (m.metadata.extensions[TrustMetadataKeys.QUALIFIED] == "true") add(TrustLabel.EU_QUALIFIED)
         }
-        return TrustDecision(
+        return withFindings(TrustDecision(
             tier = tierFor(m.environment, m.official, cryptographicallyVerified = true),
             environment = m.environment,
             official = m.official,
             anchorName = m.metadata.displayName,
             labels = labels,
             reasons = if (completed) listOf("Intermediate certificates were fetched from the AIA caIssuers link") else emptyList(),
-        )
+        ), m.constraints)
     }
 
     /**
@@ -637,17 +772,13 @@ class TrustRegistry(
         if (chain.isEmpty()) return TrustPath(emptyList(), emptyList(), null, emptyList())
         var m: AnchorMatch? = null
         var decision: TrustDecision? = null
+        var evaluation: ChainEvaluation? = null
         if (role != null) {
-            m = match(role, chain, atTime, docType)
-            var completed = false
-            if (m == null && issuerFetcher != null) {
-                val longer = complete(extendFromPool(chain))
-                if (longer.size > chain.size) {
-                    m = match(role, longer, atTime, docType)
-                    completed = m != null
-                }
-            }
-            decision = decision(m, completed)
+            val (ev, completed) = evaluateCompleting(role, chain, atTime, docType)
+            evaluation = ev
+            // A path rejected by the usage rules is still drawn up to the anchor it leads to.
+            m = ev.match ?: ev.rejected
+            decision = decision(ev, completed)
         }
         val presented = chain.drop(1)
         val builtInMiddle = BuiltInPublicRoots.intermediates.map { it.certificate }
@@ -725,7 +856,19 @@ class TrustRegistry(
             }
             BuiltInPublicRoots.importableRoots.filter { it.certificate == top }.forEach { add(RootListing(RootListing.Kind.IMPORTABLE, it.name)) }
         }
-        return TrustPath(steps, presented.filter { it !in certs }.distinct(), decision, listings)
+        // For a role, the findings of the evaluation the decision came from, placed on the certificates as drawn (the
+        // drawn path may go on above the anchor, whose issuers the decision does not rely on). Without a role, the
+        // path rules on the path as drawn.
+        val constraints = if (evaluation != null) {
+            val checked = evaluation.path
+            ConstraintReport(evaluation.constraints.findings.mapNotNull { f ->
+                checked.getOrNull(f.index)?.let { c -> certs.indexOf(c) }?.takeIf { it >= 0 }?.let { f.copy(index = it) }
+            })
+        } else {
+            val anchoredTop = top.selfIssuedRoot && steps.last().signatureValid == true
+            CertificateConstraints.check(certs, null, atTime, anchored = anchoredTop)
+        }
+        return TrustPath(steps, presented.filter { it !in certs }.distinct(), decision, listings, constraints)
     }
 
     /**

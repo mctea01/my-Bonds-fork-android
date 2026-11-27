@@ -30,6 +30,8 @@ import org.bouncycastle.asn1.x500.X500Name
 import org.bouncycastle.asn1.x509.BasicConstraints
 import org.bouncycastle.asn1.x509.CertificatePolicies
 import org.bouncycastle.asn1.x509.Extension
+import org.bouncycastle.asn1.x509.ExtendedKeyUsage
+import org.bouncycastle.asn1.x509.KeyPurposeId
 import org.bouncycastle.asn1.x509.KeyUsage
 import org.bouncycastle.asn1.x509.PolicyInformation
 import org.bouncycastle.cert.X509CertificateHolder
@@ -76,6 +78,7 @@ class TrustListsTest {
             from: Long = System.currentTimeMillis() - day,
             until: Long = System.currentTimeMillis() + 365 * day,
             policy: String? = null,
+            timeStamping: Boolean = false,
         ): Issued {
             val b = JcaX509v3CertificateBuilder(X500Name(issuer?.cert?.subject?.toString() ?: subject), BigInteger.valueOf(System.nanoTime()),
                 Date(from), Date(until), X500Name(subject), key.public)
@@ -84,6 +87,8 @@ class TrustListsTest {
             b.addExtension(Extension.authorityKeyIdentifier, false, ext.createAuthorityKeyIdentifier(issuer?.key?.public ?: key.public))
             b.addExtension(Extension.basicConstraints, true, BasicConstraints(ca))
             b.addExtension(Extension.keyUsage, true, KeyUsage(if (ca) KeyUsage.keyCertSign or KeyUsage.cRLSign else KeyUsage.digitalSignature or KeyUsage.nonRepudiation))
+            // RFC 3161 2.3: a time-stamp unit's certificate has the one critical extKeyUsage timeStamping.
+            if (timeStamping) b.addExtension(Extension.extendedKeyUsage, true, ExtendedKeyUsage(KeyPurposeId.id_kp_timeStamping))
             policy?.let { b.addExtension(Extension.certificatePolicies, false, CertificatePolicies(PolicyInformation(ASN1ObjectIdentifier(it)))) }
             return Issued(key, b.build(JcaContentSignerBuilder("SHA256withRSA").setProvider(bc).build((issuer?.key ?: key).private)))
         }
@@ -110,7 +115,7 @@ class TrustListsTest {
         private val webCa = issue("CN=Test Web Only CA,C=AT", ca = true)
         private val webLeaf = issue("CN=Web Leaf,C=AT", issuer = webCa, ca = false)
         private val tsa = issue("CN=Test QTST,C=AT", ca = true)
-        private val tsaLeaf = issue("CN=Test TSU,C=AT", issuer = tsa, ca = false)
+        private val tsaLeaf = issue("CN=Test TSU,C=AT", issuer = tsa, ca = false, timeStamping = true)
         // Granted from 2015 to 2025, withdrawn since; its certificates were valid over that period.
         private val from2015 = Instant.parse("2015-01-01T00:00:00Z").toEpochMilliseconds()
         private val oldCa = issue("CN=Test Withdrawn CA,C=AT", ca = true, from = from2015, until = System.currentTimeMillis() + 365 * day)
@@ -241,8 +246,14 @@ class TrustListsTest {
 
         // Roles are not shared: the time-stamp service anchors time stamps only, the CA documents only.
         assertEquals(TrustTier.T2, reg.decide(TrustRole.TSA, listOf(tsaLeaf.x509), now).tier)
-        assertEquals(TrustTier.T3, reg.decide(TrustRole.DOCUMENT, listOf(tsaLeaf.x509), now).tier)
-        assertEquals(TrustTier.T3, reg.decide(TrustRole.TSA, listOf(qcaLeaf.x509), now).tier)
+        // Neither leads to an anchor for the other role; the certificates' key usage also forbids the other use (T4).
+        for ((role, leaf) in listOf(TrustRole.DOCUMENT to tsaLeaf, TrustRole.TSA to qcaLeaf)) {
+            val ev = reg.evaluate(role, listOf(leaf.x509), now)
+            assertNull(ev.match ?: ev.rejected)
+            val d = reg.decision(ev)
+            assertEquals(TrustTier.T4, d.tier)
+            assertTrue(TrustLabel.CERTIFICATE_CONSTRAINT in d.labels, d.labels.toString())
+        }
         assertEquals(TrustTier.T3, reg.decide(TrustRole.ISSUER, listOf(qcaLeaf.x509), now).tier)
         // A CA for website certificates only does not anchor document signatures.
         assertEquals(TrustTier.T3, reg.decide(TrustRole.DOCUMENT, listOf(webLeaf.x509), now).tier)
@@ -290,6 +301,7 @@ class TrustListsTest {
         val withoutPolicy = issue("CN=Other Signer", issuer = aatlRoot, ca = false)
         val freeRoot = issue("CN=Test AATL Free Root,C=TW", ca = true)
         val freeLeaf = issue("CN=Free Signer", issuer = freeRoot, ca = false)
+        val freeTsu = issue("CN=Free TSU", issuer = freeRoot, ca = false, timeStamping = true)
         val xml = """<?xml version="1.0" encoding="UTF-8"?>
             <SaSaveData><TrustedIdentities>
               <Identity><ImportAction>1</ImportAction><Certificate>${b64(aatlRoot.der)}</Certificate>
@@ -318,7 +330,7 @@ class TrustListsTest {
         assertTrue(TrustLabel.AATL in ok.labels && TrustLabel.EU_QUALIFIED !in ok.labels, "labels: ${ok.labels}")
         // A restricted identity anchors only chains carrying one of its policies.
         assertEquals(TrustTier.T3, reg.decide(TrustRole.DOCUMENT, listOf(withoutPolicy.x509), now).tier)
-        assertEquals(TrustTier.T2, reg.decide(TrustRole.TSA, listOf(freeLeaf.x509), now).tier)
+        assertEquals(TrustTier.T2, reg.decide(TrustRole.TSA, listOf(freeTsu.x509), now).tier)
         assertNotNull(reg.trustLists.snapshot(TrustListKind.AATL))
         reg.trustLists.remove(TrustListKind.AATL)
         assertEquals(TrustTier.T3, reg.decide(TrustRole.DOCUMENT, listOf(freeLeaf.x509), now).tier)

@@ -31,7 +31,8 @@ data class ConsentRecord(val version: Int, val accepted: Boolean, val epochSecon
 
 /**
  * The holder's decisions on the terms, the privacy policy and each integration statement (by Integration.id), and the
- * integrations whose one-time reminder before the first request the holder has seen ([notices]).
+ * integrations whose one-time reminder before the first request the holder has seen ([notices]). [deferred] (not
+ * stored) names the integrations that cannot be used on this install yet; their statements are asked once they can.
  */
 @Serializable
 data class LegalConsent(
@@ -39,6 +40,7 @@ data class LegalConsent(
     val privacy: ConsentRecord? = null,
     val integrations: Map<String, ConsentRecord> = emptyMap(),
     val notices: Set<String> = emptySet(),
+    @kotlinx.serialization.Transient val deferred: Set<String> = emptySet(),
 ) {
     fun current(doc: LegalDocument, record: ConsentRecord?) = record != null && record.accepted && record.version == doc.version
 
@@ -50,9 +52,12 @@ data class LegalConsent(
     /** The holder agreed to the current statement of [i]. */
     fun enabled(i: Integration): Boolean = current(LegalTexts.statement(i).document, record(i))
 
-    /** Statements of the shipped integrations with no decision on their current version. */
+    /** The integration is shipped and can be used on this install now. */
+    fun offered(i: Integration): Boolean = i.available && i.id !in deferred
+
+    /** Statements of the offered integrations with no decision on their current version. */
     val undecided: List<Integration>
-        get() = Integration.entries.filter { it.available && record(it)?.version != LegalTexts.statement(it).document.version }
+        get() = Integration.entries.filter { offered(it) && record(it)?.version != LegalTexts.statement(it).document.version }
 
     /** Nothing is left to decide: the app may contact other parties and handle links. */
     val complete: Boolean get() = basicsAccepted && undecided.isEmpty()
@@ -69,12 +74,52 @@ class LegalModel(private val model: WalletModel) {
 
     val complete: Boolean get() = consent.value.complete
 
+    /** The configured server said at /info that it signs with the mobile citizen certificate through its SP account. */
+    private var serverMobileMoica = false
+
+    /**
+     * Whether [i] can be used on this install. The mobile citizen certificate needs an SP account: the one built into
+     * the build, one the holder enters (developer setting) or the configured server's. Until then its statement is not
+     * asked; once one appears the first-start pages come back for it alone.
+     */
+    private fun usable(i: Integration): Boolean = when (i) {
+        Integration.MOBILE_MOICA -> model.files.builtInMobileMoicaSp != null || model.settings.manualMobileMoicaSp || serverMobileMoica
+        else -> true
+    }
+
+    private fun deferredIds(): Set<String> = Integration.entries.filterNot { usable(it) }.map { it.id }.toSet()
+
+    /** Applies a change in what can be used (settings, the server's answer) to the statements to ask. */
+    fun refreshOffers() = update { it }
+
+    /** Records whether the configured server offers the mobile citizen certificate. */
+    fun noteServerMobileMoica(offers: Boolean) {
+        if (serverMobileMoica == offers) return
+        serverMobileMoica = offers
+        refreshOffers()
+    }
+
+    /**
+     * Asks the configured server (only after the first-start pages are done) whether it offers the mobile citizen
+     * certificate; an unreachable server leaves the last answer as it is.
+     */
+    suspend fun checkServerOffers() {
+        if (!consent.value.complete) return
+        val base = model.server.base()
+        if (base == null) {
+            noteServerMobileMoica(false)
+            return
+        }
+        runCatching { model.server.mobileMoica(base) != null }.onSuccess { noteServerMobileMoica(it) }
+    }
+
     fun enabled(i: Integration): Boolean = consent.value.enabled(i)
 
     suspend fun load(storage: Storage) {
         this.storage = storage
-        val raw = storage.getTable(table).get(KEY) ?: return
-        consent.value = runCatching { DiwJson.decodeFromString(LegalConsent.serializer(), raw.decodeToString()) }.getOrDefault(LegalConsent())
+        val raw = storage.getTable(table).get(KEY)
+        val stored = raw?.let { runCatching { DiwJson.decodeFromString(LegalConsent.serializer(), it.decodeToString()) }.getOrNull() }
+        consent.value = (stored ?: LegalConsent()).copy(deferred = deferredIds())
     }
 
     /** Suspends until the first-start pages are done. */
@@ -85,6 +130,22 @@ class LegalModel(private val model: WalletModel) {
     fun acceptBasics() = update { c ->
         val now = now()
         c.copy(terms = ConsentRecord(LegalTexts.terms.version, true, now), privacy = ConsentRecord(LegalTexts.privacy.version, true, now))
+    }
+
+    /**
+     * The choices of the consent page in one write: the terms and the privacy policy when [basics], and each listed
+     * integration accepted or declined.
+     */
+    fun decideAll(basics: Boolean, integrations: Map<Integration, Boolean>) = update { c ->
+        val now = now()
+        val base = if (!basics) c else c.copy(
+            terms = ConsentRecord(LegalTexts.terms.version, true, now),
+            privacy = ConsentRecord(LegalTexts.privacy.version, true, now),
+        )
+        base.copy(
+            integrations = base.integrations +
+                integrations.map { (i, accepted) -> i.id to ConsentRecord(LegalTexts.statement(i).document.version, accepted, now) },
+        )
     }
 
     fun decide(i: Integration, accepted: Boolean) = update { c ->
@@ -107,8 +168,10 @@ class LegalModel(private val model: WalletModel) {
 
     private fun update(transform: (LegalConsent) -> LegalConsent) = model.scope.launch {
         lock.withLock {
-            val next = transform(consent.value)
+            val before = consent.value
+            val next = transform(before).copy(deferred = deferredIds())
             consent.value = next
+            if (next.copy(deferred = emptySet()) == before.copy(deferred = emptySet())) return@withLock
             val t = storage.getTable(table)
             val bytes = DiwJson.encodeToString(LegalConsent.serializer(), next).encodeToByteString()
             if (t.get(KEY) == null) t.insert(KEY, bytes) else t.update(KEY, bytes)

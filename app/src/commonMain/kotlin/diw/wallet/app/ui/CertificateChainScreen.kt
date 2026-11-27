@@ -47,6 +47,9 @@ import diw.wallet.core.trust.TrustPath
 import diw.wallet.core.trust.selfIssuedRoot
 import diw.wallet.core.trust.TrustRole
 import diw.wallet.core.trust.TrustTier
+import diw.wallet.core.x509.ConstraintFinding
+import diw.wallet.core.x509.ConstraintReport
+import diw.wallet.core.x509.ConstraintSeverity
 import diw.wallet.core.x509.displaySubject
 import org.jetbrains.compose.resources.stringResource
 import org.multipaz.crypto.X509Cert
@@ -90,6 +93,7 @@ fun CertificateScreen(model: WalletModel, screen: Screen.Certificate) {
         } else {
             p.decision?.let { d -> ChainTrustSummary(d, screen.role) }
             screen.at?.let { Text(stringResource(Res.string.chain_checked_at, localTime(it)), style = MaterialTheme.typography.bodySmall) }
+            ChainChecks(p.constraints, screen.role)
             SectionTitle(stringResource(Res.string.chain_title))
             ChainList(p, selected, screen.at) { selected = it }
             if (!p.rootReached) MissingRoot(model, p)
@@ -119,6 +123,40 @@ private fun ChainTrustSummary(d: TrustDecision, role: TrustRole?) {
             Text(stringResource(Res.string.chain_t3_hint), style = MaterialTheme.typography.bodySmall, color = tierColor(TrustTier.T3))
         }
     }
+}
+
+/**
+ * The result of the usage and constraint checks of the chain (keyUsage and extKeyUsage of the leaf for the use,
+ * basicConstraints, pathLenConstraint, nameConstraints, policies, critical extensions, algorithms and key sizes).
+ */
+@Composable
+private fun ChainChecks(r: ConstraintReport, role: TrustRole?) {
+    val shown = r.findings.filter { it.severity != ConstraintSeverity.NOTE }
+    val verdict = when {
+        r.failed -> Verdict.FAIL
+        r.weak -> Verdict.CAUTION
+        else -> Verdict.PASS
+    }
+    val lines = when {
+        shown.isNotEmpty() -> shown.map { "${it.subject}: ${it.message}" }
+        role != null -> listOf(stringResource(Res.string.chain_checks_ok, roleName(role)))
+        else -> listOf(stringResource(Res.string.chain_checks_ok_norole))
+    }
+    VerdictCard(verdict, stringResource(Res.string.chain_checks_title), lines)
+}
+
+@Composable
+private fun findingColor(f: ConstraintFinding) = when (f.severity) {
+    ConstraintSeverity.FAIL -> MaterialTheme.colorScheme.error
+    ConstraintSeverity.WEAK -> tierColor(TrustTier.T3)
+    ConstraintSeverity.NOTE -> MaterialTheme.colorScheme.onSurfaceVariant
+}
+
+@Composable
+private fun findingText(f: ConstraintFinding): String = when (f.severity) {
+    ConstraintSeverity.FAIL -> stringResource(Res.string.chain_finding_fail, f.message)
+    ConstraintSeverity.WEAK -> stringResource(Res.string.chain_finding_weak, f.message)
+    ConstraintSeverity.NOTE -> stringResource(Res.string.chain_finding_note, f.message)
 }
 
 /** The chain from the root (or the highest certificate found) down to the leaf, indented by depth. */
@@ -154,6 +192,7 @@ private fun ChainList(p: TrustPath, selected: X509Cert, at: kotlin.time.Instant?
             now > c.validityNotAfter -> stringResource(Res.string.chain_expired, localTime(c.validityNotAfter))
             else -> stringResource(Res.string.chain_valid_until, localTime(c.validityNotAfter))
         }
+        val findings = p.constraints.at(i)
         val problem = step.signatureValid == false || now !in c.validityNotBefore..c.validityNotAfter
         val isSelected = c == selected
         Column(
@@ -170,6 +209,7 @@ private fun ChainList(p: TrustPath, selected: X509Cert, at: kotlin.time.Instant?
             Text(c.displaySubject(), style = MaterialTheme.typography.bodyMedium, fontWeight = FontWeight.SemiBold)
             Text(listOfNotNull(source, signature, validity).joinToString(stringResource(Res.string.sep_list)), style = MaterialTheme.typography.bodySmall,
                 color = if (problem) MaterialTheme.colorScheme.error else MaterialTheme.colorScheme.onSurfaceVariant)
+            findings.forEach { f -> Text(findingText(f), style = MaterialTheme.typography.bodySmall, color = findingColor(f)) }
         }
     }
 }

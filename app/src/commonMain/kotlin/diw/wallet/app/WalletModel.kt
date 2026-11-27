@@ -649,6 +649,7 @@ class WalletModel(val platform: PlatformServices) {
             trustLists.refreshDue()
             zkTemplates.refreshDue()
             refreshMdocTrustLists(quiet = true)
+            legal.checkServerOffers()
         }
     }
 
@@ -685,6 +686,9 @@ class WalletModel(val platform: PlatformServices) {
         settingsFlow.value = s
         trust.policy = environmentPolicy
         if (s.aatlTrustList != old.aatlTrustList || s.eutlTrustList != old.eutlTrustList) trustLists.refreshDue()
+        // A source of SP accounts for the mobile citizen certificate makes its statement due (LegalModel.usable).
+        if (s.manualMobileMoicaSp != old.manualMobileMoicaSp) legal.refreshOffers()
+        if (s.zkVerifierUrl != old.zkVerifierUrl) scope.launch { legal.checkServerOffers() }
         val t = storage.getTable(settingsTable)
         val bytes = DiwJson.encodeToString(WalletSettings.serializer(), s).encodeToByteString()
         if (t.get("settings") == null) t.insert("settings", bytes) else t.update("settings", bytes)

@@ -5,6 +5,8 @@ coroutines = "1.11.0"
 serialization = "1.13.0"
 kotlinxIo = "0.9.3"
 bouncycastle = "1.87"
+# Floor for the Guava that libraries bring in (GHSA-xxph-c9ww-hj94 is fixed in 33.7.2); the flavor suffix is kept.
+guava = "33.8.0"
 jna = "5.19.1"
 # Compose Multiplatform libraries; the plugin version in the root build.gradle.kts must match composeMultiplatform.
 composeMultiplatform = "1.12.2"

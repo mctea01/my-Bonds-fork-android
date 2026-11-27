@@ -1,6 +1,7 @@
 package diw.wallet.core.trust
 
 import diw.wallet.core.env.TrustEnvironment
+import diw.wallet.core.x509.ConstraintReport
 import org.multipaz.crypto.X509Cert
 
 /**
@@ -84,12 +85,14 @@ data class RootListing(
  * @property extras certificates sent with the chain that are not part of the path from the leaf.
  * @property decision the evaluation for the role asked, as [TrustRegistry.decide] reports it; null without a role.
  * @property rootListings where the top certificate is held among the wallet's trust sources.
+ * @property constraints the certificate usage and path rules checked on [steps] (finding index = step index).
  */
 data class TrustPath(
     val steps: List<PathStep>,
     val extras: List<X509Cert>,
     val decision: TrustDecision?,
     val rootListings: List<RootListing>,
+    val constraints: ConstraintReport = ConstraintReport.EMPTY,
 ) {
     val top: X509Cert? get() = steps.lastOrNull()?.certificate
 

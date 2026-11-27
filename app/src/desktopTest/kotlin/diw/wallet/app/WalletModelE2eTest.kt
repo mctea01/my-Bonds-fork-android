@@ -640,7 +640,8 @@ class WalletModelE2eTest {
             assertTrue(sections.getValue("狀態清單").rows.any { it.label == "索引（idx）" })
             val cert = CredentialDetails.certificate(chain.first()).associateBy { it.title }
             assertTrue(cert.getValue("基本資訊").rows.any { it.label == "版本" && it.value == "v3" })
-            assertTrue(cert.getValue("指紋").rows.single().value.count { c -> c == ':' } == 31)
+            assertTrue(cert.getValue("指紋").rows.first { it.label == "SHA-256" }.value.count { c -> c == ':' } == 31)
+            assertTrue(cert.getValue("指紋").rows.first { it.label == "SHA-1" }.value.count { c -> c == ':' } == 19)
 
             m.checkStatus(doc).join()
             val status = CredentialDetails.status(m.statuses.value.getValue(doc.identifier).status).associateBy { it.title }
@@ -3123,6 +3124,37 @@ class WalletModelE2eTest {
      * The first-start pages hold links back; a declined statement blocks its links and entry points, and the
      * decisions survive a restart.
      */
+    /**
+     * The mobile citizen certificate statement is asked only once an SP account can be used: a build without one does
+     * not ask it on the first start, and turning on the developer setting for an entered SP account asks it.
+     */
+    @Test
+    fun mobileMoicaStatementWaitsForAnSpAccount() = runBlocking<Unit> {
+        val moica = diw.wallet.app.legal.Integration.MOBILE_MOICA
+        val p = TestPlatform(EphemeralStorage())
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        org.junit.jupiter.api.Assumptions.assumeTrue(m.files.builtInMobileMoicaSp == null, "this build has a built-in SP account")
+        assertFalse(moica in m.legal.consent.value.undecided, "no SP account: not asked on the first start")
+        m.legal.decideAll(true, m.legal.consent.value.undecided.associateWith { false }).join()
+        assertTrue(m.legal.complete)
+        assertFalse(m.legal.enabled(moica))
+
+        m.updateSettings { it.copy(manualMobileMoicaSp = true) }.join()
+        withTimeout(5.seconds) { m.legal.consent.first { !it.complete } }
+        assertEquals(listOf(moica), m.legal.consent.value.undecided)
+        m.legal.decideAll(false, mapOf(moica to true)).join()
+        assertTrue(m.legal.complete)
+        assertTrue(m.legal.enabled(moica))
+
+        // Without a source the decision stays on record; the statement is only no longer due.
+        m.updateSettings { it.copy(manualMobileMoicaSp = false) }.join()
+        withTimeout(5.seconds) { m.legal.consent.first { moica.id in it.deferred } }
+        assertTrue(m.legal.complete)
+        assertTrue(m.legal.enabled(moica))
+    }
+
     @Test
     fun legalConsentGatesLinksAndIntegrations() = runBlocking<Unit> {
         val storage = EphemeralStorage()
@@ -3255,14 +3287,15 @@ class WalletModelE2eTest {
         shot(prefix + "01-welcome", content = app)
         // An earlier version on record skips the welcome page and shows the terms page.
         m.legal.consent.value = LegalConsent(terms = ConsentRecord(0, true, 0), privacy = ConsentRecord(0, true, 0))
-        shot(prefix + "02-terms", 1500, app)
+        shot(prefix + "02-consent", 2200, app)
         m.legal.acceptBasics().join()
-        shot(prefix + "03-statement-twdiw", 2600, app)
         m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, true).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
-        shot(prefix + "04-statement-mydata", 2000, app)
+        // After an update only the texts with a new version are on the consent page.
+        shot(prefix + "03-consent-optional-only", 1200, app)
         m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.ZKPASSPORT, false).join()
         shot(prefix + "05-done") { diw.wallet.app.ui.OnboardingScreen(m) {} }
         m.screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
         shot(prefix + "06-settings", content = app)
