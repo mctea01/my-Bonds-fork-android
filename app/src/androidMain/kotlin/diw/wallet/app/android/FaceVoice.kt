@@ -11,8 +11,9 @@ import java.util.Locale
 /**
  * Reads the face match instructions aloud (the zkPassport setting "read the face match instructions aloud"), so the
  * holder can take off glasses and still follow the camera screen. Speaks [intro] first, then each new instruction as
- * it appears; an instruction that stays on screen is repeated every [REPEAT_MS]. Uses the phone's own text-to-speech
- * engine; the texts are the app's fixed instructions, never personal data. Everything runs on the main thread.
+ * it appears; an instruction that stays on screen is repeated [REPEAT_MS] after it was last heard in full. Uses the
+ * phone's own text-to-speech engine; the texts are the app's fixed instructions, never personal data. Everything runs
+ * on the main thread.
  */
 internal class FaceVoice(context: Context, languageTag: String, private val intro: String) {
     private val main = Handler(Looper.getMainLooper())
@@ -22,6 +23,8 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
     private var closed = false
     private var last: String? = null
     private var lastAt = 0L
+    private var speaking: String? = null
+    private var count = 0
     private var pending: String? = null
 
     init {
@@ -45,18 +48,29 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
             override fun onStart(utteranceId: String?) {}
 
             override fun onDone(utteranceId: String?) {
-                if (utteranceId == INTRO) main.post { finishIntro() }
+                main.post { ended(utteranceId) }
+            }
+
+            override fun onStop(utteranceId: String?, interrupted: Boolean) {
+                main.post { ended(utteranceId) }
             }
 
             @Deprecated("Deprecated in Java")
             override fun onError(utteranceId: String?) {
-                if (utteranceId == INTRO) main.post { finishIntro() }
+                main.post { ended(utteranceId) }
             }
         })
         ready = true
         engine.speak(intro, TextToSpeech.QUEUE_FLUSH, null, INTRO)
         // An engine that never reports the end of the intro must not keep the instructions quiet.
         main.postDelayed({ finishIntro() }, INTRO_MAX_MS)
+    }
+
+    private fun ended(utteranceId: String?) {
+        if (utteranceId == INTRO) return finishIntro()
+        if (utteranceId == null || utteranceId != speaking) return
+        speaking = null
+        lastAt = SystemClock.elapsedRealtime()
     }
 
     private fun finishIntro() {
@@ -79,11 +93,12 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
             return
         }
         pending = null
-        val now = SystemClock.elapsedRealtime()
-        if (message == last && now - lastAt < REPEAT_MS) return
+        // The same instruction waits until it was heard in full, however slow the holder's speech rate is.
+        if (message == last && (speaking != null || SystemClock.elapsedRealtime() - lastAt < REPEAT_MS)) return
         last = message
-        lastAt = now
-        engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, FACE)
+        val id = FACE + (++count)
+        speaking = id
+        if (engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) ended(id)
     }
 
     /** Stops once the last message had time to be heard. */
