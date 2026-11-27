@@ -1,6 +1,8 @@
 package diw.testservers
 
 import diw.wallet.core.jose.PlatformCrypto
+import diw.wallet.core.oid4vp.RequestObjectEncryption
+import diw.wallet.core.util.str
 import diw.wallet.core.util.DiwJson
 import diw.wallet.core.verifier.CheckStatus
 import diw.wallet.core.verifier.PresentationVerification
@@ -36,6 +38,8 @@ data class VerifierSessionRequest(
     val dcql: JsonObject = VerifierService.DEFAULT_DCQL,
     /** Test knobs that deliberately break the request, to exercise wallet rejections. */
     val tamper: String? = null,
+    /** Encrypt the signed request object (Nested JWT) to the key the wallet sends in wallet_metadata.jwks. */
+    val encryptRequest: Boolean = false,
 )
 
 class StoredVerifierSession(
@@ -45,7 +49,10 @@ class StoredVerifierSession(
     val prefix: String,
     val requestUriMethod: String,
     val tamper: String?,
+    val encryptRequest: Boolean = false,
     @Volatile var result: PresentationVerification? = null,
+    /** Whether the last request object served was encrypted to a wallet key. */
+    @Volatile var requestEncrypted: Boolean = false,
 )
 
 /**
@@ -89,6 +96,7 @@ class VerifierService(
             prefix = req.clientIdPrefix,
             requestUriMethod = req.requestUriMethod,
             tamper = req.tamper,
+            encryptRequest = req.encryptRequest,
         )
         sessions[id] = stored
         val outerClientId = if (req.tamper == "outer_client_id_mismatch") "x509_san_dns:evil.example" else clientId
@@ -120,9 +128,28 @@ class VerifierService(
     private suspend fun didJwk(): String =
         "did:jwk:" + didKey.publicKey.toJwk().toString().encodeToByteArray().toBase64Url()
 
-    /** Signed request object for request_uri (GET, or POST with wallet_nonce). */
-    suspend fun requestObject(id: String, walletNonce: String?): String {
+    /**
+     * Signed request object for request_uri (GET, or POST with wallet_nonce and wallet_metadata). A session asking for
+     * encryption encrypts it to the first ECDH-ES key in wallet_metadata.jwks (sign then encrypt, RFC 9101 section 4);
+     * without such a key it is served signed only.
+     */
+    suspend fun requestObject(id: String, walletNonce: String?, walletMetadata: JsonObject? = null): String {
         val s = sessions[id] ?: throw NoSuchElementException(id)
+        val signed = signedRequestObject(s, walletNonce)
+        val recipient = if (s.encryptRequest) RequestObjectEncryption.recipientKey(walletMetadata) else null
+        s.requestEncrypted = recipient != null
+        if (recipient == null) return signed
+        val enc = (walletMetadata?.get("request_object_encryption_enc_values_supported") as? JsonArray)
+            ?.mapNotNull { (it as? JsonPrimitive)?.content }?.firstOrNull { it in RequestObjectEncryption.ENC_VALUES } ?: "A256GCM"
+        return if (s.tamper == "encrypt_to_other_key") {
+            val other = Crypto.createEcPrivateKey(EcCurve.P256)
+            RequestObjectEncryption.encrypt(signed.encodeToByteArray(), other.publicKey, enc, recipient.str("kid"), "JWT")
+        } else {
+            RequestObjectEncryption.encryptSigned(signed, recipient, enc)
+        }
+    }
+
+    private suspend fun signedRequestObject(s: StoredVerifierSession, walletNonce: String?): String {
         val spec = s.spec.copy(walletNonce = walletNonce)
         return when (s.prefix) {
             "x509_san_dns", "x509_hash" -> {

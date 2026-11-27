@@ -7,7 +7,7 @@
 | 報告項目 | 查證 | 處理 |
 |---|---|---|
 | OpenID Federation 不支援 | 屬實 | B5，已實作 |
-| JWE 要求物件無法解密 | 已過時：PR #11 起 `Oid4vpHolder` 有解密金鑰登錄的程式路徑；App 沒有登錄金鑰，所以實際上拒絕加密的要求物件 | 列為未完成 |
+| JWE 要求物件無法解密 | 已過時：PR #11 起 `Oid4vpHolder` 有解密金鑰登錄的程式路徑；App 沒有登錄金鑰，所以實際上拒絕加密的要求物件 | 2026-11-27 完成：`request_uri_method=post` 時以 `wallet_metadata.jwks` 登錄每次新產生的金鑰，支援先簽後加密的 Nested JWT |
 | `withHashAlgorithm` 補償 | 屬實，為相容 Multipaz 回應格式的刻意補償 | 無 |
 | TrustManager 只接受 EC | 部分屬實：RSA 憑證鏈由 PKIX 驗證補上，結果正確 | 無 |
 | SD-JWT VC 一定要 nbf | 錢包端找不到要求 nbf 的路徑；限制在 Multipaz 查驗端（ISO 回應內的 SD-JWT VC） | 無 |

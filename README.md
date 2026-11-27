@@ -51,7 +51,7 @@
   - 用戶端驗證依授權伺服器中繼資料選擇錢包證明（`attest_jwt_client_auth`）、`private_key_jwt` 或公開用戶端；正式錢包後端（Wallet Provider）可在「設定 > 互通」設定，須先向發證端註冊。
 - **格式**：ISO mdoc、IETF SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、包在 SD-JWT 中的 W3C VC）。Data Integrity 含 bbs-2023：每次出示即時衍生、只揭露選定欄位，並支援匿名持有者綁定與假名。
 - **Digital Credentials API**：瀏覽器與其他 App 可經系統選擇器要求出示，也可要求存入證件（OpenID4VCI）。
-- **出示**：OpenID4VP 1.0（DCQL、transaction data 含 mdoc、DC API 的未簽章、簽章與多重簽章請求）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
+- **出示**：OpenID4VP 1.0（DCQL、transaction data 含 mdoc、DC API 的未簽章、簽章與多重簽章請求、加密的 request object）與舊版草案（Presentation Exchange、SIOPv2），以及 ISO/IEC 18013-5 近距離出示（NFC、QR Code 交握，BLE 或 NFC 傳輸）與 18013-7 Annex B、C。
 - **查驗**：以自己的查驗方身分（錢包內的憑證為主，可另附 X.509 或 OpenPGP 卡證據，並自選揭露的欄位）發出線上 OpenID4VP 查驗（服務端轉送或區網直連）與近距離 QR + 藍牙查驗，請求附簽章的查驗方聲明；以 NFC、USB 讀卡機或電腦 PC/SC 讀卡機讀取 mdoc；離線挑戰查驗 Bonds 相容證件與文件衍生憑證；年齡證明、官方網站即時查驗與 zkPassport 護照查驗（見[零知識證明](#零知識證明)）。
 - **狀態**：支援 IETF Token Status List、W3C Bitstring Status List、Status List 2021 與 Revocation List 2020，顯示規格原文的狀態。背景自動更新，依用途風險決定是否接受。
 - **信任**：

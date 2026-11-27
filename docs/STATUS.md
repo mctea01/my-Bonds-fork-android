@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（Google Play 商店資訊納入翻譯管理：各語言的標題、說明、版本資訊範本與截圖在 `distribution/play/listing`（zh-TW、en-US、zh-CN），Play 版本資訊由 `tools/release-notes.py --play-out` 產生、與 GitHub Release 的變更清單相同；上傳改用 `tools/play-store.py`，同一版本重跑只更新版本資訊，可選擇一併寫入商店資訊；README 加入 Google Play 測試資訊；main 到 PR #185）。
+最後更新：2026-11-27（加密的 request object：`request_uri_method=post` 時錢包以 `wallet_metadata.jwks` 登錄每次新產生的解密金鑰，並解開先簽後加密的 Nested JWT；Google Play 商店資訊納入翻譯管理：各語言的標題、說明、版本資訊範本與截圖在 `distribution/play/listing`（zh-TW、en-US、zh-CN），Play 版本資訊由 `tools/release-notes.py --play-out` 產生、與 GitHub Release 的變更清單相同；上傳改用 `tools/play-store.py`，同一版本重跑只更新版本資訊，可選擇一併寫入商店資訊；README 加入 Google Play 測試資訊；main 到 PR #185）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -61,7 +61,7 @@ P4 之後合併的工作：
 |---|---|---|
 | OpenID4VCI 1.0 與草案 11 至 13 領卡 | 可用 | 用戶端驗證依授權伺服器選擇（錢包證明、private_key_jwt、公開用戶端） |
 | 格式：mdoc、SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、bbs-2023） | 可用 | bbs-2023 可選功能的發證是 DIW 擴充 |
-| OpenID4VP 1.0（DCQL、transaction data）與舊版草案 | 可用 | 加密的 request object 會被拒絕（App 沒有登錄解密金鑰） |
+| OpenID4VP 1.0（DCQL、transaction data）與舊版草案 | 可用 | 加密的 request object：`request_uri_method=post` 時以 `wallet_metadata.jwks` 登錄每次新產生的金鑰（不重用、不能追蹤），支援未簽章與先簽後加密（Nested JWT）；GET、以值傳遞與 DC API 沒有登錄金鑰的管道，加密的請求會被拒絕；只有測試驗證端的自動測試，未與外部查驗方互通 |
 | Digital Credentials API 出示與收卡 | 可用 | 只有 W3C 格式的卡片（如 TWDIW）不會出現在系統選擇器 |
 | ISO 18013-5 近距離出示與查驗（NFC、QR、BLE；PC/SC 只讀） | 可用 | 兩機 NFC 互通待實機驗證 |
 | OpenID Federation 1.0（查驗方與發證端） | 可用 | |
@@ -129,7 +129,6 @@ P4 之後合併的工作：
 | zkPDF 手機效能 | 一次實測在 611 秒逾時、峰值約 2.5 GB；完整時間未量到 | 實機量測（可選） |
 | zkPDF 多頁文件 | v1 只接受單頁，2 頁的出入境記錄沒有版型 | 排程 |
 | zkPassport 官方人臉比對電路與加鹽唯一識別碼 | 產生官方 Android FaceMatch 證明需要 Play Integrity 與 zkPassport 的 App 身分，不做；本專案電路已接進錢包。本專案 OPRF 的服務端已實作 | Play Integrity 金鑰、排程 |
-| 加密 request object 的解密金鑰登錄 | 程式路徑已有，App 沒有登錄金鑰 | 排程 |
 | CSC `authorization_details` | RFC 9396 | 可測的服務 |
 | C2PA 其他容器 | BMFF、PDF 內嵌、`c2pa.hash.boxes` 的讀取與寫入；錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation` | 排程 |
 | CAWG 身分聲明的預設編碼 | 規格要求決定性編碼，c2pa-rs 0.92 以自己的欄位順序驗證；預設照規格，互通選項可改 | c2pa-rs 修正或使用者決定 |
@@ -149,7 +148,7 @@ P4 之後合併的工作：
 |---|---|
 | 近距離 | 兩支手機的 NFC 交握（協商式、靜態）、NFC 資料傳輸、HCE 與多錢包並存、感應查驗（N1 至 N7） |
 | DC API | 多重簽章請求、系統選擇器多張證件、收卡 |
-| 發證與出示 | 公開發證端（EUDI）以錢包證明或公開用戶端領卡、mdoc transaction_data、付款交易、VICAL 與 RICAL |
+| 發證與出示 | 公開發證端（EUDI）以錢包證明或公開用戶端領卡、mdoc transaction_data、付款交易、VICAL 與 RICAL、外部查驗方加密的 request object（`request_uri_method=post`） |
 | TWDIW | 新版夥伴卡領卡、平台改版後的出示重測 |
 | 簽章 | 自然人憑證卡與 CSC 的 B-LTA、延長保存、PDF 可見簽章（以 Acrobat 檢查）、PIV、OpenPGP 卡（YubiKey NFC 與 USB） |
 | 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔在 contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |

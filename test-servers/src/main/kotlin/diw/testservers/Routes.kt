@@ -43,6 +43,7 @@ fun Route.verifierRoutes(service: VerifierService) {
             requestUriMethod = body.str("request_uri_method") ?: "get",
             dcql = body.obj("dcql_query") ?: VerifierService.DEFAULT_DCQL,
             tamper = body.str("tamper"),
+            encryptRequest = body.bool("request_object_encryption") ?: false,
         )
         val (s, uri) = service.create(req)
         call.respondJson(buildJsonObject { put("id", s.id); put("uri", uri) })
@@ -59,7 +60,8 @@ fun Route.verifierRoutes(service: VerifierService) {
     }
     post("/verifier/requests/{id}") {
         val form = call.receiveParameters()
-        val jwt = runCatching { service.requestObject(call.parameters["id"]!!, form["wallet_nonce"]) }.getOrElse {
+        val walletMetadata = form["wallet_metadata"]?.let { runCatching { DiwJson.parseToJsonElement(it) as? JsonObject }.getOrNull() }
+        val jwt = runCatching { service.requestObject(call.parameters["id"]!!, form["wallet_nonce"], walletMetadata) }.getOrElse {
             return@post call.respondError(HttpStatusCode.NotFound, "not_found", it.message ?: "")
         }
         call.respondText(jwt, REQUEST_OBJECT)
