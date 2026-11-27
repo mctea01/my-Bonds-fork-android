@@ -2382,10 +2382,7 @@
     <string name="legal_accept_enable">同意并启用</string>
     <string name="legal_accepted_line">版本 %1$s・%2$s 同意</string>
     <string name="legal_agree_continue">同意并继续</string>
-    <string name="legal_agree_privacy">我已阅读并同意「隐私权政策」</string>
-    <string name="legal_agree_terms">我已阅读并同意「用户协议」</string>
     <string name="legal_back_to_reading">回到文档</string>
-    <string name="legal_basics_text">请阅读并确认以下两份文档。分别同意用户协议及隐私权政策后，才能使用本 App。</string>
     <string name="legal_basics_title">用户协议与隐私权政策</string>
     <string name="legal_basics_updated">用户协议或隐私权政策已更新，请阅读变更后的文档并再次确认。</string>
     <string name="legal_bonds_link_send">仍要发送</string>
@@ -2402,7 +2399,6 @@
     <string name="legal_done_text">你可以在「设置 &gt; 法律声明与同意」重新阅读文档或调整专门服务的启用选择。撤回不会自动删除已传给第三方的数据。</string>
     <string name="legal_done_title">设置完成</string>
     <string name="legal_enabled_line">已同意，启用中（版本 %1$s，%2$s）</string>
-    <string name="legal_full_text">全文</string>
     <string name="legal_language">zh</string>
     <string name="legal_moica_sp_env_test">你目前选择测试环境；测试凭证不得作为正式签署结果。</string>
     <string name="legal_moica_sp_fork_only">内置 SP 为源代码预留机制；只有衍生版本发布者依法取得授权并完成实际配置后，才能使用。</string>
@@ -2420,9 +2416,7 @@
     <string name="legal_settings_section">法律声明与同意</string>
     <string name="legal_settings_statements_text">各项集成功能须先同意专门声明才会启用。撤回后停止依该集成发起后续服务请求，已保存的证件与文档原则上保留；先前传出的数据不会自动删除。</string>
     <string name="legal_settings_summary">已同意用户协议与隐私权政策・专门声明启用 %1$s / %2$s</string>
-    <string name="legal_statement_progress">专门声明 %1$s / %2$s</string>
-    <string name="legal_statements_intro">以下集成功能会连接到各自的服务营运者。请逐项选择是否启用；不同意只禁用该项集成，其他功能照常使用。日后可在设置中变更。</string>
-    <string name="legal_statements_title">专门声明</string>
+    <string name="legal_statements_title">可选服务的专门声明</string>
     <string name="legal_statements_updated">此项专门声明已更新，请阅读并再次选择是否启用。</string>
     <string name="legal_summary">重点摘要</string>
     <string name="legal_translation_note">法律文档以繁体中文原文显示；简体中文界面不另提供译本。</string>
@@ -5090,4 +5084,27 @@
     <string name="zkp_face_model_installing">正在安装 FaceNet-512（%1$d%%）</string>
     <string name="zkp_face_model_error">安装失败：%1$s</string>
     <string name="zkp_answer_err_facematch_model">zkPassport 设置选用的 FaceNet-512 模型尚未安装。请在该处安装，或改回内置模型。请求方没有收到任何数据。</string>
+    <string name="legal_done_accepted">已同意</string>
+    <string name="legal_done_optional">可选服务</string>
+    <string name="legal_done_required">必要文档</string>
+    <string name="legal_optional">可选</string>
+    <string name="legal_optional_title">可选：第三方服务</string>
+    <string name="legal_purpose_mobile_moica">在官方行动自然人凭证 App 确认后签署文档</string>
+    <string name="legal_purpose_ms_verified_id">领取与出示 Microsoft Entra Verified ID 凭证</string>
+    <string name="legal_purpose_mydata">在 MyData 下载个人数据并保存为文档</string>
+    <string name="legal_purpose_twdiw">领取与出示数位发展部数位凭证皮夹平台的卡片</string>
+    <string name="legal_purpose_zkpassport">查验他人的 zkPassport 证明，或以已保存的电子护照回应请求</string>
+    <string name="legal_required">必要</string>
+    <string name="legal_steps_optional">%1$s 项第三方服务：可选，勾选才会启用，之后也可在设置中打开。</string>
+    <string name="legal_steps_required">用户协议与隐私权政策：必须同意才能使用本 App。</string>
+    <string name="legal_steps_title">接下来需要你确认的内容</string>
+    <string name="legal_agree_basics">我已阅读并同意%1$s与%2$s</string>
+    <string name="legal_agree_statement">我同意%1$s并启用相关功能</string>
+    <string name="legal_consent_text">勾选必要项目即可开始使用；可选项目不勾选只是不启用，之后可在「设置 &gt; 法律声明与同意」打开。点击文档名称可阅读全文。</string>
+    <string name="legal_consent_title">确认使用条件</string>
+    <string name="legal_hide_points">收起重点摘要</string>
+    <string name="legal_link_privacy">隐私权政策</string>
+    <string name="legal_link_terms">用户协议</string>
+    <string name="legal_optional_hint">以下服务由各自的营运者集中提供，勾选才会启用并连接到该营运者；不勾选不影响本 App 的其他功能。</string>
+    <string name="legal_show_points">显示重点摘要</string>
 </resources>

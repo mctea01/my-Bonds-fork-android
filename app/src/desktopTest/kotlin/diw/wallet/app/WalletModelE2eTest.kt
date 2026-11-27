@@ -3255,14 +3255,15 @@ class WalletModelE2eTest {
         shot(prefix + "01-welcome", content = app)
         // An earlier version on record skips the welcome page and shows the terms page.
         m.legal.consent.value = LegalConsent(terms = ConsentRecord(0, true, 0), privacy = ConsentRecord(0, true, 0))
-        shot(prefix + "02-terms", 1500, app)
+        shot(prefix + "02-consent", 2200, app)
         m.legal.acceptBasics().join()
-        shot(prefix + "03-statement-twdiw", 2600, app)
         m.legal.decide(diw.wallet.app.legal.Integration.TWDIW, false).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MS_VERIFIED_ID, true).join()
         m.legal.decide(diw.wallet.app.legal.Integration.MOBILE_MOICA, true).join()
-        shot(prefix + "04-statement-mydata", 2000, app)
+        // After an update only the texts with a new version are on the consent page.
+        shot(prefix + "03-consent-optional-only", 1200, app)
         m.legal.decide(diw.wallet.app.legal.Integration.MYDATA, false).join()
+        m.legal.decide(diw.wallet.app.legal.Integration.ZKPASSPORT, false).join()
         shot(prefix + "05-done") { diw.wallet.app.ui.OnboardingScreen(m) {} }
         m.screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
         shot(prefix + "06-settings", content = app)

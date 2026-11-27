@@ -2382,10 +2382,7 @@
     <string name="legal_accept_enable">Accept and enable</string>
     <string name="legal_accepted_line">Version %1$s · accepted %2$s</string>
     <string name="legal_agree_continue">Accept and continue</string>
-    <string name="legal_agree_privacy">I have read and accept the privacy policy</string>
-    <string name="legal_agree_terms">I have read and accept the terms of use</string>
     <string name="legal_back_to_reading">Back to the documents</string>
-    <string name="legal_basics_text">Please read and confirm the two documents below. You can use the app after you accept the terms of use and the privacy policy.</string>
     <string name="legal_basics_title">Terms of use and privacy policy</string>
     <string name="legal_basics_updated">The terms of use or the privacy policy have been updated. Please read the changed documents and confirm again.</string>
     <string name="legal_bonds_link_send">Send anyway</string>
@@ -2402,7 +2399,6 @@
     <string name="legal_done_text">You can read the documents again or change the integration choices under Settings &gt; Legal and consent. Withdrawing does not delete data already sent to third parties.</string>
     <string name="legal_done_title">All set</string>
     <string name="legal_enabled_line">Accepted and enabled (version %1$s, %2$s)</string>
-    <string name="legal_full_text"> (full text)</string>
     <string name="legal_language">en</string>
     <string name="legal_moica_sp_env_test">You chose the test environment; test certificates must not be used as production signatures.</string>
     <string name="legal_moica_sp_fork_only">The built-in SP is a mechanism reserved in the source code; it can be used only after the publisher of a derived version is lawfully authorized and has configured it.</string>
@@ -2420,9 +2416,7 @@
     <string name="legal_settings_section">Legal and consent</string>
     <string name="legal_settings_statements_text">Each integration is enabled only after you accept its statement. After you withdraw, the app stops sending further requests through that integration; stored credentials and documents are kept as a rule, and data sent earlier is not deleted automatically.</string>
     <string name="legal_settings_summary">Terms and privacy policy accepted · integrations enabled %1$s / %2$s</string>
-    <string name="legal_statement_progress">Statement %1$s of %2$s</string>
-    <string name="legal_statements_intro">The integrations below connect to their own service operators. Choose for each one whether to enable it; declining disables only that integration and everything else keeps working. You can change this later in the settings.</string>
-    <string name="legal_statements_title">Integration statements</string>
+    <string name="legal_statements_title">Statements of optional services</string>
     <string name="legal_statements_updated">This statement has been updated. Please read it and choose again whether to enable it.</string>
     <string name="legal_summary">Summary</string>
     <string name="legal_translation_note">This English text is a translation of the Traditional Chinese original. If the two differ, the Chinese text prevails.</string>
@@ -5090,4 +5084,27 @@
     <string name="verify_bonds">Bonds-compatible checks (non-standard)</string>
     <string name="verify_bonds_text">For the Bonds App and TWDIW cards: an offline challenge and the age check. These follow Bonds' own formats, not the standard protocols above.</string>
     <string name="verify_bonds_challenge">Bonds offline challenge</string>
+    <string name="legal_done_accepted">Accepted</string>
+    <string name="legal_done_optional">Optional services</string>
+    <string name="legal_done_required">Required documents</string>
+    <string name="legal_optional">Optional</string>
+    <string name="legal_optional_title">Optional: third-party services</string>
+    <string name="legal_purpose_mobile_moica">Sign documents after confirming in the official mobile citizen digital certificate app</string>
+    <string name="legal_purpose_ms_verified_id">Receive and present Microsoft Entra Verified ID credentials</string>
+    <string name="legal_purpose_mydata">Download your data from MyData and keep it as documents</string>
+    <string name="legal_purpose_twdiw">Receive and present cards of the TWDIW platform of the Ministry of Digital Affairs</string>
+    <string name="legal_purpose_zkpassport">Verify zkPassport proofs of others, or answer requests with a saved e-passport</string>
+    <string name="legal_required">Required</string>
+    <string name="legal_steps_optional">%1$s third-party services: optional, turned on only if you tick them; you can also turn them on later in the settings.</string>
+    <string name="legal_steps_required">Terms of use and privacy policy: you must accept them to use the app.</string>
+    <string name="legal_steps_title">What you will be asked next</string>
+    <string name="legal_agree_basics">I have read and agree to the %1$s and the %2$s</string>
+    <string name="legal_agree_statement">I agree to the %1$s and turn on its features</string>
+    <string name="legal_consent_text">Tick the required item to start using the app. Optional items you leave unticked are simply not turned on; you can turn them on later under Settings &gt; Legal and consent. Tap a document name to read the full text.</string>
+    <string name="legal_consent_title">Before you start</string>
+    <string name="legal_hide_points">Hide key points</string>
+    <string name="legal_link_privacy">privacy policy</string>
+    <string name="legal_link_terms">terms of use</string>
+    <string name="legal_optional_hint">Each service below is run by one central operator. It is turned on, and its operator contacted, only if you tick it; leaving it unticked does not affect the rest of the app.</string>
+    <string name="legal_show_points">Show key points</string>
 </resources>

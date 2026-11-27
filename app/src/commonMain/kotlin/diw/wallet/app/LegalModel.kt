@@ -87,6 +87,22 @@ class LegalModel(private val model: WalletModel) {
         c.copy(terms = ConsentRecord(LegalTexts.terms.version, true, now), privacy = ConsentRecord(LegalTexts.privacy.version, true, now))
     }
 
+    /**
+     * The choices of the consent page in one write: the terms and the privacy policy when [basics], and each listed
+     * integration accepted or declined.
+     */
+    fun decideAll(basics: Boolean, integrations: Map<Integration, Boolean>) = update { c ->
+        val now = now()
+        val base = if (!basics) c else c.copy(
+            terms = ConsentRecord(LegalTexts.terms.version, true, now),
+            privacy = ConsentRecord(LegalTexts.privacy.version, true, now),
+        )
+        base.copy(
+            integrations = base.integrations +
+                integrations.map { (i, accepted) -> i.id to ConsentRecord(LegalTexts.statement(i).document.version, accepted, now) },
+        )
+    }
+
     fun decide(i: Integration, accepted: Boolean) = update { c ->
         c.copy(integrations = c.integrations + (i.id to ConsentRecord(LegalTexts.statement(i).document.version, accepted, now())))
     }
