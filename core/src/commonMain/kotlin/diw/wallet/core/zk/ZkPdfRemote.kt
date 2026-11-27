@@ -22,7 +22,8 @@ import org.multipaz.util.toBase64Url
  * until its own verifier accepts every segment against the statement it built itself.
  */
 object ZkPdfRemote {
-    const val VERSION = 1
+    /** Version 1 carries one statement; version 2 carries one part per proven page (multi-page templates). */
+    const val VERSION = 2
     const val REQUEST_TYPE = "ZkPdfProveRequest"
     const val RESPONSE_TYPE = "ZkPdfProveResponse"
     /** File name extensions of an exported request and of the proof made for it. */
@@ -32,28 +33,87 @@ object ZkPdfRemote {
     /** Upper bound of an encoded request or response; private windows stay within the phone circuit limits. */
     const val MAX_BYTES = 48 * 1024 * 1024
     private const val MAX_ITEMS = 64
+    private const val MAX_PARTS = 4
 
-    class Request(val id: String, val statement: ZkPdfStatement, val witness: ZkPdfWitness)
-    class Response(val requestId: String, val output: ZkPdfProofOutput)
+    /** The statement and witness of one proven page. */
+    class Part(val statement: ZkPdfStatement, val witness: ZkPdfWitness)
+
+    class Request(val id: String, val parts: List<Part>) {
+        constructor(id: String, statement: ZkPdfStatement, witness: ZkPdfWitness) : this(id, listOf(Part(statement, witness)))
+
+        init {
+            require(parts.isNotEmpty() && parts.size <= MAX_PARTS && parts.all { it.statement.composition == parts[0].statement.composition }) {
+                "$PREFIX: parts"
+            }
+        }
+
+        /** The composition every part is proved in. */
+        val composition: String get() = parts.first().statement.composition
+    }
+
+    /** The proof of each part of the request, in the request's order. */
+    class Response(val requestId: String, val outputs: List<ZkPdfProofOutput>) {
+        constructor(requestId: String, output: ZkPdfProofOutput) : this(requestId, listOf(output))
+
+        val output: ZkPdfProofOutput get() = outputs.first()
+    }
 
     fun newId(): String = PlatformCrypto.randomBytes(16).toBase64Url()
 
+    /**
+     * Proves every part of [request] with [engine], one after another, and accepts each output only when [engine]
+     * verifies it against its statement ([RemoteZkPdfEngine.accept]). [progress] counts the segments of all parts.
+     */
+    suspend fun proveAll(engine: ZkPdfEngine, request: Request, progress: (String, Int, Int) -> Unit): ZkResult<List<ZkPdfProofOutput>> {
+        val outputs = ArrayList<ZkPdfProofOutput>()
+        var done = 0
+        for (part in request.parts) {
+            val before = done
+            val r = engine.prove(part.statement, part.witness) { kind, finished, total -> progress(kind, before + finished, before + total) }
+            val output = when (r) {
+                is ZkResult.Ok -> when (val a = RemoteZkPdfEngine.accept(part.statement, r.value, engine)) {
+                    is ZkResult.Ok -> a.value
+                    is ZkResult.Failed -> return a
+                    ZkResult.Cancelled -> return ZkResult.Cancelled
+                }
+                is ZkResult.Failed -> return r
+                ZkResult.Cancelled -> return ZkResult.Cancelled
+            }
+            done += output.segments.size
+            outputs += output
+        }
+        return ZkResult.Ok(outputs)
+    }
+
+    /** A single-part request is written as version 1, which earlier versions of the wallet and the prover read. */
     fun encodeRequest(request: Request): JsonObject = buildJsonObject {
-        put("v", VERSION)
+        put("v", if (request.parts.size == 1) 1 else VERSION)
         put("type", REQUEST_TYPE)
         put("id", request.id)
-        put("statement", statement(request.statement))
-        putJsonObject("witness") {
-            putJsonArray("private") { request.witness.privateData.forEach { add(it.toBase64Url()) } }
-            putJsonArray("salts") { request.witness.salts.forEach { add(it.toBase64Url()) } }
+        if (request.parts.size == 1) {
+            put("statement", statement(request.parts[0].statement))
+            put("witness", witness(request.parts[0].witness))
+        } else {
+            putJsonArray("parts") {
+                request.parts.forEach { p -> addJsonObject { put("statement", statement(p.statement)); put("witness", witness(p.witness)) } }
+            }
         }
     }
 
     fun encodeResponse(response: Response): JsonObject = buildJsonObject {
-        put("v", VERSION)
+        put("v", if (response.outputs.size == 1) 1 else VERSION)
         put("type", RESPONSE_TYPE)
         put("request", response.requestId)
-        val o = response.output
+        if (response.outputs.size == 1) output(response.outputs[0]).forEach { (k, v) -> put(k, v) }
+        else putJsonArray("parts") { response.outputs.forEach { add(output(it)) } }
+    }
+
+    private fun witness(w: ZkPdfWitness): JsonObject = buildJsonObject {
+        putJsonArray("private") { w.privateData.forEach { add(it.toBase64Url()) } }
+        putJsonArray("salts") { w.salts.forEach { add(it.toBase64Url()) } }
+    }
+
+    private fun output(o: ZkPdfProofOutput): JsonObject = buildJsonObject {
         putJsonArray("segments") {
             o.segments.forEach { s ->
                 addJsonObject {
@@ -68,32 +128,47 @@ object ZkPdfRemote {
         put("proveMs", o.proveMs)
     }
 
-    /** Parses a request; throws IllegalArgumentException on anything missing or malformed. */
+    private fun JsonObject.version(type: String): Int {
+        val v = int("v")
+        if (v !in 1..VERSION || text("type") != type) bad("version")
+        return v
+    }
+
+    private fun JsonObject.parts(): List<JsonObject> = list("parts").also { if (it.isEmpty() || it.size > MAX_PARTS) bad("parts") }
+
+    /** Parses a request of version 1 or 2; throws IllegalArgumentException on anything missing or malformed. */
     fun parseRequest(o: JsonObject): Request {
-        if (o.int("v") != VERSION || o.text("type") != REQUEST_TYPE) bad("version")
-        val witness = o.obj("witness")
-        return Request(
-            id = o.text("id").takeIf { ID.matches(it) } ?: bad("id"),
-            statement = parseStatement(o.obj("statement")),
-            witness = ZkPdfWitness(witness.bytesList("private"), witness.bytesList("salts").onEach { if (it.size != 16) bad("salt") }),
-        )
+        val v = o.version(REQUEST_TYPE)
+        fun part(p: JsonObject): Part {
+            val witness = p.obj("witness")
+            return Part(
+                parseStatement(p.obj("statement")),
+                ZkPdfWitness(witness.bytesList("private"), witness.bytesList("salts").onEach { if (it.size != 16) bad("salt") }),
+            )
+        }
+        val id = o.text("id").takeIf { ID.matches(it) } ?: bad("id")
+        val parts = if (v == 1) listOf(part(o)) else o.parts().map(::part)
+        return runCatching { Request(id, parts) }.getOrElse { bad("parts") }
     }
 
     fun parseResponse(o: JsonObject): Response {
-        if (o.int("v") != VERSION || o.text("type") != RESPONSE_TYPE) bad("version")
-        val segments = o.list("segments").map {
-            ZkPdfSegment(it.text("kind"), it.int("index").takeIf { i -> i >= 0 } ?: bad("index"), it.bytes("proof"), it.bytes("publicInputs"))
+        val v = o.version(RESPONSE_TYPE)
+        fun output(p: JsonObject): ZkPdfProofOutput {
+            val segments = p.list("segments").map {
+                ZkPdfSegment(it.text("kind"), it.int("index").takeIf { i -> i >= 0 } ?: bad("index"), it.bytes("proof"), it.bytes("publicInputs"))
+            }
+            if (segments.isEmpty()) bad("segments")
+            return ZkPdfProofOutput(
+                segments,
+                p.bytesList("midOuts").onEach { if (it.size != 32) bad("midOuts") },
+                p.bytesList("claimRecords"),
+                p.bytesList("claimDigests").onEach { if (it.size != 32) bad("claimDigests") },
+                (p["proveMs"] as? JsonPrimitive)?.longOrNull ?: 0L,
+            )
         }
-        if (segments.isEmpty()) bad("segments")
         return Response(
             requestId = o.text("request").takeIf { ID.matches(it) } ?: bad("request"),
-            output = ZkPdfProofOutput(
-                segments,
-                o.bytesList("midOuts").onEach { if (it.size != 32) bad("midOuts") },
-                o.bytesList("claimRecords"),
-                o.bytesList("claimDigests").onEach { if (it.size != 32) bad("claimDigests") },
-                (o["proveMs"] as? JsonPrimitive)?.longOrNull ?: 0L,
-            ),
+            outputs = if (v == 1) listOf(output(o)) else o.parts().map(::output),
         )
     }
 
@@ -254,7 +329,7 @@ class RemoteZkPdfEngine(
             ZkResult.Cancelled -> return ZkResult.Cancelled
         }
         val response = runCatching { ZkPdfRemote.parseResponse(body) }.getOrNull() ?: return INVALID
-        if (response.requestId != request.id) return INVALID
+        if (response.requestId != request.id || response.outputs.size != 1) return INVALID
         return accept(statement, response.output, local)
     }
 

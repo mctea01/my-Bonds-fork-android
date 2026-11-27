@@ -54,7 +54,7 @@ class ZkPdfEvidenceTest {
     private val now = Instant.parse("2026-11-01T00:00:00Z")
 
     private val student = ZkPdfProfile(
-        "test.student-status/1", "仿在學證明", listOf("Qr"),
+        "test.student-status/1", "仿在學證明", listOf(ZkPdfImageRef(1, "Qr")),
         listOf(
             ZkPdfFieldRule("name", "姓名", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT),
             ZkPdfFieldRule("studentId", "學號", listOf("學號"), listOf("出生日期"), ZkPdfNormalize.COMPACT),
@@ -93,8 +93,8 @@ class ZkPdfEvidenceTest {
 
     /** Accepts only the statement it proved, as the native verifier holds each segment to its public inputs. */
     private class FakeEngine : ZkPdfEngine {
-        var proven: String? = null
-        var output: ZkPdfProofOutput? = null
+        /** One entry per proven statement, so a bundle of several pages is checked part by part. */
+        private val proofs = LinkedHashMap<String, ZkPdfProofOutput>()
         var ready = true
 
         override fun ready(composition: String, prover: Boolean) = ready
@@ -125,17 +125,18 @@ class ZkPdfEvidenceTest {
                 if (statement.slots.any { it.slot == slot }) ZkPdfOpening(slot, witness.salts[slot], sources[slot]).commitment() else ByteArray(32)
             }
             progress("sha_content", 1, 1)
-            proven = fingerprint(statement)
-            return ZkResult.Ok(ZkPdfProofOutput(listOf(ZkPdfSegment("sha_content", 0, ByteArray(14656) { 1 }, ByteArray(64))),
-                midOuts, sources, digests, 1).also { output = it })
+            val key = fingerprint(statement)
+            val proof = ByteArray(14656) { (proofs.size + 1).toByte() }
+            return ZkResult.Ok(ZkPdfProofOutput(listOf(ZkPdfSegment("sha_content", 0, proof, ByteArray(64))),
+                midOuts, sources, digests, 1).also { proofs[key] = it })
         }
 
         override suspend fun verify(statement: ZkPdfStatement, segments: List<ZkPdfSegment>): ZkResult<ZkPdfVerifiedOutput?> {
-            val out = output ?: return ZkResult.Ok(null)
+            val out = proofs[fingerprint(statement)] ?: return ZkResult.Ok(null)
             val sameSegments = segments.size == out.segments.size && segments.zip(out.segments).all { (a, b) ->
                 a.kind == b.kind && a.index == b.index && a.proof.contentEquals(b.proof) && a.publicInputs.contentEquals(b.publicInputs)
             }
-            return ZkResult.Ok(if (sameSegments && fingerprint(statement) == proven) ZkPdfVerifiedOutput(out.midOuts, out.claimDigests) else null)
+            return ZkResult.Ok(if (sameSegments) ZkPdfVerifiedOutput(out.midOuts, out.claimDigests) else null)
         }
 
         private fun fingerprint(s: ZkPdfStatement): String = buildString {
@@ -378,9 +379,9 @@ class ZkPdfEvidenceTest {
         val created = created("student.pdf", student, engine)
         val trust = trust()
         val e = created.evidence
-        val reordered = rebuilt(e, anchors = e.anchors.mapIndexed { i, a -> if (i == 0) ZkPdfAnchorPlan("", a.record, 2, 2) else a })
+        val reordered = rebuilt(e, anchors = e.parts[0].anchors.mapIndexed { i, a -> if (i == 0) ZkPdfAnchorPlan("", a.record, 2, 2) else a })
         assertEquals(Check.FAIL, verify(disclosed(created, reordered), engine, trust).check)
-        val swapped = rebuilt(e, slots = e.slots.map { if (it.slot == 0) ZkPdfEvidenceSlot("studentId", 0, it.beforeAnchor, it.afterAnchor) else it })
+        val swapped = rebuilt(e, slots = e.parts[0].slots.map { if (it.slot == 0) ZkPdfEvidenceSlot("studentId", 0, it.beforeAnchor, it.afterAnchor) else it })
         assertEquals(Check.FAIL, verify(disclosed(created, swapped), engine, trust).check)
         val unknown = disclosed(created, created.evidence.toJson().let { JsonObject(it + ("profile" to JsonPrimitive("test.unknown/1"))) })
         assertEquals(Check.NOT_CHECKED, verify(unknown, engine, trust).check)
@@ -469,7 +470,7 @@ class ZkPdfEvidenceTest {
         assertTrue(requestBytes.size < pdf.size * 4)
         // Desktop: proves the request as it arrived and returns the outputs.
         val received = ZkPdfRemote.parseRequest(ZkPdfRemote.parse(requestBytes))
-        val output = assertIs<ZkResult.Ok<ZkPdfProofOutput>>(engine.prove(received.statement, received.witness) { _, _, _ -> }).value
+        val output = assertIs<ZkResult.Ok<ZkPdfProofOutput>>(engine.prove(received.parts[0].statement, received.parts[0].witness) { _, _, _ -> }).value
         val responseBytes = ZkPdfRemote.encodeResponse(ZkPdfRemote.Response(received.id, output)).toString().encodeToByteArray()
         // Phone: the imported outputs stand in for a prover and must verify against the statement built here.
         val response = ZkPdfRemote.parseResponse(ZkPdfRemote.parse(responseBytes))
@@ -502,14 +503,120 @@ class ZkPdfEvidenceTest {
         assertEquals(Check.FAIL, verify(disclosed(created, big), engine, trust()).check)
     }
 
+    private val multi = ZkPdfProfile(
+        "test.multi-page/1", "仿多頁文件", listOf(ZkPdfImageRef(1, "Qr")),
+        listOf(
+            ZkPdfFieldRule("name", "姓名", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT),
+            ZkPdfFieldRule("birthDate", "出生日期", listOf("出生日期"), listOf("科系"), ZkPdfNormalize.DATE),
+            ZkPdfFieldRule("documentNumber", "證件號", listOf("證件號"), listOf("出生日期"), ZkPdfNormalize.COMPACT, page = 2),
+        ),
+        test = true,
+    )
+
+    private suspend fun multiPagePdf(): ByteArray {
+        val root = generateSequence(File(".").canonicalFile) { it.parentFile }.first { File(it, "settings.gradle.kts").isFile }
+        return SyntheticDocuments.multiPage(SyntheticDocuments.Fonts(File(root, "tools/zkpdf-testdocs/fonts")), SyntheticDocuments.material())
+    }
+
+    private suspend fun verifyMulti(map: Map<String, JsonElement>, engine: ZkPdfEngine?) =
+        ZkPdfVerifier.verify(map.getValue(ZkPdfEvidence.CLAIM) as JsonObject, map, holder, mapOf(multi.id to multi)::get, engine, trust(), now)
+
+    /** Fields on two pages travel as one version 2 bundle with a part per page; page 3 stays private. */
+    @Test fun severalPagesRoundTripAsVersionTwo() = runBlocking<Unit> {
+        val pdf = multiPagePdf()
+        val engine = FakeEngine()
+        val plan = ZkPdfPlanner.plan(pdf, multi, listOf(birthCutoff))
+        val created = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.PHONE, engine, { _, _, _ -> }, now),
+        ).value
+        val evidence = created.evidence
+        assertEquals(2, evidence.version)
+        assertEquals(listOf(0, 1), evidence.parts.map { it.page })
+        assertEquals(listOf(1, 0), evidence.parts.map { it.predicates.size })
+        assertEquals(mapOf("name" to "林測試", "birthDate" to "2004-02-29", "documentNumber" to "SYN0000001"),
+            created.values.associate { it.name to it.value })
+        val json = Json.parseToJsonElement(evidence.toJson().toString()).jsonObject
+        assertEquals(listOf(1, 2), json.getValue("pages").jsonArray.map { it.jsonObject.getValue("page").jsonPrimitive.int })
+        val result = verifyMulti(disclosed(created, json), engine)
+        assertEquals(Check.PASS, result.check, result.summary)
+        assertEquals(3, result.fields.count { it.check == Check.PASS })
+        evidence.windows.forEach { w -> assertTrue(evidence.masked.copyOfRange(w.offset, w.offset + w.length).all { it == 0.toByte() }) }
+
+        // Swapping the pages of the two parts, or dropping one, no longer matches what was proven.
+        val pages = json.getValue("pages").jsonArray
+        val swapped = JsonObject(json + ("pages" to JsonArray(pages.mapIndexed { i, p ->
+            JsonObject(p.jsonObject + ("page" to JsonPrimitive(2 - i)))
+        })))
+        assertEquals(Check.FAIL, verifyMulti(disclosed(created, swapped), engine).check)
+        val dropped = JsonObject(json + ("pages" to JsonArray(pages.take(1))))
+        assertNotEquals(Check.PASS, verifyMulti(disclosed(created, dropped), engine).check)
+
+        // The same parts written as version 1 claim a single-page file, which this one is not.
+        val first = pages.first().jsonObject
+        val v1 = JsonObject(json - "pages" + ("v" to JsonPrimitive(1)) + first.filterKeys { it != "page" })
+        assertEquals(Check.FAIL, verifyMulti(disclosed(created, v1), engine).check)
+
+        // A template on page 1 alone still writes version 2, because the file has more pages to keep private.
+        val firstOnly = ZkPdfProfile(multi.id, multi.title, multi.opaqueImages, multi.fields.filter { it.page == 1 }, test = true)
+        val single = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, ZkPdfPlanner.plan(pdf, firstOnly), holder, ZkPdfStatement.PHONE, engine, { _, _, _ -> }, now),
+        ).value
+        assertEquals(2, single.evidence.version)
+        assertEquals(listOf(0), single.evidence.parts.map { it.page })
+        val singleResult = ZkPdfVerifier.verify(single.evidence.toJson(), disclosed(single), holder, mapOf(firstOnly.id to firstOnly)::get,
+            engine, trust(), now)
+        assertEquals(Check.PASS, singleResult.check, singleResult.summary)
+    }
+
+    /** A request for several pages is version 2 with a part per page, and its outputs are accepted part by part. */
+    @Test fun severalPagesProvedElsewhere() = runBlocking<Unit> {
+        val pdf = multiPagePdf()
+        val engine = FakeEngine()
+        val plan = ZkPdfPlanner.plan(pdf, multi, listOf(birthCutoff))
+        val salts = ZkPdfPlanner.salts(plan.slots.size)
+        val request = ZkPdfRemote.Request(ZkPdfRemote.newId(), ZkPdfProofs.requestParts(plan, ZkPdfStatement.DESKTOP, ZkPdfProofs.binding(holder), salts))
+        val encoded = ZkPdfRemote.encodeRequest(request)
+        assertEquals(2, encoded.getValue("v").jsonPrimitive.int)
+        val received = ZkPdfRemote.parseRequest(ZkPdfRemote.parse(encoded.toString().encodeToByteArray()))
+        assertEquals(2, received.parts.size)
+        assertEquals(ZkPdfStatement.DESKTOP, received.composition)
+        val outputs = assertIs<ZkResult.Ok<List<ZkPdfProofOutput>>>(ZkPdfRemote.proveAll(engine, received) { _, _, _ -> }).value
+        val responseBytes = ZkPdfRemote.encodeResponse(ZkPdfRemote.Response(received.id, outputs)).toString().encodeToByteArray()
+        val response = ZkPdfRemote.parseResponse(ZkPdfRemote.parse(responseBytes))
+        assertEquals(2, response.outputs.size)
+        var next = 0
+        val imported = object : ZkPdfEngine by engine {
+            override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
+                RemoteZkPdfEngine.accept(statement, response.outputs[next++], engine)
+        }
+        val created = assertIs<ZkResult.Ok<ZkPdfCreated>>(
+            ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.DESKTOP, imported, { _, _, _ -> }, now, salts),
+        ).value
+        assertEquals(Check.PASS, verifyMulti(disclosed(created), engine).check)
+        // Outputs in the wrong order do not verify against the statements built here.
+        next = 0
+        val reversed = object : ZkPdfEngine by engine {
+            override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
+                RemoteZkPdfEngine.accept(statement, response.outputs.reversed()[next++], engine)
+        }
+        assertIs<ZkResult.Failed>(ZkPdfProofs.create(pdf, plan, holder, ZkPdfStatement.DESKTOP, reversed, { _, _, _ -> }, now, salts))
+        // A request of a single part is still written as version 1, which earlier provers read.
+        val singleRequest = ZkPdfRemote.encodeRequest(ZkPdfRemote.Request(ZkPdfRemote.newId(), request.parts.take(1)))
+        assertEquals(1, singleRequest.getValue("v").jsonPrimitive.int)
+    }
+
     private fun rebuilt(
         e: ZkPdfEvidence,
         masked: ByteArray = e.masked,
         windows: List<ZkPdfEvidenceWindow> = e.windows,
-        anchors: List<ZkPdfAnchorPlan> = e.anchors,
-        slots: List<ZkPdfEvidenceSlot> = e.slots,
+        anchors: List<ZkPdfAnchorPlan> = e.parts[0].anchors,
+        slots: List<ZkPdfEvidenceSlot> = e.parts[0].slots,
         binding: ByteArray = e.binding,
-    ): JsonObject = ZkPdfEvidence(e.profile, e.composition, binding, masked, windows, anchors, slots, e.predicates, e.segments, e.createdAt).toJson()
+    ): JsonObject = ZkPdfEvidence(
+        e.profile, e.composition, binding, masked, windows,
+        listOf(ZkPdfEvidencePart(e.parts[0].page, anchors, slots, e.parts[0].predicates, e.parts[0].segments)),
+        e.createdAt, e.version,
+    ).toJson()
 
     /** The real prover and verifier: needs the packaged native library with zkpdf and the installed assets. */
     @Test fun nativeProofThroughEvidence() = runBlocking<Unit> {

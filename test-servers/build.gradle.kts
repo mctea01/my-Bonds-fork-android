@@ -91,9 +91,11 @@ tasks.register<JavaExec>("checkZkPdf") {
     val show = providers.gradleProperty("show")
     val prove = providers.gradleProperty("prove")
     val root = providers.gradleProperty("root")
+    val page = providers.gradleProperty("page")
     argumentProviders.add(CommandLineArgumentProvider {
         listOfNotNull(file.orNull?.let { rootProject.file(it).absolutePath }) +
             (template.orNull?.let { listOf("--template", rootProject.file(it).absolutePath) } ?: listOf("--outline")) +
+            (page.orNull?.let { listOf("--page", it) } ?: emptyList()) +
             (reveal.orNull?.let { listOf("--reveal", it) } ?: emptyList()) +
             (if (show.isPresent) listOf("--show") else emptyList()) +
             (prove.orNull?.let { listOf("--prove", rootProject.file(it).absolutePath) } ?: emptyList()) +

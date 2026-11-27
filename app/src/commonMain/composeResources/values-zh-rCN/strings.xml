@@ -1744,7 +1744,6 @@
     <string name="core_zkv_not_after">不晚于</string>
     <string name="core_zkv_not_before">不早于</string>
     <string name="core_zkv_opening_mismatch">打开数据与证明的承诺不符</string>
-    <string name="core_zkv_page_one">已证明出自签章文档第 1 页</string>
     <string name="core_zkv_partial">证明成立，部分字段无法确认</string>
     <string name="core_zkv_partial_mismatch">部分出示的值与文档不符</string>
     <string name="core_zkv_predicate">%1$s%2$s %3$s</string>
@@ -4065,10 +4064,10 @@
     <string name="zk_engine_ok">可在这台设备产生</string>
     <string name="zk_engine_reason">可产生；%1$s</string>
     <string name="zk_engines">证明引擎</string>
-    <string name="zk_export_text">请求档含 PDF 第 1 页的内容（含不打算揭露的字段）与证明需要的私密数据，但不是整份文档。</string>
+    <string name="zk_export_text">请求档含 PDF 各页的内容（含不打算揭露的字段）与证明需要的私密数据，但不是整份文档。</string>
     <string name="zk_export_title">导出证明请求档？</string>
     <string name="zk_export_trust">请只在你自己的电脑版钱包打开，发送后删除；证明产生前请求一直保留在这台设备等待。</string>
-    <string name="zk_host_text">主机会收到 PDF 第 1 页的内容（含不打算揭露的字段）与证明需要的私密数据，但不是整份文档。</string>
+    <string name="zk_host_text">主机会收到 PDF 各页的内容（含不打算揭露的字段）与证明需要的私密数据，但不是整份文档。</string>
     <string name="zk_host_title">把文档送到自架主机？</string>
     <string name="zk_host_trust">请只使用你自己管理、信任的主机；传输与保存由主机负责，结果最多保留一小时。</string>
     <string name="zk_host_verify">回传的证明会先在这台设备验证，不通过就不使用；验证需要电路的验证密钥。</string>
@@ -4101,12 +4100,12 @@
     <string name="zk_phone_requests">代手机产生 zkPDF 证明</string>
     <string name="zk_phone_spaced">手机版</string>
     <string name="zk_phone_text_1">手机算力不足时，可在手机导出证明请求档（%1$s），在这里用电脑版电路产生证明，</string>
-    <string name="zk_phone_text_2">再把证明档（%1$s）导入手机。请求档含 PDF 第 1 页的内容，用完请删除；这里不保存它。</string>
+    <string name="zk_phone_text_2">再把证明档（%1$s）导入手机。请求档含 PDF 各页的内容，用完请删除；这里不保存它。</string>
     <string name="zk_prover_can">主机可连接，可产生：</string>
     <string name="zk_prover_no_circuits">主机可连接，但没有完整的 zkPDF 电路档</string>
     <string name="zk_prover_no_circuits_short">自架主机没有完整的 zkPDF 电路档</string>
     <string name="zk_prover_no_engine">这个版本或设备没有 zkPDF 引擎，无法验证主机回传的证明</string>
-    <string name="zk_prover_text_1">这台设备算力不足时，可把 PDF 第 1 页的内容与证明需要的私密数据送到你自己架设的 zk-prover-server 产生 zkPDF 证明，</string>
+    <string name="zk_prover_text_1">这台设备算力不足时，可把 PDF 各页的内容与证明需要的私密数据送到你自己架设的 zk-prover-server 产生 zkPDF 证明，</string>
     <string name="zk_prover_text_2">不会送出整份文档；回传的证明会先在这台设备验证，不通过就不使用。请只使用你自己管理、信任的主机。</string>
     <string name="zk_prover_token">访问权杖</string>
     <string name="zk_prover_token_note">权杖只送给这台主机，以加密方式存在这台设备。</string>
@@ -4185,7 +4184,7 @@
     <string name="zkc_desktop_answer_text">在电脑版钱包加入同一张卡片后，扫描查验方的 QR Code 回应</string>
     <string name="zkc_desktop_import">在电脑版产生后导入</string>
     <string name="zkc_desktop_import_missing">电脑版产生后导入尚未提供；可在电脑版钱包导入同一份文档，直接在电脑上产生衍生凭证</string>
-    <string name="zkc_desktop_import_text">导出证明请求档（含第 1 页内容），在电脑版钱包产生证明后导入这台设备；证明会先在这台设备验证再使用</string>
+    <string name="zkc_desktop_import_text">导出证明请求档（含各页内容），在电脑版钱包产生证明后导入这台设备；证明会先在这台设备验证再使用</string>
     <string name="zkc_download">需先下载 %1$s，安装后占用 %2$s</string>
     <string name="zkc_may_stop">可能被系统中止；可随时取消，最长运行 %1$s 分钟</string>
     <string name="zkc_on_device">在这台设备产生</string>
@@ -4193,7 +4192,7 @@
     <string name="zkc_peak">预估内存峰值 %1$s MB</string>
     <string name="zkc_self_hosted">送到自架主机产生</string>
     <string name="zkc_self_hosted_missing">需先在设置的「零知识证明」页加入自架主机</string>
-    <string name="zkc_self_hosted_text">主机会收到第 1 页的内容与证明需要的私密数据，不是整份文档；回传的证明会先在这台设备验证再使用</string>
+    <string name="zkc_self_hosted_text">主机会收到各页的内容与证明需要的私密数据，不是整份文档；回传的证明会先在这台设备验证再使用</string>
     <string name="zkc_without">不加零知识证据</string>
     <string name="zkc_without_text">%1$s；隐私较低</string>
     <string name="zkk_device_desc">设备证明，不是零知识证明：本机读取 %1$s 的记录</string>
@@ -4215,7 +4214,7 @@
     <string name="zkm_stopped_at">，停在「%1$s」</string>
     <string name="zkm_timed_out">逾时</string>
     <string name="zkpdf_attach">附上 zkPDF 零知识证明（证明字段出自 PDF 内的签章，查验方不需要原档）</string>
-    <string name="zkpdf_background">证明在背景产生：电脑约需 2 到 10 分钟，手机需要 10 分钟以上、占用约 2.5 GB 内存，建议改用电脑版或自架主机；可随时取消，未完成时不会产生凭证。只支持单页、没有打开密码且只有一个文档签章的 PDF。</string>
+    <string name="zkpdf_background">证明在背景产生：电脑约需 2 到 10 分钟，手机需要 10 分钟以上、占用约 2.5 GB 内存，建议改用电脑版或自架主机；可随时取消，未完成时不会产生凭证。只支持没有打开密码且只有一个文档签章的 PDF；每个有证明字段的页面各需一组证明，其他页面的内容不公开。</string>
     <string name="zkpdf_cancel">取消 zkPDF 证明</string>
     <string name="zkpdf_condition_note">查验方可只看到「%1$s%2$s这个日期」，不必揭露实际日期。</string>
     <string name="zkpdf_date_format">「%1$s」的条件日期格式为 年-月-日</string>
@@ -5215,4 +5214,8 @@
     <string name="legal_operator_site">营运者官方说明</string>
     <string name="legal_operator_with_link">%1$s・%2$s</string>
     <string name="legal_deferred_line">目前没有可用的服务来源，可以使用时才会询问</string>
+    <string name="core_zkpdf_page_missing">这份文档没有第 %1$s 页</string>
+    <string name="core_zkpdf_page_unsupported">第 %1$s 页的内容不是单一压缩串流，或超过大小上限</string>
+    <string name="core_zkv_page">已证明出自签章文档第 %1$s 页</string>
+    <string name="core_zkv_private_pages">；其他 %1$s 页的内容不公开</string>
 </resources>

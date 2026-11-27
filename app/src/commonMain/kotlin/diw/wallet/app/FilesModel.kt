@@ -57,6 +57,7 @@ import diw.wallet.core.document.zkpdf.ZkPdfProofs
 import diw.wallet.core.zk.RemoteZkPdfEngine
 import diw.wallet.core.zk.ZkPdfRemote
 import diw.wallet.core.zk.ZkPdfWitness
+import diw.wallet.core.zk.ZkPdfCost
 import diw.wallet.core.zk.ZkPdfEngine
 import diw.wallet.core.zk.ZkPdfStatement
 import diw.wallet.core.zk.ZkProverHost
@@ -946,7 +947,7 @@ class FilesModel(private val model: WalletModel) {
         val zkPdf: List<ZkPdfMatch> = emptyList(),
     )
 
-    /** A zkPDF template that fits a PDF: the values it can prove (read from page 1) and the fields it cannot, with why. */
+    /** A zkPDF template that fits a PDF: the values it can prove (read from its proven pages) and the fields it cannot, with why. */
     class ZkPdfMatch(val profile: ZkPdfProfile, val fields: List<DerivedClaim>, val unavailable: List<Pair<String, String>>)
 
     /**
@@ -2635,8 +2636,8 @@ class FilesModel(private val model: WalletModel) {
 
     /**
      * Prepares a zkPDF proof of [f] for the desktop wallet: creates the credential key the proof binds to, keeps
-     * what finishing needs with the file ([StoredFile.zkPdfPending]) and saves the proof request (page 1 content, the
-     * private image and the field salts, never the whole PDF) for the holder to open in the desktop wallet. The
+     * what finishing needs with the file ([StoredFile.zkPdfPending]) and saves the proof request (the content of the
+     * proven pages, the private images, the streams of the other pages and the field salts, never the whole PDF) for the holder to open in the desktop wallet. The
      * request is made for the desktop composition; an earlier request of the file is replaced.
      */
     fun exportZkPdfRequest(f: StoredFile, claims: List<DerivedClaim>, timestamp: Boolean, validDays: Int?, choice: ZkPdfChoice) =
@@ -2651,8 +2652,9 @@ class FilesModel(private val model: WalletModel) {
                 keys.secureArea.createKey(null, keys.createKeySettings(ByteString(PlatformCrypto.randomBytes(16))))
             }
             val salts = ZkPdfPlanner.salts(plan.slots.size)
-            val statement = ZkPdfProofs.statement(plan, composition, ZkPdfProofs.binding(info.ecPublicKey.toJwk()))
-            val request = ZkPdfRemote.Request(ZkPdfRemote.newId(), statement, ZkPdfWitness(plan.privateData, salts))
+            // One part per proven page; the salts are kept in the order of all the proven fields.
+            val request = ZkPdfRemote.Request(ZkPdfRemote.newId(),
+                ZkPdfProofs.requestParts(plan, composition, ZkPdfProofs.binding(info.ecPublicKey.toJwk()), salts))
             val bytes = ZkPdfRemote.encodeRequest(request).toString().encodeToByteArray()
             val name = f.name.substringBeforeLast('.') + ZkPdfRemote.REQUEST_EXTENSION
             val saved = if (model.platform.canShareFiles) model.platform.shareFile(name, ZkPdfRemote.MEDIA_TYPE, bytes)
@@ -2706,10 +2708,15 @@ class FilesModel(private val model: WalletModel) {
         val local = model.zk.pdf() ?: throw SigningException(tr(Res.string.msg_no_zkpdf))
         if (!local.ready(pending.composition, false)) throw SigningException(tr(Res.string.msg_download_vk_settings))
         val salts = pending.salts.map { it.fromBase64Url() }
-        // The imported output stands in for a prover: it is accepted only when it verifies against this statement.
+        if (response.outputs.size != plan.parts.size) throw SigningException(tr(Res.string.msg_not_proof))
+        // The imported outputs stand in for a prover, one per proven page in order: each is accepted only when it
+        // verifies against the statement this device builds for that page.
         val imported = object : ZkPdfEngine by local {
+            private var next = 0
+            override suspend fun check(statement: ZkPdfStatement, witness: ZkPdfWitness): ZkResult<ZkPdfCost> =
+                ZkResult.Failed("", false)
             override suspend fun prove(statement: ZkPdfStatement, witness: ZkPdfWitness, progress: (String, Int, Int) -> Unit) =
-                RemoteZkPdfEngine.accept(statement, response.output, local)
+                RemoteZkPdfEngine.accept(statement, response.outputs[next++], local)
         }
         busy.value = tr(Res.string.step_verify_desktop)
         val job = model.zk.prove(zkJobId(f.id), ZkProofKind.PDF, true, tr(Res.string.zk_job_desktop_import, compositionTitle(pending.composition))) { step ->
@@ -2751,19 +2758,17 @@ class FilesModel(private val model: WalletModel) {
             throw SigningException(tr(Res.string.msg_not_request))
         }
         val engine = model.zk.pdf() ?: throw SigningException(tr(Res.string.msg_no_zkpdf))
-        val composition = request.statement.composition
+        val composition = request.composition
         if (!engine.ready(composition, true)) {
             throw SigningException(tr(Res.string.msg_circuits_missing, if (composition == ZkPdfStatement.DESKTOP) tr(Res.string.zk_desktop_spaced) else tr(Res.string.zk_phone_spaced)))
         }
         val job = model.zk.prove(PHONE_JOB, ZkProofKind.PDF, true, tr(Res.string.zk_job_for_phone, compositionTitle(composition))) { step ->
             step(tr(Res.string.step_prepare))
-            when (val r = engine.prove(request.statement, request.witness) { kind, done, total ->
+            // Every part (one per proven page) is proved and checked like the phone will check it.
+            ZkPdfRemote.proveAll(engine, request) { kind, done, total ->
                 val text = tr(Res.string.step_for_phone_progress, segmentName(kind), done, total)
                 step(text)
                 busy.value = text
-            }) {
-                is ZkResult.Ok -> RemoteZkPdfEngine.accept(request.statement, r.value, engine)
-                else -> r
             }
         }
         val output = proofResult(job)

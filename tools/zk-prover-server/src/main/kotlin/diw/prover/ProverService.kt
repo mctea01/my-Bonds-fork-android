@@ -69,7 +69,8 @@ class ProverService(
         job.work = scope.launch {
             job.state = "running"
             val result = try {
-                engine.prove(request.statement, request.witness) { kind, done, total ->
+                // Each part (one per proven page) is proved and checked against its statement in turn.
+                ZkPdfRemote.proveAll(engine, request) { kind, done, total ->
                     job.kind = kind; job.done = done; job.total = total
                 }
             } catch (_: kotlinx.coroutines.CancellationException) {
