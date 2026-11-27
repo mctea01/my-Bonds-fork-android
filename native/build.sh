@@ -245,6 +245,8 @@ for target in "${selected[@]}"; do
                     mkdir -p "dist/android-bb5/$abi"
                     "$ANDROID_NDK_HOME/toolchains/llvm/prebuilt/$ndk_host/bin/${clang_target}29-clang" -shared -nostdlib \
                         -Wl,-soname,libdiw_bb5_none.so -o "dist/android-bb5/$abi/libdiw_bb5_none.so" -x c /dev/null
+                    printf '{"format": 1, "library": "libdiw_bb5_none.so", "target": "%s", "features": [], "runtime": [], "crates": [], "texts": {}}\n' \
+                        "$clang_target" > "dist/android-bb5/$abi/libdiw_bb5_none.so.third-party.json"
                 done
             fi
         else
@@ -263,6 +265,9 @@ for target in "${selected[@]}"; do
             cargo ndk -t "$sibling" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi
             third_party "dist/android/$sibling/libdiw_zk.so" diw-zk-ffi "" "$sibling_target" rust-std
         done
+        # cargo ndk also copies the cdylib of a dependency (bls12_381_plus) that nothing loads; the code is already in
+        # libdiw_zk.so, so it is not packaged.
+        find dist/android -name '*.so' ! -name libdiw_zk.so -print -delete
     else
         if [[ -n "$bridge_cxx_override" ]]; then export ZKPDF_CXX=$bridge_cxx_override; else unset ZKPDF_CXX; fi
         if [[ -n "$bridge_ar_override" ]]; then export ZKPDF_AR=$bridge_ar_override; else unset ZKPDF_AR; fi
