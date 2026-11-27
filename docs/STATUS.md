@@ -33,7 +33,7 @@ P4 之後合併的工作：
 | 全專案 Review 後續（OpenID Federation、PIV、CSC 補全、C2PA、可見簽章、付款交易、交換檔、直接分享） | 完成，剩餘項目見第 4 節 | [review-followups.md](design/review-followups.md) |
 | OpenPGP 與 OpenPGP 卡 | 完成 | [openpgp.md](design/openpgp.md) |
 | TWDIW 新版應用簽章（1.0.14 格式） | 實作完成；官方平台是否接受未驗收 | [twdiw-application-signature.md](acceptance/twdiw-application-signature.md) |
-| 法律聲明、首次啟動同意、專門聲明（PR #80）；首次啟動改為一頁勾選（2026-11-27，Play 測試回饋「要同意的內容太多」） | 完成；用戶協議與隱私權政策為唯一的必要勾選項，各專門聲明為預設不勾選的可選項，文件名稱點開看全文，各項附重點摘要與營運者官方說明連結；未勾選的服務之後可在設定開啟 | [legal/README.md](legal/README.md) |
+| 法律聲明、首次啟動同意、專門聲明（PR #80）；首次啟動改為一頁勾選（2026-11-27，Play 測試回饋「要同意的內容太多」） | 完成；用戶協議與隱私權政策為唯一的必要勾選項，各專門聲明為預設不勾選的可選項，文件名稱點開看全文，各項附重點摘要與營運者官方說明連結；行動自然人憑證只在有可用 SP（內建、手動或服務端）時才詢問；未勾選的服務之後可在設定開啟 | [legal/README.md](legal/README.md) |
 | i18n：英文與繁體中文（PR #89）；簡體中文與新增語言的方法（PR #173） | 完成；簡體中文由繁體中文轉換（OpenCC），法律文件顯示繁體原文 | [i18n.md](design/i18n.md)、[translation.md](guides/translation.md) |
 | Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |

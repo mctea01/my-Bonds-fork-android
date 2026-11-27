@@ -3123,6 +3123,37 @@ class WalletModelE2eTest {
      * The first-start pages hold links back; a declined statement blocks its links and entry points, and the
      * decisions survive a restart.
      */
+    /**
+     * The mobile citizen certificate statement is asked only once an SP account can be used: a build without one does
+     * not ask it on the first start, and turning on the developer setting for an entered SP account asks it.
+     */
+    @Test
+    fun mobileMoicaStatementWaitsForAnSpAccount() = runBlocking<Unit> {
+        val moica = diw.wallet.app.legal.Integration.MOBILE_MOICA
+        val p = TestPlatform(EphemeralStorage())
+        val m = WalletModel(p)
+        p.model = m
+        m.init()
+        org.junit.jupiter.api.Assumptions.assumeTrue(m.files.builtInMobileMoicaSp == null, "this build has a built-in SP account")
+        assertFalse(moica in m.legal.consent.value.undecided, "no SP account: not asked on the first start")
+        m.legal.decideAll(true, m.legal.consent.value.undecided.associateWith { false }).join()
+        assertTrue(m.legal.complete)
+        assertFalse(m.legal.enabled(moica))
+
+        m.updateSettings { it.copy(manualMobileMoicaSp = true) }.join()
+        withTimeout(5.seconds) { m.legal.consent.first { !it.complete } }
+        assertEquals(listOf(moica), m.legal.consent.value.undecided)
+        m.legal.decideAll(false, mapOf(moica to true)).join()
+        assertTrue(m.legal.complete)
+        assertTrue(m.legal.enabled(moica))
+
+        // Without a source the decision stays on record; the statement is only no longer due.
+        m.updateSettings { it.copy(manualMobileMoicaSp = false) }.join()
+        withTimeout(5.seconds) { m.legal.consent.first { moica.id in it.deferred } }
+        assertTrue(m.legal.complete)
+        assertTrue(m.legal.enabled(moica))
+    }
+
     @Test
     fun legalConsentGatesLinksAndIntegrations() = runBlocking<Unit> {
         val storage = EphemeralStorage()

@@ -5109,4 +5109,5 @@
     <string name="legal_show_points">显示重点摘要</string>
     <string name="legal_operator_site">营运者官方说明</string>
     <string name="legal_operator_with_link">%1$s・%2$s</string>
+    <string name="legal_deferred_line">目前没有可用的服务来源，可以使用时才会询问</string>
 </resources>

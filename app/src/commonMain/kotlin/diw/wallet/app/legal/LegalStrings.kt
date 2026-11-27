@@ -106,6 +106,8 @@ object LegalStrings {
     fun enabledLine(version: Int, date: String) = stringResource(Res.string.legal_enabled_line, version, date)
     val DISABLED_LINE: String @Composable get() = stringResource(Res.string.legal_disabled_line)
     val PENDING_LINE: String @Composable get() = stringResource(Res.string.legal_pending_line)
+    /** The service cannot be used on this install yet (no SP account for the mobile citizen certificate); asked once it can. */
+    val DEFERRED_LINE: String @Composable get() = stringResource(Res.string.legal_deferred_line)
     val WITHDRAW: String @Composable get() = stringResource(Res.string.legal_withdraw)
     val WITHDRAW_TITLE: String @Composable get() = stringResource(Res.string.legal_withdraw_title)
     @Composable

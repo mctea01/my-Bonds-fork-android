@@ -269,6 +269,13 @@ expect fun VerticalScrollIndicator(state: ScrollState, modifier: Modifier = Modi
 @Composable
 expect fun HorizontalScrollIndicator(state: ScrollState, modifier: Modifier = Modifier)
 
+/**
+ * Runs [onBack] for the system Back gesture or button while [enabled], for a layer that lives outside [diw.wallet.app.Screen]
+ * (Android); desktop has no system Back, so the layer's own Back button is the way out.
+ */
+@Composable
+expect fun SystemBackHandler(enabled: Boolean, onBack: () -> Unit)
+
 /** Runs [action] when Enter or the keypad's Enter is pressed while this element has the focus (hardware keyboards). */
 fun Modifier.onEnterKey(action: () -> Unit): Modifier = onPreviewKeyEvent { e ->
     if (e.type == KeyEventType.KeyDown && (e.key == Key.Enter || e.key == Key.NumPadEnter)) {

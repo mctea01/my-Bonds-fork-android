@@ -51,6 +51,18 @@ class OnboardingStepTest {
     }
 
     @Test
+    fun aDeferredServiceIsNotAskedUntilItCanBeUsed() {
+        val moica = Integration.MOBILE_MOICA
+        val deferred = basics.copy(deferred = setOf(moica.id))
+        assertTrue(moica !in deferred.undecided)
+        val others = deferred.undecided.fold(deferred) { c, i -> c.decide(i, false) }
+        assertTrue(others.complete)
+        val offered = others.copy(deferred = emptySet())
+        assertEquals(listOf(moica), offered.undecided)
+        assertEquals(OnboardingStep.CONSENT, onboardingStep(offered, welcomed = true))
+    }
+
+    @Test
     fun plainPartsHaveNoLink() {
         val text = linkedText("%1\$s - %2\$s", listOf("operator" to null, "page" to {}), Color.Blue)
         assertEquals("operator - page", text.text)

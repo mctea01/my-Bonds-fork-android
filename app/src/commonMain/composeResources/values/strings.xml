@@ -5109,4 +5109,5 @@
     <string name="legal_show_points">Show key points</string>
     <string name="legal_operator_site">operator's page</string>
     <string name="legal_operator_with_link">%1$s · %2$s</string>
+    <string name="legal_deferred_line">Not available yet; you will be asked once it can be used</string>
 </resources>

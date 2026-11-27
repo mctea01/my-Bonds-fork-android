@@ -75,6 +75,7 @@ private fun statusLine(c: LegalConsent, i: Integration): String {
     val r = c.record(i)
     return when {
         c.enabled(i) -> LegalStrings.enabledLine(r!!.version, r.date)
+        (r == null || r.version != LegalTexts.statement(i).document.version) && !c.offered(i) -> LegalStrings.DEFERRED_LINE
         r == null || r.version != LegalTexts.statement(i).document.version -> LegalStrings.PENDING_LINE
         else -> LegalStrings.DISABLED_LINE
     }
@@ -193,6 +194,8 @@ fun OnboardingScreen(model: WalletModel, onDone: () -> Unit) {
                 OnboardingStep.DONE -> DonePage(consent, onDone) { model.platform.openBrowser(USER_GUIDE_URL) }
             }
         }
+        // The system Back gesture closes the document instead of leaving the app; the screen model has no part in it.
+        SystemBackHandler(enabled = doc != null) { reading = null }
         if (doc != null) {
             Surface(Modifier.fillMaxSize(), color = MaterialTheme.colorScheme.background) {
                 PageColumn(page = doc.id) { DocumentReader(doc) { reading = null } }
@@ -398,7 +401,7 @@ private fun DonePage(consent: LegalConsent, onDone: () -> Unit, onGuide: () -> U
     SectionTitle(LegalStrings.DONE_REQUIRED)
     LabelValue(LegalStrings.BASICS_TITLE, LegalStrings.DONE_ACCEPTED)
     SectionTitle(LegalStrings.DONE_OPTIONAL)
-    Integration.entries.filter { it.available }.forEach { i ->
+    Integration.entries.filter { consent.offered(it) }.forEach { i ->
         LabelValue(LegalTexts.statement(i).name, statusLine(consent, i))
     }
     Text(LegalStrings.DONE_TEXT, style = MaterialTheme.typography.bodySmall)
