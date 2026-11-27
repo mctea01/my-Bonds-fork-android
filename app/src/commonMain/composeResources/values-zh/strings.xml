@@ -3559,7 +3559,7 @@
     <string name="sign_form_asic">ASiC-E 容器（.asice）</string>
     <string name="sign_form_asic_text">原檔與 CAdES 簽章放在同一個容器</string>
     <string name="sign_form_c2pa">C2PA 內容憑證（CAWG 身分）</string>
-    <string name="sign_form_c2pa_text">記錄誰製作或簽署這個檔案、如何製作，供 C2PA 檢視與驗證工具讀取：JPEG、PNG、WebP 內嵌，其他檔案另存 .c2pa</string>
+    <string name="sign_form_c2pa_text">記錄誰製作或簽署這個檔案、如何製作，供 C2PA 檢視與驗證工具讀取：圖片、影音、PDF、ZIP 與 Office 檔內嵌，其他檔案另存 .c2pa</string>
     <string name="sign_form_detached">分離式簽章檔（.p7s）</string>
     <string name="sign_form_detached_text">原檔不變，另存一個簽章檔</string>
     <string name="sign_form_enveloping">包覆式簽章檔（.p7m）</string>

@@ -524,6 +524,12 @@ class C2paSigningTest {
         return out.toByteArray()
     }
 
+    private fun tiffDirectories(b: ByteArray): Int = ImageIO.createImageInputStream(ByteArrayInputStream(b)).use { input ->
+        val reader = ImageIO.getImageReadersByFormatName("tiff").next()
+        reader.input = input
+        reader.getNumImages(true).also { reader.dispose() }
+    }
+
     private fun fill(img: BufferedImage) { for (x in 0 until 16) for (y in 0 until 16) img.setRGB(x, y, (x * 16) shl 16 or (y * 16 shl 8) or 0x80) }
 
     /** A ZIP with a stored entry, a deflated one written with a data descriptor, a directory and a non-ASCII name. */
@@ -603,6 +609,13 @@ class C2paSigningTest {
             val r2 = inspect(again.bytes, "again.${c.name}")
             assertEquals(2, r2.c2pa!!.manifests.size, c.name)
             assertSignedAndTrusted(r2, "${c.name} again", c.match, c.label)
+            if (c.format == C2paFormat.TIFF) {
+                // The C2PA-only last IFD of a multi-page TIFF is replaced, not left behind as an empty directory.
+                val pages = tiffDirectories(c.bytes)
+                val expected = if (pages > 1) pages + 1 else pages
+                assertEquals(expected, tiffDirectories(signed.bytes), c.name)
+                assertEquals(expected, tiffDirectories(again.bytes), "${c.name} again")
+            }
 
             val bad = inspect(tamper(c.bytes, signed.bytes), "tampered.${c.name}")
             assertTrue(bad.codes().any { it.endsWith(".mismatch") }, "${c.name}: ${bad.codes()}")

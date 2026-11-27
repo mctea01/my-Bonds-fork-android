@@ -3559,7 +3559,7 @@
     <string name="sign_form_asic">ASiC-E container (.asice)</string>
     <string name="sign_form_asic_text">The original and the CAdES signature go into one container</string>
     <string name="sign_form_c2pa">C2PA content credentials (CAWG identity)</string>
-    <string name="sign_form_c2pa_text">Records who made or signed the file and how, as C2PA viewers and validators read it: embedded in JPEG, PNG and WebP, a .c2pa file beside anything else</string>
+    <string name="sign_form_c2pa_text">Records who made or signed the file and how, as C2PA viewers and validators read it: embedded in pictures, audio, video, PDF, ZIP and Office files, a .c2pa file beside anything else</string>
     <string name="sign_form_detached">Detached signature file (.p7s)</string>
     <string name="sign_form_detached_text">The original stays unchanged and a separate signature file is saved</string>
     <string name="sign_form_enveloping">Enveloping signature file (.p7m)</string>

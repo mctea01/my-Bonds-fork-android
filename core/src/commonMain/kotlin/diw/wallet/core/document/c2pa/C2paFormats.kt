@@ -572,7 +572,7 @@ object C2paContainers {
             val (d, e) = c2pa(b, l) ?: return b
             val pages = chain(b, l)
             val out = b.copyOf()
-            if (d.entries.size == 1 && pages.size > 1 && d === pages.last()) {
+            if (d.entries.size == 1 && pages.size > 1 && d.offset == pages.last().offset) {
                 // A C2PA-only last IFD: the page before it ends the chain again.
                 put(out, l, pages[pages.size - 2].nextAt, l.offsetSize, 0)
                 // The IFD and its data at the end of the file, next to each other, are cut off.
