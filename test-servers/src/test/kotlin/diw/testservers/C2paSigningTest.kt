@@ -17,6 +17,7 @@ import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.c2pa.C2paSignRequest
 import diw.wallet.core.document.c2pa.C2paSigned
 import diw.wallet.core.document.c2pa.C2paWriter
+import diw.wallet.core.document.c2pa.C2paZip
 import diw.wallet.core.document.c2pa.SignerPayloadOrder
 import diw.wallet.core.document.c2pa.SoftBindingAlgorithms
 import diw.wallet.core.document.sign.DocumentSigner
@@ -680,6 +681,18 @@ class C2paSigningTest {
         val out = sign(twice, request("封存.zip", C2paAuthoring.Opened))
         assertTrue(out.sidecar, "a collection hash could not tell the two entries apart")
         assertNotNull(out.sidecarReason)
+    }
+
+    @Test
+    fun zipWithAPathACollectionCannotNameGetsASidecar() = runBlocking<Unit> {
+        trustRoot()
+        val out = sign(rawZip(listOf("./hello.txt" to payload(100))), request("封存.zip", C2paAuthoring.Opened))
+        assertTrue(out.sidecar, "a collection URI cannot hold a . component")
+        assertNotNull(out.sidecarReason)
+        assertTrue(C2paZip.validUri("dir/hello.txt"))
+        assertFalse(C2paZip.validUri("../hello.txt"))
+        assertFalse(C2paZip.validUri("/hello.txt"))
+        assertFalse(C2paZip.validUri("C:/hello.txt"))
     }
 
     @Test

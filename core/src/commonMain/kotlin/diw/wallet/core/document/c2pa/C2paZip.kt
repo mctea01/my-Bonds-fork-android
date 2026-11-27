@@ -122,6 +122,10 @@ object C2paZip {
         return C2paRange(e.localStart, end - e.localStart)
     }
 
+    /** A relative collection URI: not empty, not absolute, no drive letter and no "." or ".." component. */
+    fun validUri(norm: String): Boolean =
+        norm.isNotEmpty() && !norm.startsWith("/") && norm.split('/').none { it == ".." || it == "." } && !Regex("^[A-Za-z]:").containsMatchIn(norm)
+
     /** The collection URI of an entry: its name with "/" separators, without a directory's trailing slash. */
     fun uri(e: Entry): String = e.name.replace('\\', '/').trimEnd('/')
 
@@ -152,6 +156,8 @@ object C2paZip {
             B.le16(b, a.eocd + 4) != 0 || B.le16(b, a.eocd + 6) != 0 -> "multi-disk ZIP"
             a.cdEnd != a.eocd.toLong() -> "ZIP with data after the central directory"
             a.entries.map { uri(it) }.let { it.size != it.toSet().size } -> "ZIP with two entries of the same name"
+            hashedEntries(a).any { !validUri(uri(it)) } ->
+                "ZIP entry with a path a collection hash cannot name (" + hashedEntries(a).first { !validUri(uri(it)) }.name + ")"
             // The manifest and META-INF/ are added; the archive stays one without ZIP64 records.
             a.entries.size + 2 > 0xFFFF -> "ZIP with too many entries for a manifest without ZIP64"
             b.size > 0xFFFFFFFFL - 0x4000000L -> "ZIP too large for a manifest without ZIP64"

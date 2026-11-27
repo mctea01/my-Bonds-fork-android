@@ -227,8 +227,7 @@ object C2paBindings {
         val byUri = archive.entries.filter { it.name != C2paZip.MANIFEST }.associateBy { C2paZip.uri(it) }
         for ((uri, e) in listed) {
             val norm = uri.replace('\\', '/').trimEnd('/')
-            val parts = norm.split('/')
-            if (norm.isEmpty() || norm.startsWith("/") || parts.any { it == ".." || it == "." } || Regex("^[A-Za-z]:").containsMatchIn(norm)) {
+            if (!C2paZip.validUri(norm)) {
                 return status("assertion.collectionHash.invalidURI", "core_c2pa_collection_uri", uri)
             }
             val entry = byUri[norm] ?: return status("assertion.collectionHash.incorrectFileCount", "core_c2pa_collection_count", uri)
