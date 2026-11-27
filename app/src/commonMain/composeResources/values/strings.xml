@@ -850,6 +850,7 @@
     <string name="core_c2pa_sidecar_unreadable">its structure cannot be read (%1$s)</string>
     <string name="core_c2pa_sidecar_tiff_chain">the TIFF directory chain does not end (a loop, a bad offset or more than %1$s pages)</string>
     <string name="core_c2pa_sidecar_tiff_pages">the TIFF has too many pages to take one more directory (%1$s)</string>
+    <string name="core_c2pa_sidecar_tiff_entries">the TIFF directory already holds the most entries that can be read back (%1$s)</string>
     <string name="core_c2pa_sidecar_tiff_size">a TIFF over 4 GB</string>
     <string name="core_c2pa_sidecar_svg_root">the SVG has no root element</string>
     <string name="core_c2pa_sidecar_svg_empty">the SVG root element is empty</string>

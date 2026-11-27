@@ -850,6 +850,7 @@
     <string name="core_c2pa_sidecar_unreadable">無法解析檔案結構（%1$s）</string>
     <string name="core_c2pa_sidecar_tiff_chain">TIFF 目錄鏈沒有結尾（有迴圈、位移錯誤或超過 %1$s 頁）</string>
     <string name="core_c2pa_sidecar_tiff_pages">TIFF 頁數過多，無法再加一個目錄（%1$s 頁）</string>
+    <string name="core_c2pa_sidecar_tiff_entries">TIFF 目錄的項目數已達可讀回的上限（%1$s）</string>
     <string name="core_c2pa_sidecar_tiff_size">TIFF 超過 4 GB</string>
     <string name="core_c2pa_sidecar_svg_root">SVG 沒有根元素</string>
     <string name="core_c2pa_sidecar_svg_empty">SVG 根元素是空元素</string>

@@ -785,6 +785,16 @@ class C2paSigningTest {
         assertNotNull(C2paContainers.cannotEmbed(chain(4096), C2paFormat.TIFF), "the new directory would not be read back")
         assertNotNull(C2paContainers.cannotEmbed(chain(4200), C2paFormat.TIFF), "pages past the limit would be cut off")
         assertNotNull(C2paContainers.cannotEmbed(chain(3, loop = true), C2paFormat.TIFF), "a loop has no last directory")
+        // One page whose IFD0 already holds n entries: the C2PA entry makes n + 1.
+        fun page(n: Int): ByteArray {
+            val out = ByteArrayOutputStream()
+            out.write("II".encodeToByteArray() + byteArrayOf(42, 0) + le32(8) + byteArrayOf(n.toByte(), (n ushr 8).toByte()))
+            for (k in 0 until n) out.write(byteArrayOf((k + 1).toByte(), ((k + 1) ushr 8).toByte(), 1, 0) + le32(1) + le32(0))
+            out.write(le32(0))
+            return out.toByteArray()
+        }
+        assertNull(C2paContainers.cannotEmbed(page(9999), C2paFormat.TIFF), "the C2PA entry still fits")
+        assertNotNull(C2paContainers.cannotEmbed(page(10000), C2paFormat.TIFF), "the IFD would hold more entries than are read back")
     }
 
     @Test

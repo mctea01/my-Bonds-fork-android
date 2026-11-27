@@ -127,6 +127,7 @@ object CoreStrings {
         "core_c2pa_sidecar_svg_empty" to "SVG 根元素是空元素",
         "core_c2pa_sidecar_svg_root" to "SVG 沒有根元素",
         "core_c2pa_sidecar_tiff_chain" to "TIFF 目錄鏈沒有結尾（有迴圈、位移錯誤或超過 %1\$s 頁）",
+        "core_c2pa_sidecar_tiff_entries" to "TIFF 目錄的項目數已達可讀回的上限（%1\$s）",
         "core_c2pa_sidecar_tiff_pages" to "TIFF 頁數過多，無法再加一個目錄（%1\$s 頁）",
         "core_c2pa_sidecar_tiff_size" to "TIFF 超過 4 GB",
         "core_c2pa_sidecar_unreadable" to "無法解析檔案結構（%1\$s）",

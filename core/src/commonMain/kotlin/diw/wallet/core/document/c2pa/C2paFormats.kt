@@ -525,7 +525,7 @@ object C2paContainers {
 
         fun ifd(b: ByteArray, l: Layout, offset: Long): Ifd {
             val n = u(b, l, offset, l.countSize)
-            if (n > 10000) fail("TIFF IFD too large")
+            if (n > MAX_ENTRIES) fail("TIFF IFD too large")
             val entries = (0 until n.toInt()).map { k ->
                 val e = offset + l.countSize + k.toLong() * l.entrySize
                 val cs = if (l.big) 8 else 4
@@ -554,6 +554,7 @@ object C2paContainers {
         }
 
         private const val MAX_PAGES = 4096
+        private const val MAX_ENTRIES = 10000
 
         fun isDng(b: ByteArray): Boolean = runCatching { val l = layout(b); chain(b, l).first().entries.any { it.tag == 0xC612 } }.getOrDefault(false)
 
@@ -579,6 +580,8 @@ object C2paContainers {
             when {
                 !complete -> ct("core_c2pa_sidecar_tiff_chain", MAX_PAGES)
                 kept > 1 && kept + 1 > MAX_PAGES -> ct("core_c2pa_sidecar_tiff_pages", kept)
+                // A single page takes the C2PA entry in its copied IFD0, which must stay within what is read back.
+                kept == 1 && pages.first().entries.count { it.tag != TAG } + 1 > MAX_ENTRIES -> ct("core_c2pa_sidecar_tiff_entries", MAX_ENTRIES)
                 !l.big && b.size > 0xFFFF0000L -> ct("core_c2pa_sidecar_tiff_size")
                 else -> null
             }
