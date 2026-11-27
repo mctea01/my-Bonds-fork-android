@@ -743,6 +743,16 @@ jobs:
           name: desktop-native-${{ matrix.name }}
           path: build/desktop-native/${{ matrix.name }}
           retention-days: 14
+      # The self-check results and the smoke run's stderr, also when the build failed; not part of the release
+      # (the release job takes desktop-native-* only).
+      - name: Upload ${{ matrix.name }} native check files
+        if: ${{ !cancelled() }}
+        uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
+        with:
+          name: native-check-${{ matrix.name }}
+          path: build/desktop-native/check-${{ matrix.name }}
+          if-no-files-found: ignore
+          retention-days: 14
 
   # Every push to main replaces the "nightly" pre-release; a v* tag publishes the stable release of that tag (marked
   # latest, without the debug builds). Release files are downloaded as-is, not zipped, except the experimental native
