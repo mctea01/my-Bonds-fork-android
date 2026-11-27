@@ -473,7 +473,7 @@ class ZkPassportFlow(private val model: WalletModel, private val ui: MutableStat
             ?: throw ZkPassportAnswerFailure("facematch_photo")
         ui.value = OfflineUi.ZkPassportAnswerProving(incoming, null, comparing = true)
         val comparison = try {
-            service.compare(photo, strict, model.settings.zkPassportFaceNet)
+            service.compare(photo, strict, model.settings.zkPassportFaceNet, model.settings.zkPassportFaceVoice)
         } catch (e: FaceMatchFailure) {
             throw ZkPassportAnswerFailure("facematch_" + e.code)
         }

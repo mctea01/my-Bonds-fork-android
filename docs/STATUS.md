@@ -37,7 +37,7 @@ P4 之後合併的工作：
 | i18n：英文與繁體中文（PR #89）；簡體中文與新增語言的方法（PR #173） | 完成；簡體中文由繁體中文轉換（OpenCC），法律文件顯示繁體原文 | [i18n.md](design/i18n.md)、[translation.md](guides/translation.md) |
 | Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |
-| zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；重測最高相似度 0.46；2026-11-26 門檻以 LFW 校準為誤接受十萬分之一（`tools/facematch-eval`）：MobileFaceNet 0.47（同一人 90% 通過），每次比對取 5 幀正臉特徵平均（`AveragedFaceSession`）；FaceNet-512 做成選用隨選模組 `features/facenet`（門檻 0.74，同一人 65% 通過），在 zkPassport 設定切換與安裝；實機能否通過與 Play 隨選安裝待驗證 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
+| zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；重測最高相似度 0.46；2026-11-26 門檻以 LFW 校準為誤接受十萬分之一（`tools/facematch-eval`）：MobileFaceNet 0.47（同一人 90% 通過），每次比對取 5 幀正臉特徵平均（`AveragedFaceSession`）；FaceNet-512 做成選用隨選模組 `features/facenet`（門檻 0.74，同一人 65% 通過），在 zkPassport 設定切換與安裝；2026-11-27 實機回報 0.47 能通過、戴眼鏡時失敗：新增「朗讀人臉比對的指示」開關（手機文字轉語音），比對畫面的提示字放大；語音與 Play 隨選安裝待實機驗證 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
 | 原生依賴跨平台：Windows zkPDF（無 GPL 執行階段）、Linux ARM64、Android 32 位元（PR #121） | 完成 | [native-dependencies](research/native-dependencies/README.md) |
 | OFD 預覽、發票欄位、簽署與 SES 電子印章（PR #122） | 完成 | [AGENTS.md](../AGENTS.md) 規則 3 與 P3 要點 |
 | OFD 寫錯元素或屬性名稱的檔案還原（`OfdRepair`） | 完成；以一份真實檔案在本機核對過，與同一份文件的 PDF 版一致 | [AGENTS.md](../AGENTS.md) 的 `document/ofd` |
@@ -158,7 +158,7 @@ P4 之後合併的工作：
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
 | 失敗、取消與返回 | 文件簽署與文件庫的操作可按「取消」停止，返回會停止在該畫面進行中的簽署（等卡片、行動自然人憑證或 CSC 授權時）且不儲存；已簽好的結果一定保存；離開畫面後才完成的操作不再把畫面拉回去。卡片、生物辨識、PIN 對話框被關閉時顯示「已取消」。憑證領取與 Verified ID 返回後，舊流程不覆蓋新流程，晚到的憑證照樣保存並提示；TWDIW 取件與條碼在離開後停止，不再跳頁或保持螢幕常亮 |
 | Android 17 | targetSdk 37 的區域網路權限：年齡證明、zkTLS、zkPassport、線上查驗與 TWDIW 出示的區網直連第一次使用時會跳出「附近的裝置」權限並等待回覆，允許後同一次操作繼續，不必重試；拒絕或按返回關閉對話框時改走中繼、藍牙或顯示原因，再試一次會重新詢問；系統不再詢問時提示到系統設定開啟；離開畫面會停止等待 |
-| 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw` 與連結的 `diw_*` 參數）、兩支本錢包的 zkPassport 區網與藍牙交換及預先下載後的離線查驗、人臉比對的相機與轉頭檢查（門檻 0.47 與 5 幀平均能否讓本人通過、選用 FaceNet-512 的 Play 隨選安裝與比對）、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
+| 電子護照 | 實體護照與台胞證的完整流程、zkPassport 官方網站查驗揭露日期的回應（修正後重測）、zkPassport 與官方 App 互通（含官方 App 是否忽略請求的 `diw` 與連結的 `diw_*` 參數）、兩支本錢包的 zkPassport 區網與藍牙交換及預先下載後的離線查驗、人臉比對的相機與轉頭檢查（語音提示與放大的提示字、選用 FaceNet-512 的 Play 隨選安裝與比對）、實機金鑰證明憑證鏈的形狀與讀取、金鑰證明版在手機上的證明時間 |
 | 桌面 | PC/SC 讀卡機、PKCS#11、Windows 與 Linux 安裝檔、原生版的中文輸入法與讀取 JVM 版留下的資料 |
 
 已有實機紀錄：D1 裝置的金鑰證明與 NFC 讀取自然人憑證（[device-results-D1-2026-10-10.md](research/device-results-D1-2026-10-10.md)）。開發期間使用者回報過的實機結果（TWDIW 舊版發證端領卡、DC API 選擇器、Verified ID 出示的修正）記在各階段的驗收與後續文件，沒有整理成完整的實機紀錄，平台改版後要重測。

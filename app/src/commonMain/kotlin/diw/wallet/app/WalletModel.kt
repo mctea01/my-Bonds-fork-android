@@ -246,6 +246,8 @@ data class WalletSettings(
     val zkPassportVerifierApi: Boolean = false,
     /** Face match with the optional FaceNet-512 model instead of the built-in MobileFaceNet (docs/design/zkpassport.md 5.6). */
     val zkPassportFaceNet: Boolean = false,
+    /** Read the face match instructions aloud with the phone's text-to-speech engine, for a holder without glasses. */
+    val zkPassportFaceVoice: Boolean = false,
     /**
      * zkPassport requests also take an answer of another copy of this wallet nearby, over the local network and
      * (Android) BLE, without the Internet (docs/design/zkpassport.md 5.8).

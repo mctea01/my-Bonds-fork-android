@@ -34,7 +34,6 @@ import kotlinx.serialization.json.buildJsonObject
 import kotlinx.serialization.json.jsonArray
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
-import org.multipaz.compose.prompt.PromptDialogs
 import org.multipaz.digitalcredentials.getAppOrigin
 import org.multipaz.prompt.AndroidPromptModel
 
@@ -63,7 +62,7 @@ class DcApiActivity : FragmentActivity() {
         setContent {
             val screen by app.model.screen.collectAsState()
             BackHandler(enabled = screen != Screen.Home) { app.model.back() }
-            PromptDialogs(promptModel)
+            WalletPromptDialogs(promptModel)
             WalletApp(app.model)
         }
         lifecycleScope.launch { run() }

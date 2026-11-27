@@ -2968,7 +2968,7 @@ class WalletModelE2eTest {
         var failure: String? = null
         var attests = true
         val compared = ArrayList<Boolean>()
-        override suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean): FaceComparison {
+        override suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean, voice: Boolean): FaceComparison {
             failure?.let { throw FaceMatchFailure(it) }
             compared.add(strict)
             return FaceComparison(floatArrayOf(0.5f, -0.25f), 71_000_000, 63_000_000)
