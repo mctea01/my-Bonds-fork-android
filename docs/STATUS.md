@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（Linux 桌面版由 .deb 改為 AppImage（`tools/linux-appimage.sh`）；Windows 原生桌面版：執行檔加入版本資源與圖示，發佈資料夾附 LICENSE 與 NOTICE，自我檢查與冒煙執行的記錄移出發佈壓縮檔；`tools/windows-sign.ps1` 簽署子資料夾在內的所有 .exe、.dll 並確認沒有遺漏；main 到 PR #176）。
+最後更新：2026-11-27（Linux 桌面版由 .deb 改為 AppImage（`tools/linux-appimage.sh`，執行階段為本專案的 `tools/appimage-runtime`，不含 LGPL 的 libfuse、不需 FUSE）；Windows 原生桌面版：執行檔加入版本資源與圖示，發佈資料夾附 LICENSE 與 NOTICE，自我檢查與冒煙執行的記錄移出發佈壓縮檔；`tools/windows-sign.ps1` 簽署子資料夾在內的所有 .exe、.dll 並確認沒有遺漏；main 到 PR #176）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -123,7 +123,6 @@ P4 之後合併的工作：
 | P6 iOS | | 排程 |
 | 穩定版發佈 workflow | `stable-release.yml` 與 CI 的標籤發佈已貼上；`minor`、`major` 另需 `RELEASE_TOKEN`；尚未實際發佈過穩定版 | 第一次以 `Stable release` 發佈並確認 Release 頁 |
 | Windows 程式碼簽章 | `tools/windows-sign.ps1` 在本機以 YubiKey（或 `-SignCommand` 的 jsign 等命令）簽署 MSI、其中的程式與 jar 內的零知識原生程式庫（改寫 `.sha256`），或實驗原生版，並傳回 Release；2026-11-21 使用者在 Windows 實跑：exe、dll 簽章成功，以 WiX 7 重建 MSI 時的 WIX0091 已由 PR #165 修正；2026-11-27 簽署改為列舉資料夾與子資料夾內所有 .exe、.dll（原生版的 `bin\jawt.dll`），簽完確認沒有遺漏，否則失敗 | 使用者重跑確認 MSI 能產生、安裝與零知識功能正常，見 [release.md](release.md#windows-程式碼簽章) |
-| Linux AppImage 的 workflow | `tools/linux-appimage.sh` 已在 repo；`desktop` 工作的 Linux 改建 `createReleaseDistributable` 並產生、實際啟動 AppImage，要改 `github-actions-ci.yml`（原生版檢查記錄的 `native-check-<os>` Artifact 已於 2026-11-27 貼上） | 使用者貼上 workflow；未貼上前 Release 仍附 `.deb` |
 | Release 附上原生桌面版 | `release` 工作打包 `desktop-native` 的 Windows 與 Linux 執行檔附到 nightly 與穩定版，下載指引列在「實驗版」，README 與使用教程補上解壓與執行步驟；改過的 `github-actions-ci.yml` 已由使用者貼上（PR #168） | 合併後確認下一次 nightly 有這兩個檔案 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作（appHash 為 `tw.gov.moda.diw`，簽章金鑰是本錢包自己的應用配對），官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |

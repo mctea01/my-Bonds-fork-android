@@ -114,11 +114,10 @@ change.
 - Java runtime packaged in the .msi installer and the Linux AppImage: a jlink
   image of Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath
   Exception. The jar distributions carry no Java runtime.
-- The Linux AppImage starts with the AppImage type 2 runtime
-  (https://github.com/AppImage/type2-runtime, release 20251108, unmodified),
-  MIT License; it is statically linked with musl (MIT), squashfuse
-  (BSD 2-Clause), zstd and zlib (BSD / zlib) and libfuse 3 (GNU LGPL 2.1).
-  Its source is available at that address.
+- The Linux AppImage starts with this project's own runtime
+  (tools/appimage-runtime, Apache License 2.0), statically linked with musl
+  libc (MIT) and the Rust crates backhand, deku, flate2, zlib-rs and their
+  dependencies (MIT, Apache License 2.0, Zlib, BSL-1.0); no FUSE library.
 - Experimental native executables (the -native archives of a release, with
   this NOTICE and LICENSE beside the executable) are built with GraalVM
   Community native-image and contain its Substrate VM runtime and the JDK

@@ -1,13 +1,17 @@
 #!/usr/bin/env bash
 # Builds the Linux x86_64 AppImage from the jpackage app image of :app:createReleaseDistributable (the same ProGuard
-# build and bundled Java runtime as the Windows MSI). An AppImage is the static AppImage type 2 runtime followed by a
-# SquashFS of the AppDir; the runtime mounts it with FUSE (fusermount or fusermount3, no libfuse2 needed) or, with
-# --appimage-extract-and-run, unpacks it to a temporary folder first. The runtime is a pinned release of
-# AppImage/type2-runtime (MIT), checked against its SHA-256; appimagetool is not used.
+# build and bundled Java runtime as the Windows MSI). The file is an AppImage type 2: a static runtime followed by a
+# SquashFS of the AppDir, with the magic bytes AI 02 at offset 8.
+#
+# The runtime is this project's own tools/appimage-runtime (Rust, static musl, pure-Rust SquashFS and gzip): the
+# official type2-runtime links libfuse statically, and native code shipped with the app may not contain GPL, LGPL or
+# AGPL components (AGENTS.md). It does not mount the image: the first start unpacks it into
+# ~/.cache/diw-appimage/<digest>/ and every start runs AppRun from there, so no FUSE is needed.
 #
 # AppDir layout: AppRun starts usr/lib/DIW-MY-WALLET/bin/DIW-MY-WALLET (the jpackage launcher finds its runtime and
 # jars relative to itself), with the desktop entry and the icon at the top as the AppImage format asks.
-# Needs mksquashfs (squashfs-tools 4.4 or later, for zstd) and curl.
+# Needs cargo with rustup (tools/appimage-runtime/rust-toolchain.toml installs the pinned Rust and the musl target)
+# and mksquashfs (squashfs-tools). Paths are relative to the repository root.
 # Usage: tools/linux-appimage.sh <app image folder> <output .AppImage>
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -15,21 +19,12 @@ cd "$(dirname "$0")/.."
 image=$1
 out=$2
 name=DIW-MY-WALLET
-runtime_version=20251108
-runtime_sha256=2fca8b443c92510f1483a883f60061ad09b46b978b2631c807cd873a47ec260d
 [ -x "$image/bin/$name" ] || { echo "$image/bin/$name not found: pass the folder of :app:createReleaseDistributable" >&2; exit 1; }
 command -v mksquashfs > /dev/null || { echo "mksquashfs not found: install squashfs-tools" >&2; exit 1; }
 
-# The runtime, downloaded once into the cache and checked every time.
-cache=${XDG_CACHE_HOME:-$HOME/.cache}/diw-appimage
-runtime=$cache/runtime-x86_64-$runtime_version
-mkdir -p "$cache"
-if [ ! -f "$runtime" ]; then
-    curl -fsSL --retry 3 -o "$runtime.part" \
-        "https://github.com/AppImage/type2-runtime/releases/download/$runtime_version/runtime-x86_64"
-    mv "$runtime.part" "$runtime"
-fi
-echo "$runtime_sha256  $runtime" | sha256sum -c --quiet - || { rm -f "$runtime"; echo "AppImage runtime checksum mismatch" >&2; exit 1; }
+echo "== runtime"
+(cd tools/appimage-runtime && cargo build --release --locked --target x86_64-unknown-linux-musl)
+runtime=tools/appimage-runtime/target/x86_64-unknown-linux-musl/release/diw-appimage-runtime
 
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
@@ -60,8 +55,15 @@ cp app/icons/app-icon.png "$appdir/diw-my-wallet.png"
 ln -s diw-my-wallet.png "$appdir/.DirIcon"
 cp LICENSE NOTICE "$appdir/"
 
-mksquashfs "$appdir" "$work/app.squashfs" -root-owned -noappend -comp zstd -quiet
+echo "== SquashFS"
+# gzip: the runtime reads it in pure Rust (zlib-rs).
+mksquashfs "$appdir" "$work/app.squashfs" -root-owned -noappend -comp gzip -quiet
 mkdir -p "$(dirname "$out")"
 cat "$runtime" "$work/app.squashfs" > "$out"
+# AppImage type 2 magic in the ELF identification padding (bytes 8 to 10), which the loader ignores.
+printf 'AI\002' | dd of="$out" bs=1 seek=8 count=3 conv=notrunc status=none
 chmod 755 "$out"
+# The runtime must find the image exactly where it was appended.
+offset=$("$(realpath "$out")" --appimage-offset)
+[ "$offset" = "$(stat -c %s "$runtime")" ] || { echo "Runtime reports offset $offset, expected $(stat -c %s "$runtime")" >&2; exit 1; }
 ls -l "$out"
