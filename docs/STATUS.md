@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-26（工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限與其拒絕、取消、返回的處理；文件簽署、憑證領取與 TWDIW 離線流程的取消與返回；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
+最後更新：2026-11-26（Dependabot 告警修補：cryptography 50、rustix 1.1.6，Renovate 規則；工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限與其拒絕、取消、返回的處理；文件簽署、憑證領取與 TWDIW 離線流程的取消與返回；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -188,3 +188,13 @@ P4 之後合併的工作：
 | TLSNotary | 0.1.0-alpha.15 |
 
 版本以 `gradle/libs.versions.toml`、根目錄 `build.gradle.kts` 與 `native/Cargo.lock` 為準；升級由 Renovate 開 PR。
+
+刻意不升或等上游的相依（2026-11-26 檢查 Dependabot 與 Renovate 儀表板）：
+
+| 相依 | 狀況 | 原因 |
+|---|---|---|
+| bincode 1.3（zktls） | Renovate 限制在 2 以下 | 3.0.0 是只會編譯失敗的空版本，專案已停止維護（RUSTSEC-2025-0141）；之後改用其他格式時再換 |
+| LiteRT 1.4 | Renovate 限制在 2 以下 | Multipaz FaceNet 以 LiteRT 1.4 建置，2.x 可以編譯但臉部比對要實機確認 |
+| Noir（acvm 等）、TLSNotary、Spartan2 的 git 版本 | digest 更新要在儀表板核准 | Noir 版本跟著 `native/circuits/VERSIONS` 與已編譯的電路；TLSNotary 仍是 alpha 協定；Spartan2 對應 OpenAC 年齡電路金鑰 |
+| crypto-bigint 0.5.5（RUSTSEC-2026-0387，部分運算時間不固定） | 等上游 | 由 elliptic-curve 0.13 帶入（TLSNotary 的 k256／p256 0.13、zkryptium 的 bls12_381_plus）；修正在 0.7.6，要等它們改用 elliptic-curve 0.14。本專案自己的 P-256 用 p256 0.14 |
+| tracing-subscriber 0.2.25（CVE-2025-58160，記錄中的 ANSI 跳脫字元） | 未編譯進產物 | 只是 ark-relations 的選用相依留在 `Cargo.lock`，`cargo tree` 沒有任何建置路徑用到；Dependabot 告警可標為不受影響 |
