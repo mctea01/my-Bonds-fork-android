@@ -4587,6 +4587,8 @@
     <string name="face_prompt_text">请看着镜头。本机会把您的脸与护照照片比对。</string>
     <string name="face_turn_title">活体检查</string>
     <string name="face_turn_text">请先正对镜头，再依指示转头。</string>
+    <string name="face_voice_locale">zh-CN</string>
+    <string name="face_voice_intro">语音提示已开启。如有佩戴眼镜，请摘下并看着镜头。</string>
     <string name="face_msg_position">请把脸移到框内并看着镜头</string>
     <string name="face_msg_reference">护照照片中找不到人脸</string>
     <string name="face_msg_start_failed">无法启动相机比对</string>
@@ -5080,7 +5082,9 @@
     <string name="verify_bonds">Bonds 兼容查验（非标准）</string>
     <string name="verify_bonds_text">供 Bonds App 与 TWDIW 卡片使用：离线查验挑战与年龄查验。这些依 Bonds 自有格式，不属于上方的标准协议。</string>
     <string name="verify_bonds_challenge">Bonds 离线查验挑战</string>
-    <string name="zkp_face_model_title">人脸比对模型</string>
+    <string name="zkp_face_model_title">人脸比对</string>
+    <string name="zkp_face_voice">朗读人脸比对的指示</string>
+    <string name="zkp_face_voice_note">相机画面上的每个指示（包括转头）与结果都由手机的文字转语音引擎读出，不必戴眼镜看字。读的只有 App 固定的指示文字。</string>
     <string name="zkp_face_model_facenet">改用 FaceNet-512，不用内置的 MobileFaceNet</string>
     <string name="zkp_face_model_note">两个模型都设置为在公开人脸照片（LFW）上约十万次比对误接受一次。在这个标准下，MobileFaceNet 让 90% 的本人比对通过，FaceNet-512 为 65%，所以 FaceNet-512 是内置模型不适合你的脸时的备用选项。每次比对取五帧相机画面平均。约 24 MB。</string>
     <string name="zkp_face_model_installed">FaceNet-512 已安装。</string>

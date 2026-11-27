@@ -575,18 +575,32 @@ internal fun ZkPassportSettingsSection(model: WalletModel) {
             Text(stringResource(Res.string.zkp_verifier_api_note), style = MaterialTheme.typography.bodySmall)
         }
     }
-    ZkPassportFaceModelSection(model)
+    ZkPassportFaceSection(model)
     ZkPassportOfflineSection(model)
 }
 
 /**
- * Which model answers face match requests (docs/design/zkpassport.md 5.6): the built-in MobileFaceNet or the optional
- * FaceNet-512, with its state and an install button where the app can fetch it (Google Play). Shows nothing where the
- * platform has no camera comparison.
+ * Face match (docs/design/zkpassport.md 5.6): whether the instructions are read aloud, and which model answers, the
+ * built-in MobileFaceNet or the optional FaceNet-512 with its state and an install button where the app can fetch it
+ * (Google Play). Shows nothing where the platform has no camera comparison.
  */
 @Composable
-private fun ZkPassportFaceModelSection(model: WalletModel) {
-    val component = model.platform.faceMatch?.alternateModel ?: return
+private fun ZkPassportFaceSection(model: WalletModel) {
+    val face = model.platform.faceMatch ?: return
+    val settings by model.settingsFlow.collectAsState()
+    SectionTitle(stringResource(Res.string.zkp_face_model_title))
+    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+        Switch(checked = settings.zkPassportFaceVoice, onCheckedChange = { on -> model.updateSettings { it.copy(zkPassportFaceVoice = on) } })
+        Column {
+            Text(stringResource(Res.string.zkp_face_voice))
+            Text(stringResource(Res.string.zkp_face_voice_note), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    face.alternateModel?.let { ZkPassportFaceModel(model, it) }
+}
+
+@Composable
+private fun ZkPassportFaceModel(model: WalletModel, component: diw.wallet.core.zk.ZkComponent) {
     val settings by model.settingsFlow.collectAsState()
     val scope = rememberCoroutineScope()
     var present by remember { mutableStateOf<Boolean?>(null) }
@@ -595,7 +609,6 @@ private fun ZkPassportFaceModelSection(model: WalletModel) {
     LaunchedEffect(component) {
         present = kotlinx.coroutines.withContext(kotlinx.coroutines.Dispatchers.Default) { runCatching { component.present() }.getOrDefault(false) }
     }
-    SectionTitle(stringResource(Res.string.zkp_face_model_title))
     Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(8.dp)) {
         Switch(checked = settings.zkPassportFaceNet, onCheckedChange = { on -> model.updateSettings { it.copy(zkPassportFaceNet = on) } })
         Column {

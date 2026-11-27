@@ -4499,7 +4499,9 @@
     <string name="zkp_unverified_suffix"> (domain as entered, not verified)</string>
     <string name="zkp_verifier_api">Let zkPassport's verifier service decide</string>
     <string name="zkp_verifier_api_note">Only when this phone cannot verify a proof itself; the proofs and the request are then sent to zkPassport. Off by default.</string>
-    <string name="zkp_face_model_title">Face match model</string>
+    <string name="zkp_face_model_title">Face match</string>
+    <string name="zkp_face_voice">Read the face match instructions aloud</string>
+    <string name="zkp_face_voice_note">Each instruction on the camera screen, including the head turns, and the result are spoken by the phone's text-to-speech engine, so glasses can stay off. The texts are the app's fixed instructions.</string>
     <string name="zkp_face_model_facenet">Use FaceNet-512 instead of the built-in MobileFaceNet</string>
     <string name="zkp_face_model_note">Both models are set to about 1 false accept in 100,000 comparisons on public face photos (LFW). At that level MobileFaceNet lets 90% of genuine attempts pass and FaceNet-512 65%, so FaceNet-512 is a fallback for when the built-in model does not suit your face. Each comparison averages five camera frames. About 24 MB.</string>
     <string name="zkp_face_model_installed">FaceNet-512 is installed.</string>
@@ -4596,6 +4598,8 @@
     <string name="face_prompt_text">Look at the camera. Your face is compared with the passport photo on this device.</string>
     <string name="face_turn_title">Liveness check</string>
     <string name="face_turn_text">Face the camera, then turn your head as shown.</string>
+    <string name="face_voice_locale">en</string>
+    <string name="face_voice_intro">Spoken instructions are on. If you wear glasses, take them off and look at the camera.</string>
     <string name="face_msg_position">Position your face in the frame and look at the camera</string>
     <string name="face_msg_reference">No face was found in the passport photo</string>
     <string name="face_msg_start_failed">The camera comparison could not start</string>

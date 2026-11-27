@@ -40,9 +40,10 @@ interface FaceMatchService {
 
     /**
      * Shows the camera and compares the holder's face with [portrait] (JPEG or JPEG 2000) together with a passive
-     * liveness check; [strict] adds a head turn challenge. Throws [FaceMatchFailure] unless the face matched.
+     * liveness check; [strict] adds a head turn challenge, [voice] reads the instructions aloud. Throws
+     * [FaceMatchFailure] unless the face matched.
      */
-    suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean = false): FaceComparison
+    suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean = false, voice: Boolean = false): FaceComparison
 
     /**
      * The optional FaceNet-512 model that [compare] uses when `alternate` is set (docs/design/zkpassport.md 5.6): an

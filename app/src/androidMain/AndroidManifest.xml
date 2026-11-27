@@ -18,11 +18,15 @@
     <!-- Android 17: sockets to private addresses (age proofs, zkTLS, zkPassport and OpenID4VP on the local network). -->
     <uses-permission android:name="android.permission.ACCESS_LOCAL_NETWORK" />
     <uses-feature android:name="android.hardware.bluetooth_le" android:required="false" />
-    <!-- Opening the mobile citizen certificate app (mobilemoica:) from a source site. -->
+    <!-- Opening the mobile citizen certificate app (mobilemoica:) from a source site; the text-to-speech engine for
+         the spoken face match instructions. -->
     <queries>
         <intent>
             <action android:name="android.intent.action.VIEW" />
             <data android:scheme="mobilemoica" />
+        </intent>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
         </intent>
     </queries>
     <uses-feature android:name="android.hardware.camera" android:required="false" />

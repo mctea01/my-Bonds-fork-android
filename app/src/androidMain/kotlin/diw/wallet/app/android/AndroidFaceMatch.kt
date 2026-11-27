@@ -81,8 +81,17 @@ class AndroidFaceMatch(
 
     @Volatile private var facenet: ByteArray? = null
 
-    override suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean): FaceComparison {
+    override suspend fun compare(portrait: ByteArray, strict: Boolean, alternate: Boolean, voice: Boolean): FaceComparison {
         val prompt = prompts() ?: throw FaceMatchFailure("unavailable")
+        val speaker = if (voice) FaceVoice(context, tr(Res.string.face_voice_locale), tr(Res.string.face_voice_intro)) else null
+        try {
+            return compare(prompt, portrait, strict, alternate, speaker)
+        } finally {
+            speaker?.close()
+        }
+    }
+
+    private suspend fun compare(prompt: AndroidPromptModel, portrait: ByteArray, strict: Boolean, alternate: Boolean, voice: FaceVoice?): FaceComparison {
         val pipeline = withContext(Dispatchers.Default) {
             if (alternate) {
                 val bytes = facenet ?: alternateModel?.read()?.also { facenet = it } ?: throw FaceMatchFailure("model")
@@ -100,7 +109,7 @@ class AndroidFaceMatch(
             val matched = try {
                 prompt.getFaceMatcherDialogModel().displayPrompt(
                     FaceMatcherPromptDialogModel.FaceMatcherRequest(
-                        LocalizedSession(session),
+                        LocalizedSession(session, voice),
                         Reason.HumanReadable(tr(Res.string.face_prompt_title), tr(Res.string.face_prompt_text), false), false,
                     ),
                 )
@@ -112,7 +121,7 @@ class AndroidFaceMatch(
             val threshold = pipeline.config.matchThreshold
             val score = session.bestSimilarity
             if (!matched || score < threshold) throw mismatch(score, threshold)
-            if (strict) challenge(prompt, pipeline, reference)
+            if (strict) challenge(prompt, pipeline, reference, voice)
             return FaceComparison(reference.embedding, scaled(score), scaled(threshold))
         } finally {
             pipeline.close()
@@ -160,14 +169,14 @@ class AndroidFaceMatch(
      * The strict mode's active check: the holder faces the camera, then turns left and right in an order drawn here,
      * and the frontal picture taken in that session must match the document's photo as well.
      */
-    private suspend fun challenge(prompt: AndroidPromptModel, pipeline: FacePipeline, reference: FaceEmbedding) {
+    private suspend fun challenge(prompt: AndroidPromptModel, pipeline: FacePipeline, reference: FaceEmbedding, voice: FaceVoice?) {
         val turns = listOf(FacePose.LOOK_LEFT, FacePose.LOOK_RIGHT).shuffled()
         val session = withContext(Dispatchers.Default) { runCatching { matcher }.getOrNull() }?.takeIf { it.isSupported }
             ?.createLivenessSession(listOf(FacePose.FRONT) + turns) ?: throw FaceMatchFailure("unavailable")
         val captured = try {
             prompt.getFaceMatcherLivenessDialogModel().displayPrompt(
                 FaceMatcherLivenessPromptDialogModel.FaceMatcherLivenessRequest(
-                    LocalizedLivenessSession(session),
+                    LocalizedLivenessSession(session, voice),
                     Reason.HumanReadable(tr(Res.string.face_turn_title), tr(Res.string.face_turn_text), false), false,
                 ),
             )
@@ -190,15 +199,21 @@ class AndroidFaceMatch(
         if (similarity < threshold) throw mismatch(similarity, threshold)
     }
 
-    /** [inner] with its messages in the app's language ([FaceMatchText]); everything else is the inner session's. */
-    private class LocalizedSession(private val inner: FaceMatcherSession) : FaceMatcherSession(inner.referencePortrait) {
+    /**
+     * [inner] with its messages in the app's language ([FaceMatchText]), read aloud by [voice] when the holder turned
+     * that on; everything else is the inner session's.
+     */
+    private class LocalizedSession(private val inner: FaceMatcherSession, private val voice: FaceVoice?) :
+        FaceMatcherSession(inner.referencePortrait) {
         init {
             sync()
         }
 
         private fun sync() {
             val s = inner.state.value
-            _state.value = s.copy(message = s.message?.let { FaceMatchText.localize(it) })
+            val message = s.message?.let { FaceMatchText.localize(it) }
+            _state.value = s.copy(message = message)
+            voice?.update(message)
         }
 
         override suspend fun feedFrame(frame: CameraFrame) {
@@ -214,14 +229,17 @@ class AndroidFaceMatch(
         override fun cancel() = inner.cancel()
     }
 
-    private class LocalizedLivenessSession(private val inner: FaceMatcherLivenessSession) : FaceMatcherLivenessSession(inner.poses) {
+    private class LocalizedLivenessSession(private val inner: FaceMatcherLivenessSession, private val voice: FaceVoice?) :
+        FaceMatcherLivenessSession(inner.poses) {
         init {
             sync()
         }
 
         private fun sync() {
             val s = inner.state.value
-            _state.value = s.copy(message = s.message?.let { FaceMatchText.localize(it) })
+            val message = s.message?.let { FaceMatchText.localize(it) }
+            _state.value = s.copy(message = message)
+            voice?.update(message)
         }
 
         override suspend fun feedFrame(frame: CameraFrame) {

@@ -43,7 +43,6 @@ import kotlinx.coroutines.launch
 import org.multipaz.compose.camera.CameraCaptureResolution
 import org.multipaz.compose.camera.CameraSelection
 import org.multipaz.compose.permissions.rememberCameraPermissionState
-import org.multipaz.compose.prompt.PromptDialogs
 import org.multipaz.compose.qrcode.QrCodeScanner
 import org.multipaz.prompt.AndroidPromptModel
 
@@ -66,7 +65,7 @@ class MainActivity : FragmentActivity() {
             val screen by app.model.screen.collectAsState()
             val tab by app.model.tab.collectAsState()
             BackHandler(enabled = screen != Screen.Home || tab != HomeTab.DOCUMENTS) { app.model.back() }
-            PromptDialogs(promptModel)
+            WalletPromptDialogs(promptModel)
             WalletApp(
                 app.model,
                 scanQr = { scan(ScanRequest(null)) },
