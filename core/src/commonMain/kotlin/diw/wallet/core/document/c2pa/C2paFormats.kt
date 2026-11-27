@@ -730,24 +730,27 @@ object C2paContainers {
             return out
         }
 
-        /** Prefixes bound to the C2PA manifest namespace in the start tags (c2pa is always accepted). */
-        private fun prefixes(text: String, tags: List<Tag>): Set<String> {
-            val out = HashSet<String>()
-            out.add("c2pa")
-            val decl = Regex("xmlns:([A-Za-z_][\\w.-]*)\\s*=\\s*([\"'])" + Regex.escape(NS) + "\\2")
-            for (t in tags) if (!t.closing) decl.findAll(text.substring(t.start, t.end)).forEach { out.add(it.groupValues[1]) }
-            return out
-        }
+        private val XMLNS = Regex("xmlns(?::([A-Za-z_][\\w.-]*))?\\s*=\\s*([\"'])(.*?)\\2")
 
         /**
-         * The manifest element: (element start, element end, text start, text end). The start tag may carry
-         * attributes (such as its own namespace declaration) and white space; an empty element holds no store.
+         * The manifest element: (element start, element end, text start, text end). An element is the manifest when
+         * its name is manifest and its prefix (or the default namespace) is bound, in its own scope, to the C2PA
+         * namespace; an unbound c2pa prefix is accepted as well. The start tag may carry attributes and white space;
+         * an empty element holds no store.
          */
         private fun element(text: String): IntArray? {
             val tags = tags(text)
-            val names = prefixes(text, tags).map { "$it:manifest" }.toSet()
+            // Namespace declarations of the open elements, innermost last ("" is the default namespace).
+            val scopes = ArrayList<Map<String, String>>()
+            fun resolve(prefix: String): String? = scopes.asReversed().firstNotNullOfOrNull { it[prefix] }
             for ((i, t) in tags.withIndex()) {
-                if (t.closing || t.empty || t.name !in names) continue
+                if (t.closing) { if (scopes.isNotEmpty()) scopes.removeAt(scopes.lastIndex); continue }
+                scopes.add(XMLNS.findAll(text.substring(t.start, t.end)).associate { (it.groups[1]?.value ?: "") to it.groupValues[3] })
+                val prefix = t.name.substringBefore(':', "")
+                val uri = resolve(prefix)
+                val manifest = t.name.substringAfter(':') == "manifest" && (uri == NS || (uri == null && prefix == "c2pa"))
+                if (t.empty) { scopes.removeAt(scopes.lastIndex); continue }
+                if (!manifest) continue
                 val close = tags.subList(i + 1, tags.size).firstOrNull { it.closing && it.name == t.name } ?: continue
                 return intArrayOf(t.start, close.end, t.end, close.start)
             }
