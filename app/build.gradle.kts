@@ -500,11 +500,19 @@ configurations.all {
     }
 }
 
+// The About page's third-party list for each platform (third-party/README.md): generateThirdPartyAndroid and
+// generateThirdPartyDesktop write files/third-party.json, NOTICE.txt and LICENSE.txt as platform Compose resources.
+apply(from = "third-party.gradle.kts")
+fun thirdPartyOutput(task: String): Provider<Directory> =
+    tasks.named(task).flatMap { @Suppress("UNCHECKED_CAST") (it.property("outputDir") as DirectoryProperty) }
+
 // Interface strings: composeResources/values (English), values-zh (Traditional Chinese) and values-zh-rCN (Simplified
 // Chinese), see docs/design/i18n.md and docs/guides/translation.md.
 compose.resources {
     packageOfResClass = "diw.wallet.app.res"
     generateResClass = always
+    customDirectory(sourceSetName = "androidMain", directoryProvider = thirdPartyOutput("generateThirdPartyAndroid"))
+    customDirectory(sourceSetName = "desktopMain", directoryProvider = thirdPartyOutput("generateThirdPartyDesktop"))
 }
 
 compose.desktop {

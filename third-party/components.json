@@ -1,0 +1,300 @@
+{
+  "comment": "Source of the About page's third-party list together with the Gradle dependency graph and the native libraries' crate lists. See third-party/README.md. Keep NOTICE in step with this file.",
+  "licenses": {
+    "Apache-2.0": { "name": "Apache License 2.0", "url": "https://www.apache.org/licenses/LICENSE-2.0" },
+    "LLVM-exception": { "name": "LLVM Exceptions to the Apache 2.0 License", "url": "https://llvm.org/LICENSE.txt" },
+    "MIT": { "name": "MIT License", "url": "https://opensource.org/license/mit" },
+    "MIT-0": { "name": "MIT No Attribution", "url": "https://opensource.org/license/mit-0" },
+    "BSD-1-Clause": { "name": "BSD 1-Clause License", "url": "https://opensource.org/license/bsd-1-clause" },
+    "BSD-2-Clause": { "name": "BSD 2-Clause License", "url": "https://opensource.org/license/bsd-2-clause" },
+    "BSD-3-Clause": { "name": "BSD 3-Clause License", "url": "https://opensource.org/license/bsd-3-clause" },
+    "0BSD": { "name": "BSD Zero Clause License", "url": "https://opensource.org/license/0bsd" },
+    "ISC": { "name": "ISC License", "url": "https://opensource.org/license/isc-license-txt" },
+    "Zlib": { "name": "zlib License", "url": "https://opensource.org/license/zlib" },
+    "BSL-1.0": { "name": "Boost Software License 1.0", "url": "https://www.boost.org/LICENSE_1_0.txt" },
+    "Unlicense": { "name": "The Unlicense", "url": "https://unlicense.org/" },
+    "CC0-1.0": { "name": "Creative Commons Zero v1.0 Universal", "url": "https://creativecommons.org/publicdomain/zero/1.0/" },
+    "CC-BY-4.0": { "name": "Creative Commons Attribution 4.0 International", "url": "https://creativecommons.org/licenses/by/4.0/" },
+    "CDLA-Permissive-2.0": { "name": "Community Data License Agreement Permissive 2.0", "url": "https://cdla.dev/permissive-2-0/" },
+    "Unicode-3.0": { "name": "Unicode License v3", "url": "https://www.unicode.org/license.txt" },
+    "MPL-2.0": { "name": "Mozilla Public License 2.0", "url": "https://www.mozilla.org/MPL/2.0/" },
+    "EPL-2.0": { "name": "Eclipse Public License 2.0", "url": "https://www.eclipse.org/legal/epl-2.0/" },
+    "LGPL-2.1-or-later": { "name": "GNU Lesser General Public License v2.1 or later", "url": "https://www.gnu.org/licenses/old-licenses/lgpl-2.1.html" },
+    "GPL-2.0-only": { "name": "GNU General Public License v2.0 only", "url": "https://www.gnu.org/licenses/old-licenses/gpl-2.0.html" },
+    "Classpath-exception-2.0": { "name": "Classpath exception 2.0", "url": "https://www.gnu.org/software/classpath/license.html" },
+    "GPL-3.0-or-later": { "name": "GNU General Public License v3.0 or later", "url": "https://www.gnu.org/licenses/gpl-3.0.html" },
+    "ZPL-2.1": { "name": "Zope Public License 2.1", "url": "https://opensource.org/license/zpl-2-1" },
+    "IJG": { "name": "Independent JPEG Group License", "url": "https://spdx.org/licenses/IJG.html" },
+    "Libpng": { "name": "libpng License", "url": "http://www.libpng.org/pub/png/src/libpng-LICENSE.txt" },
+    "W3C-20150513": { "name": "W3C Software and Document License", "url": "https://www.w3.org/copyright/software-license-2015/" },
+    "LicenseRef-BouncyCastle": { "name": "Bouncy Castle License (MIT)", "url": "https://www.bouncycastle.org/licence.html" },
+    "LicenseRef-Android-SDK": { "name": "Android Software Development Kit License Agreement", "url": "https://developer.android.com/studio/terms" },
+    "LicenseRef-PlayCore": { "name": "Play Core Software Development Kit Terms of Service", "url": "https://developer.android.com/guide/playcore/license" },
+    "LicenseRef-Public-Domain": { "name": "Public domain", "url": "" },
+    "LicenseRef-Public-Data": { "name": "Published data, reproduced unchanged", "url": "" }
+  },
+  "mavenLicenseAliases": [
+    { "match": "bouncy ?castle", "license": "LicenseRef-BouncyCastle" },
+    { "match": "android software development kit|studio/terms", "license": "LicenseRef-Android-SDK" },
+    { "match": "play core|playcore/license", "license": "LicenseRef-PlayCore" },
+    { "match": "classpath|gpl2 w/ cpe", "license": "GPL-2.0-only WITH Classpath-exception-2.0" },
+    { "match": "lgpl|lesser general public", "license": "LGPL-2.1-or-later" },
+    { "match": "eclipse public license.*2\\.0|epl[- ]?2\\.0|epl-2\\.0", "license": "EPL-2.0" },
+    { "match": "apache", "license": "Apache-2.0" },
+    { "match": "^mit\\b|the mit license|licenses/mit", "license": "MIT" },
+    { "match": "bsd-3|bsd 3|3-clause|new bsd", "license": "BSD-3-Clause" },
+    { "match": "bsd-2|bsd 2|2-clause|simplified bsd", "license": "BSD-2-Clause" }
+  ],
+  "mavenOverrides": {
+    "cz.adaptech.tesseract4android:tesseract4android": "Apache-2.0"
+  },
+  "crateOverrides": {
+    "mpz-*": "MIT OR Apache-2.0",
+    "clmul": "MIT OR Apache-2.0",
+    "matrix-transpose": "MIT OR Apache-2.0",
+    "futures-plex": "MIT OR Apache-2.0",
+    "tlsn-*": "MIT OR Apache-2.0",
+    "spartan2": "MIT"
+  },
+  "components": [
+    {
+      "id": "rust-std", "kind": "native", "name": "Rust standard library", "version": "1.100.0",
+      "license": "MIT OR Apache-2.0", "url": "https://github.com/rust-lang/rust",
+      "copyright": "Copyright the Rust Project Developers",
+      "when": { "runtime": ["rust-std"] },
+      "description": { "en": "core, alloc, std and compiler_builtins, compiled into every native library.", "zh": "core、alloc、std 與 compiler_builtins，編進每一個原生程式庫。" }
+    },
+    {
+      "id": "barretenberg-6", "kind": "native", "name": "Barretenberg", "version": "6.0.0 (0219f11d8133970df3974fe5ae65e006bf8c193a)",
+      "license": "Apache-2.0", "url": "https://github.com/AztecProtocol/aztec-packages/tree/0219f11d8133970df3974fe5ae65e006bf8c193a/barretenberg",
+      "copyright": "Copyright Aztec Labs and contributors",
+      "when": { "runtime": ["barretenberg-6"] }, "files": ["native/zkpdf-prover/NOTICE"],
+      "description": { "en": "UltraHonk prover and verifier statically linked into the native library (zkPDF, zkPassport).", "zh": "UltraHonk 證明與驗證器，靜態連結進原生程式庫（zkPDF、zkPassport）。" }
+    },
+    {
+      "id": "barretenberg-5", "kind": "native", "name": "Barretenberg", "version": "5.0.0 (7aa2bd616d632801fe65d97ee8a4434f26886b40)",
+      "license": "Apache-2.0", "url": "https://github.com/AztecProtocol/aztec-packages/tree/7aa2bd616d632801fe65d97ee8a4434f26886b40/barretenberg",
+      "copyright": "Copyright Aztec Labs and contributors",
+      "when": { "runtime": ["barretenberg-5"] },
+      "description": { "en": "In the optional libdiw_bb5 library, which only verifies zkPassport proofs of circuits before 0.22.0.", "zh": "在選用的 libdiw_bb5 程式庫中，只用來驗證 0.22.0 以前電路的 zkPassport 證明。" }
+    },
+    {
+      "id": "msgpack-c", "kind": "native", "name": "msgpack-c (headers)",
+      "license": "BSL-1.0", "url": "https://github.com/msgpack/msgpack-c",
+      "copyright": "Copyright (C) 2008-2019 FURUHASHI Sadayuki and KONDO Takatoshi",
+      "when": { "runtime": ["barretenberg-6", "barretenberg-5"] },
+      "description": { "en": "Used by Barretenberg.", "zh": "Barretenberg 使用。" }
+    },
+    {
+      "id": "libdeflate", "kind": "native", "name": "libdeflate", "version": "1.24 (96836d7d9d10e3e0d53e6edb54eb908514e336c4)",
+      "license": "MIT", "url": "https://github.com/ebiggers/libdeflate",
+      "copyright": "Copyright 2016 Eric Biggers; Copyright 2024 Google LLC",
+      "when": { "runtime": ["barretenberg-6", "barretenberg-5"] },
+      "description": { "en": "Used by Barretenberg.", "zh": "Barretenberg 使用。" }
+    },
+    {
+      "id": "tracy", "kind": "native", "name": "Tracy (headers)", "version": "5d542dc09f3d9378d005092a4ad446bd405f819a",
+      "license": "BSD-3-Clause", "url": "https://github.com/wolfpld/tracy",
+      "copyright": "Copyright (c) 2017-2024, Bartosz Taudul",
+      "when": { "runtime": ["barretenberg-6", "barretenberg-5"] },
+      "description": { "en": "Used by Barretenberg; profiling is not enabled.", "zh": "Barretenberg 使用，未啟用效能分析。" }
+    },
+    {
+      "id": "ndk-libcxx", "kind": "native", "name": "LLVM libc++ and libc++abi (Android NDK)", "version": "NDK 28.2.13676358",
+      "license": "Apache-2.0 WITH LLVM-exception", "url": "https://github.com/llvm/llvm-project",
+      "copyright": "Copyright the LLVM Project contributors",
+      "when": { "runtime": ["ndk-libcxx"] },
+      "description": { "en": "Linked statically (c++_static) with Barretenberg on Android.", "zh": "在 Android 上與 Barretenberg 一起靜態連結（c++_static）。" }
+    },
+    {
+      "id": "llvm-mingw-llvm", "kind": "native", "name": "LLVM libc++, libc++abi, libunwind and compiler-rt (llvm-mingw)", "version": "20251104",
+      "license": "Apache-2.0 WITH LLVM-exception", "url": "https://github.com/mstorsjo/llvm-mingw",
+      "copyright": "Copyright the LLVM Project contributors",
+      "when": { "runtime": ["llvm-mingw"] },
+      "description": { "en": "Linked statically into the Windows native libraries; no GCC runtime is linked.", "zh": "靜態連結進 Windows 原生程式庫，不含 GCC 執行階段。" }
+    },
+    {
+      "id": "llvm-mingw-crt", "kind": "native", "name": "mingw-w64 CRT and winpthreads (llvm-mingw)", "version": "20251104",
+      "license": "ZPL-2.1 AND MIT AND BSD-3-Clause AND LicenseRef-Public-Domain", "url": "https://www.mingw-w64.org/",
+      "copyright": "Copyright (c) 2009-2016 the mingw-w64 project; winpthreads: Copyright (c) 2011 mingw-w64 project, Copyright (c) 2010-2011 Kai Tietz",
+      "when": { "runtime": ["llvm-mingw"] },
+      "description": { "en": "C runtime startup code of the Windows native libraries (the UCRT itself is part of Windows).", "zh": "Windows 原生程式庫的 C 執行階段啟動碼（UCRT 本身屬於 Windows）。" }
+    },
+    {
+      "id": "zig-compiler-rt", "kind": "native", "name": "Zig compiler-rt", "version": "Zig 0.14.1",
+      "license": "MIT AND Apache-2.0 WITH LLVM-exception", "url": "https://github.com/ziglang/zig",
+      "copyright": "Copyright (c) Zig contributors; parts derived from LLVM compiler-rt",
+      "when": { "runtime": ["zig-compiler-rt"] },
+      "description": { "en": "Linked by Zig into the Linux compatibility libraries (and the full Linux libraries built with DIW_ZK_LINUX_LIBCXX=1).", "zh": "由 Zig 連結進 Linux 相容版程式庫（以 DIW_ZK_LINUX_LIBCXX=1 建置的完整版亦同）。" }
+    },
+    {
+      "id": "zig-libcxx", "kind": "native", "name": "LLVM libc++ and libc++abi (Zig)", "version": "Zig 0.14.1",
+      "license": "Apache-2.0 WITH LLVM-exception", "url": "https://github.com/ziglang/zig",
+      "copyright": "Copyright the LLVM Project contributors",
+      "when": { "runtime": ["zig-libcxx"] },
+      "description": { "en": "Linked statically into full Linux libraries built with DIW_ZK_LINUX_LIBCXX=1.", "zh": "靜態連結進以 DIW_ZK_LINUX_LIBCXX=1 建置的完整版 Linux 程式庫。" }
+    },
+    {
+      "id": "bonds-openac-overlay", "kind": "native", "name": "Bonds-iOS OpenACAge overlay", "version": "e22de5f114a593e90f28b0525f6e4f230154c641",
+      "license": "Apache-2.0", "url": "https://bonds.tw",
+      "when": { "feature": ["openac"] },
+      "description": { "en": "predicate.rs and zkid-mobile.patch, built into the age proof (OpenAC).", "zh": "predicate.rs 與 zkid-mobile.patch，編進年齡證明（OpenAC）。" }
+    },
+    {
+      "id": "longfellow", "kind": "native", "name": "Longfellow ZK", "platforms": ["android", "desktop"],
+      "license": "Apache-2.0", "url": "https://github.com/google/longfellow-zk", "copyright": "Copyright Google LLC",
+      "description": { "en": "Native libraries and default circuits for mdoc zero-knowledge presentation, distributed in multipaz-longfellow.", "zh": "mdoc 零知識出示的原生程式庫與預設電路，隨 multipaz-longfellow 散布。" }
+    },
+    {
+      "id": "skia", "kind": "native", "name": "Skia", "platforms": ["desktop"],
+      "license": "BSD-3-Clause", "url": "https://skia.org/", "copyright": "Copyright (c) 2011 Google Inc. All rights reserved.",
+      "description": { "en": "Graphics engine embedded in Skiko, with the third-party components Skia is built with.", "zh": "內嵌在 Skiko 的繪圖引擎，含 Skia 建置時使用的第三方元件。" }
+    },
+    {
+      "id": "sqlite", "kind": "native", "name": "SQLite", "platforms": ["desktop"],
+      "license": "LicenseRef-Public-Domain", "url": "https://sqlite.org/copyright.html",
+      "description": { "en": "Database engine inside sqlite-jdbc.", "zh": "sqlite-jdbc 內的資料庫引擎。" }
+    },
+    {
+      "id": "tesseract", "kind": "native", "name": "Tesseract OCR 5", "platforms": ["android"],
+      "license": "Apache-2.0", "url": "https://github.com/tesseract-ocr/tesseract",
+      "description": { "en": "Machine readable zone OCR, built into Tesseract4Android.", "zh": "機器可讀區（MRZ）文字辨識，在 Tesseract4Android 內。" }
+    },
+    {
+      "id": "leptonica", "kind": "native", "name": "Leptonica", "platforms": ["android"],
+      "license": "BSD-2-Clause", "url": "http://www.leptonica.org/", "copyright": "Copyright (C) 2001-2024 Leptonica. All rights reserved.",
+      "description": { "en": "Image library used by Tesseract4Android.", "zh": "Tesseract4Android 使用的影像程式庫。" }
+    },
+    {
+      "id": "libjpeg-turbo", "kind": "native", "name": "libjpeg-turbo", "platforms": ["android"],
+      "license": "IJG AND BSD-3-Clause AND Zlib", "url": "https://libjpeg-turbo.org/",
+      "copyright": "Copyright (C) 1991-2020, Thomas G. Lane, Guido Vollbeding; Copyright (C)2009-2024 D. R. Commander; this software is based in part on the work of the Independent JPEG Group",
+      "description": { "en": "JPEG codec used by Tesseract4Android.", "zh": "Tesseract4Android 使用的 JPEG 編解碼器。" }
+    },
+    {
+      "id": "libpng", "kind": "native", "name": "libpng", "platforms": ["android"],
+      "license": "Libpng", "url": "http://www.libpng.org/pub/png/libpng.html",
+      "copyright": "Copyright (c) 1995-2024 The PNG Reference Library Authors",
+      "description": { "en": "PNG codec used by Tesseract4Android.", "zh": "Tesseract4Android 使用的 PNG 編解碼器。" }
+    },
+    {
+      "id": "cmwallet-matcher", "kind": "native", "name": "CMWallet credential provisioning matcher", "platforms": ["android"],
+      "license": "Apache-2.0", "url": "https://github.com/digitalcredentialsdev/CMWallet", "copyright": "Copyright Google LLC",
+      "description": { "en": "WebAssembly matcher for receiving credentials through the Digital Credentials API (assets/openid4vci_provision.wasm).", "zh": "以 Digital Credentials API 收卡時的 WebAssembly 比對程式（assets/openid4vci_provision.wasm）。" }
+    },
+    {
+      "id": "tessdata-eng", "kind": "model", "name": "tessdata_fast eng.traineddata", "platforms": ["android"],
+      "license": "Apache-2.0", "url": "https://github.com/tesseract-ocr/tessdata_fast",
+      "description": { "en": "English OCR model for the machine readable zone (assets/tessdata).", "zh": "機器可讀區的英文辨識模型（assets/tessdata）。" }
+    },
+    {
+      "id": "mobilefacenet", "kind": "model", "name": "MobileFaceNet", "version": "Qualcomm AI Hub v0.62.2", "platforms": ["android"],
+      "license": "Apache-2.0", "url": "https://huggingface.co/qualcomm/MobileFaceNet", "copyright": "Copyright Qualcomm Technologies, Inc.",
+      "description": { "en": "Face embedding model for zkPassport face match (assets/facenet/mobile_facenet.tflite, SHA-256 2254b01065c1f69ff501e9501042441b85323710e3d5a7b6be04a5084b647651).", "zh": "zkPassport 人臉比對的人臉特徵模型（assets/facenet/mobile_facenet.tflite，SHA-256 2254b01065c1f69ff501e9501042441b85323710e3d5a7b6be04a5084b647651）。" }
+    },
+    {
+      "id": "facenet-512", "kind": "model", "name": "FaceNet-512 (InceptionResnetV1, VGGFace2 weights)", "version": "facenet-pytorch v2.2.9", "platforms": ["android"],
+      "license": "MIT", "url": "https://github.com/timesler/facenet-pytorch",
+      "copyright": "Copyright (c) 2019 Timothy Esler; port of facenet, Copyright (c) 2016 David Sandberg",
+      "description": { "en": "Optional on-demand face embedding model (features/facenet), converted by this project to TFLite with int8 weights (SHA-256 4913ec9ad500ca9c977ac1386190dae274d5bcec6d997b9589c1d55e5f3e5746).", "zh": "選用的隨選人臉特徵模型（features/facenet），由本專案轉成 int8 權重的 TFLite（SHA-256 4913ec9ad500ca9c977ac1386190dae274d5bcec6d997b9589c1d55e5f3e5746）。" }
+    },
+    {
+      "id": "blazeface", "kind": "model", "name": "MediaPipe BlazeFace (short range)", "platforms": ["android"],
+      "license": "Apache-2.0", "url": "https://github.com/google-ai-edge/mediapipe", "copyright": "Copyright Google LLC",
+      "description": { "en": "Face detection model embedded in Multipaz FaceNet.", "zh": "內嵌在 Multipaz FaceNet 的人臉偵測模型。" }
+    },
+    {
+      "id": "minifasnet", "kind": "model", "name": "MiniFASNetV2 (Silent-Face-Anti-Spoofing)", "platforms": ["android"],
+      "license": "Apache-2.0", "url": "https://github.com/minivision-ai/Silent-Face-Anti-Spoofing", "copyright": "Copyright Minivision",
+      "description": { "en": "Passive anti-spoofing model embedded in Multipaz FaceNet.", "zh": "內嵌在 Multipaz FaceNet 的被動防偽模型。" }
+    },
+    {
+      "id": "facematch-self-circuit", "kind": "circuit", "name": "Self-declared FaceMatch circuit of this project",
+      "license": "Apache-2.0 AND MIT", "url": "https://github.com/zkpassport/circuits",
+      "when": { "runtime": ["barretenberg-6"] }, "files": ["native/vendor/zkpassport-circuits/LICENSE"],
+      "description": { "en": "Compiled Noir circuit embedded in the native library, built with the zkPassport circuits libraries (utils, commitment, facematch, data-check, revision 2c5673df14d496a1b0baf7a92e883ca19fbb618b; Apache-2.0) and their Noir dependencies: noir-lang poseidon, noir_base64, noir_sort, noir_check_shuffle, sha256, zac-williamson sha1, zkPassport noir-bignum, noir-ecdsa, noir_rsa, noir_json_parser, sha512, noir_bigcurve (Apache-2.0); TACEO noir-poseidon and oprf-nr, noir-date (MIT).", "zh": "內嵌在原生程式庫的已編譯 Noir 電路，以 zkPassport circuits 程式庫（utils、commitment、facematch、data-check，修訂 2c5673df14d496a1b0baf7a92e883ca19fbb618b；Apache-2.0）及其 Noir 相依建置：noir-lang poseidon、noir_base64、noir_sort、noir_check_shuffle、sha256、zac-williamson sha1、zkPassport noir-bignum、noir-ecdsa、noir_rsa、noir_json_parser、sha512、noir_bigcurve（Apache-2.0）；TACEO noir-poseidon 與 oprf-nr、noir-date（MIT）。" }
+    },
+    {
+      "id": "facematch-keyattest-circuits", "kind": "downloaded", "name": "Key attestation FaceMatch circuits of this project", "platforms": ["android"],
+      "license": "Apache-2.0 AND MIT", "url": "https://github.com/mctea01/my-Bonds-fork-android/releases/tag/zkpassport-facematch-v1",
+      "description": { "en": "Downloaded when needed (the one circuit matching the device's attestation chain); built from native/circuits-zkpassport with the libraries of the self-declared circuit and the zkPassport sig-check library.", "zh": "需要時下載（只下載符合這台裝置金鑰證明鏈的那一個）；以 native/circuits-zkpassport 及自我聲明版電路的程式庫與 zkPassport sig-check 程式庫建置。" }
+    },
+    {
+      "id": "zkpassport-circuits", "kind": "downloaded", "name": "zkPassport circuits, registry and certificate packages",
+      "license": "Apache-2.0 AND LicenseRef-Public-Data", "url": "https://github.com/zkpassport/circuits",
+      "description": { "en": "Downloaded from zkpassport.id when a zkPassport request is answered or checked, and kept in the app's cache.", "zh": "回應或查驗 zkPassport 請求時由 zkpassport.id 下載，保存在 App 的快取。" }
+    },
+    {
+      "id": "openac-age-assets", "kind": "downloaded", "name": "openac-age-v1 and openac-age-graph-v1 proof assets",
+      "license": "GPL-3.0-or-later AND MIT", "url": "https://github.com/privacy-ethereum/zkID/tree/b395e09c225ff45b003f0087c28e2e208e22f944/wallet-unit-poc/circom",
+      "when": { "feature": ["openac"] },
+      "description": { "en": "R1CS, proving and verifying keys and witness graphs of the age proof, compiled from zkID circuits (MIT) and circomlib 2.0.5 templates (GPL-3.0-or-later). Distributed separately under GPL-3.0, not linked into the native library. Corresponding source: zkID at the link above, https://github.com/iden3/circomlib/tree/v2.0.5 and @zk-email/circuits 6.3.4; rebuild with native/openac-age/build-graphs.sh.", "zh": "年齡證明的 R1CS、證明與驗證金鑰及見證圖，由 zkID 電路（MIT）與 circomlib 2.0.5 範本（GPL-3.0-or-later）編譯。另以 GPL-3.0 散布，不連結進原生程式庫。對應原始碼：上方連結的 zkID、https://github.com/iden3/circomlib/tree/v2.0.5 與 @zk-email/circuits 6.3.4；以 native/openac-age/build-graphs.sh 重建。" }
+    },
+    {
+      "id": "aztec-ignition-crs", "kind": "data", "name": "Aztec Ignition BN254 CRS (prefix)",
+      "license": "LicenseRef-Public-Data", "url": "https://github.com/AztecProtocol/ignition-verification",
+      "when": { "runtime": ["barretenberg-6"] },
+      "description": { "en": "Public ceremony transcript used by Barretenberg; hashes are pinned in native/zkpdf-prover/assets.json.", "zh": "Barretenberg 使用的公開儀式紀錄；雜湊釘選在 native/zkpdf-prover/assets.json。" }
+    },
+    {
+      "id": "w3c-contexts", "kind": "data", "name": "W3C and W3C CCG JSON-LD contexts",
+      "license": "W3C-20150513", "url": "https://www.w3.org/", "copyright": "Copyright World Wide Web Consortium",
+      "description": { "en": "Context documents built into core (w3c/ld/LdContexts.kt).", "zh": "內建在 core 的 context 文件（w3c/ld/LdContexts.kt）。" }
+    },
+    {
+      "id": "bsi-csca", "kind": "data", "name": "Country signing CA certificates (BSI CSCA master list)",
+      "license": "LicenseRef-Public-Data", "url": "https://www.bsi.bund.de/",
+      "description": { "en": "Public certificates of the issuing states, selected from the German CSCA master list and checked against BSI's self-signed root.", "zh": "各發證國的公開憑證，選自德國 BSI 的 CSCA 主清單，並以 BSI 自簽根驗證。" }
+    },
+    {
+      "id": "trust-anchors", "kind": "data", "name": "Built-in trust anchors",
+      "license": "LicenseRef-Public-Data", "url": "",
+      "description": { "en": "Public certificates published by their certification authorities, by the e-sign platform esign.cn for its partner CAs and by the Multipaz project, reproduced for certificate path validation only.", "zh": "各憑證機構、e簽寶（esign.cn）為合作 CA 及 Multipaz 專案公開的憑證，只用於憑證路徑驗證。" }
+    },
+    {
+      "id": "trust-lists", "kind": "downloaded", "name": "Adobe Approved Trust List and EU trusted lists",
+      "license": "LicenseRef-Public-Data", "url": "https://eidas.ec.europa.eu/efda/trust-services/browse/eidas/tls",
+      "description": { "en": "Downloaded and verified by the app when the trust settings turn them on; only the fingerprints of their signing certificates are built in.", "zh": "在信任設定開啟時由 App 下載並驗證；只內建其簽署憑證的指紋。" }
+    },
+    {
+      "id": "privileged-browsers", "kind": "data", "name": "Privileged browser list of Google Password Manager", "platforms": ["android"],
+      "license": "LicenseRef-Public-Data", "url": "https://developer.android.com/identity/credential-manager/credential-manager-webview",
+      "description": { "en": "Browsers allowed to pass a web origin to the Digital Credentials API (assets/privileged_user_agents.json).", "zh": "可向 Digital Credentials API 傳遞網站來源的瀏覽器清單（assets/privileged_user_agents.json）。" }
+    },
+    {
+      "id": "c2pa-softbinding", "kind": "data", "name": "C2PA soft binding algorithm list", "version": "b445c12",
+      "license": "CC-BY-4.0", "url": "https://github.com/c2pa-org/softbinding-algorithm-list",
+      "copyright": "Coalition for Content Provenance and Authenticity",
+      "description": { "en": "Identifier, name, type, media types and description of each entry (core c2pa/SoftBindingAlgorithms.kt).", "zh": "每個項目的識別碼、名稱、類型、媒體類型與說明（core 的 c2pa/SoftBindingAlgorithms.kt）。" }
+    },
+    {
+      "id": "pdfjs-jbig2", "kind": "native", "name": "pdf.js JBIG2 decoder (structure)",
+      "license": "Apache-2.0", "url": "https://github.com/mozilla/pdf.js", "copyright": "Copyright Mozilla Foundation",
+      "description": { "en": "The JBIG2 decoder in core (document/image/Jbig2.kt) follows ITU-T T.88 and the structure of the pdf.js decoder.", "zh": "core 的 JBIG2 解碼器（document/image/Jbig2.kt）依 ITU-T T.88 並參照 pdf.js 解碼器的結構撰寫。" }
+    },
+    {
+      "id": "temurin", "kind": "runtime", "name": "Eclipse Temurin (OpenJDK) 21", "platforms": ["desktop"],
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0", "url": "https://adoptium.net/",
+      "scope": { "en": "MSI installer and AppImage", "zh": "MSI 安裝檔與 AppImage" },
+      "description": { "en": "A jlink image of the Java runtime packaged in the installers; its legal folder holds the notices of the components OpenJDK includes. The jar distributions carry no Java runtime.", "zh": "安裝檔附帶的 Java 執行環境（jlink 映像），其 legal 資料夾有 OpenJDK 內含元件的聲明。jar 版本不附 Java 執行環境。" }
+    },
+    {
+      "id": "graalvm", "kind": "runtime", "name": "GraalVM Community native-image (Substrate VM and JDK class library)", "platforms": ["desktop"],
+      "license": "GPL-2.0-only WITH Classpath-exception-2.0", "url": "https://www.graalvm.org/",
+      "scope": { "en": "Experimental native executables", "zh": "實驗原生執行檔" },
+      "description": { "en": "Runtime compiled into the experimental native executables, with the JDK native libraries (awt, jawt, j2pcsc and others) beside them.", "zh": "編進實驗原生執行檔的執行環境，以及放在旁邊的 JDK 原生程式庫（awt、jawt、j2pcsc 等）。" }
+    },
+    {
+      "id": "musl", "kind": "runtime", "name": "musl libc", "platforms": ["desktop"],
+      "license": "MIT", "url": "https://musl.libc.org/", "copyright": "Copyright (c) 2005-2020 Rich Felker, et al.",
+      "scope": { "en": "AppImage runtime", "zh": "AppImage 執行階段" },
+      "description": { "en": "Statically linked into this project's AppImage runtime (tools/appimage-runtime, Apache-2.0); no FUSE library is used.", "zh": "靜態連結進本專案的 AppImage 執行階段（tools/appimage-runtime，Apache-2.0）；不使用 FUSE 程式庫。" }
+    },
+    {
+      "id": "appimage-runtime-crates", "kind": "runtime", "name": "Rust crates of the AppImage runtime", "platforms": ["desktop"],
+      "license": "(MIT OR Apache-2.0) AND MIT AND Zlib AND BSL-1.0", "url": "https://github.com/mctea01/my-Bonds-fork-android/tree/main/tools/appimage-runtime",
+      "scope": { "en": "AppImage runtime", "zh": "AppImage 執行階段" },
+      "description": { "en": "backhand, deku, flate2, zlib-rs, bitvec, xxhash-rust, solana-nohash-hasher and their dependencies, statically linked into the AppImage runtime with the Rust standard library; exact versions are in tools/appimage-runtime/Cargo.lock.", "zh": "backhand、deku、flate2、zlib-rs、bitvec、xxhash-rust、solana-nohash-hasher 及其相依，與 Rust 標準函式庫一起靜態連結進 AppImage 執行階段；確切版本見 tools/appimage-runtime/Cargo.lock。" }
+    }
+  ]
+}

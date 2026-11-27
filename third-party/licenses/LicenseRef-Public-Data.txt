@@ -1,0 +1,6 @@
+Published data reproduced unchanged
+
+These items are data published by their owners for public use, such as public key certificates of certification
+authorities and issuing states, trust lists, registries and ceremony transcripts. DIW MY WALLET includes or downloads
+them only to check signatures and proofs, as their publishers intend, and does not modify them. Any rights in them
+remain with their publishers; this application's license does not apply to them.

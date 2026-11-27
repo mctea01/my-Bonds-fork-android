@@ -9,7 +9,7 @@
 | 有哪些功能、怎麼下載與建置 | [../README.md](../README.md) |
 | 開發規則、模組職責、各領域的實作要點 | [../AGENTS.md](../AGENTS.md) |
 | 某個領域的設計規格 | 下方「設計」中標為現行規格的文件 |
-| 第三方元件與授權 | [../NOTICE](../NOTICE)、[../LICENSE](../LICENSE) |
+| 第三方元件與授權 | [../NOTICE](../NOTICE)、[../LICENSE](../LICENSE)；App 關於頁的清單如何產生：[../third-party/README.md](../third-party/README.md) |
 
 多數工作只需要前三份。設計、研究與驗收文件在要動到該領域時才讀。
 

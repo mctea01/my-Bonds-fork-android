@@ -87,6 +87,14 @@ fi
 # instructions behind runtime detection; nothing here is compiled for a higher CPU level.
 # The glibc every Zig-linked Linux library is built against (Debian 10, Ubuntu 20.04, RHEL 8 and later).
 glibc_floor=2.28
+# Writes <library>.third-party.json next to a library: the Rust crates linked into it with their license files and the
+# runtimes linked with them (rust-std, barretenberg-6, ndk-libcxx and others in third-party/components.json). The app
+# build merges these into the About page's third-party list (app/third-party.gradle.kts).
+# third_party <library path> <package> <features> <rust target> <runtimes>
+third_party() {
+    if ! command -v python3 > /dev/null; then echo "python3 not found: no third-party list for $1" >&2; return 0; fi
+    python3 -I third_party.py --library "${1##*/}" --out "$1.third-party.json" --package "$2" --features "$3" --target "$4" --runtime "$5"
+}
 zigbuild="$PWD/target/tools/bin/cargo-zigbuild"
 # Puts the pinned Zig on PATH and installs the pinned cargo-zigbuild under target/tools.
 # $1 is the Rust triple. bindgen (OpenAC's witness header) runs the host libclang with cargo-zigbuild's -nostdinc;
@@ -157,6 +165,7 @@ build_compat() {
     check_linux_floor "$out/libdiw_zk.so"
     if command -v sha256sum > /dev/null; then digest=$(sha256sum "$out/libdiw_zk.so"); else digest=$(shasum -a 256 "$out/libdiw_zk.so"); fi
     printf '%s\n' "${digest%% *}" > "$out/libdiw_zk.so.sha256"
+    third_party "$out/libdiw_zk.so" diw-zk-ffi "$compat_features" "$triple" rust-std,zig-compiler-rt
     printf 'compat_library platform=%s features=%s\n' "$platform" "${compat_features:-none}"
 }
 # DIW_ZK_LINUX_LIBCXX=1 builds the full Linux library (Barretenberg included) with Zig too: zig cc and zig c++
@@ -218,11 +227,13 @@ for target in "${selected[@]}"; do
                 # cargo-ndk replaces CXX and moves target selection to CXXFLAGS.
                 # Keep the bridge's explicit API/ABI wrapper independent of it.
                 ZKPDF_CXX="$zkpdf_cxx" ZKPDF_AR="$zkpdf_ar" cargo ndk -t "$abi" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+                third_party "dist/android/$abi/libdiw_zk.so" diw-zk-ffi "$ffi_features" "$rust_target" rust-std,barretenberg-6,ndk-libcxx
                 printf 'zkpdf_android abi=%s build_seconds=%s library_bytes=%s\n' \
                     "$abi" "$((SECONDS - abi_started))" "$(wc -c < "dist/android/$abi/libdiw_zk.so")"
                 if "$with_bb5"; then
                     build_bb5 "$rust_target"
                     ZKPDF_CXX="$zkpdf_cxx" ZKPDF_AR="$zkpdf_ar" cargo ndk -t "$abi" --platform 29 -o dist/android-bb5 build --release --locked -p zkpassport-bb5 --features bb
+                    third_party "dist/android-bb5/$abi/libdiw_bb5.so" zkpassport-bb5 bb "$rust_target" rust-std,barretenberg-5,ndk-libcxx
                     printf 'bb5_android abi=%s library_bytes=%s\n' "$abi" "$(wc -c < "dist/android-bb5/$abi/libdiw_bb5.so")"
                 fi
             done
@@ -238,14 +249,19 @@ for target in "${selected[@]}"; do
             fi
         else
             cargo ndk "${abi_args[@]}" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi ${feature_args[@]+"${feature_args[@]}"}
+            for abi in "${abis[@]}"; do
+                if [[ "$abi" == arm64-v8a ]]; then rust_target=aarch64-linux-android; else rust_target=x86_64-linux-android; fi
+                third_party "dist/android/$abi/libdiw_zk.so" diw-zk-ffi "$ffi_features" "$rust_target" rust-std
+            done
         fi
         # The 32-bit ABIs have no proof backend: Barretenberg needs 128-bit integers and a 64-bit size_t, Multipaz ships
         # no 32-bit Longfellow, and the provers need more memory than a 32-bit process has. The app still installs
         # there and decodes JPEG 2000 portraits with this library, so each 64-bit ABI brings the runtime-only library
         # of its 32-bit sibling (about 1 MB).
         for abi in "${abis[@]}"; do
-            if [[ "$abi" == arm64-v8a ]]; then sibling=armeabi-v7a; else sibling=x86; fi
+            if [[ "$abi" == arm64-v8a ]]; then sibling=armeabi-v7a; sibling_target=armv7-linux-androideabi; else sibling=x86; sibling_target=i686-linux-android; fi
             cargo ndk -t "$sibling" --platform 29 -o dist/android build --release --locked -p diw-zk-ffi
+            third_party "dist/android/$sibling/libdiw_zk.so" diw-zk-ffi "" "$sibling_target" rust-std
         done
     else
         if [[ -n "$bridge_cxx_override" ]]; then export ZKPDF_CXX=$bridge_cxx_override; else unset ZKPDF_CXX; fi
@@ -313,6 +329,12 @@ for target in "${selected[@]}"; do
             libraries+=("${library/diw_zk/diw_bb5}")
         fi
         mkdir -p "dist/resources/zk/native/$platform"
+        # What else each library links besides the crates (third_party).
+        runtimes=rust-std
+        case "$target" in
+            x86_64-pc-windows-gnullvm) runtimes+=,llvm-mingw ;;
+            *-unknown-linux-gnu) if "$linux_libcxx"; then runtimes+=,zig-compiler-rt,zig-libcxx; fi ;;
+        esac
         for name in "${libraries[@]}"; do
             cp "$cargo_target/$target/release/$name" "dist/resources/zk/native/$platform/$name"
             if "$linux_libcxx"; then check_linux_floor "dist/resources/zk/native/$platform/$name"; fi
@@ -320,6 +342,13 @@ for target in "${selected[@]}"; do
             path="dist/resources/zk/native/$platform/$name"
             if command -v sha256sum > /dev/null; then digest=$(sha256sum "$path"); else digest=$(shasum -a 256 "$path"); fi
             printf '%s\n' "${digest%% *}" > "$path.sha256"
+            if [[ "$name" == *diw_bb5* ]]; then
+                third_party "$path" zkpassport-bb5 bb "$target" "$runtimes,barretenberg-5"
+            elif [[ ",$ffi_features," == *,zkpdf,* ]]; then
+                third_party "$path" diw-zk-ffi "$ffi_features" "$target" "$runtimes,barretenberg-6"
+            else
+                third_party "$path" diw-zk-ffi "$ffi_features" "$target" "$runtimes"
+            fi
             if [[ "$target" == x86_64-pc-windows-gnullvm ]]; then
                 # The DLL may import Windows system libraries only (the UCRT is part of Windows 10 and later), and
                 # nothing compiled by GCC may be in it: such objects carry a "GCC: (" ident string.

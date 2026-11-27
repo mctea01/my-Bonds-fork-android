@@ -212,4 +212,4 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 
 ## 授權
 
-本專案以 [Apache License 2.0](LICENSE) 授權。隨 App 散布的第三方元件、開發工具、另外下載的證明資產與內建的第三方資料，見 [NOTICE](NOTICE)。
+本專案以 [Apache License 2.0](LICENSE) 授權。隨 App 散布的第三方元件、開發工具、另外下載的證明資產與內建的第三方資料，見 [NOTICE](NOTICE)；App 的「設定 > 關於 > 第三方元件與授權」列出每個版本實際包含的元件與授權全文（產生方式見 [third-party/README.md](third-party/README.md)）。

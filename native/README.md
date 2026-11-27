@@ -33,6 +33,12 @@ of its 32-bit sibling (`armeabi-v7a`, `x86`, about 1 MB): the app installs on
 exists there (Barretenberg needs 128-bit integers and a 64-bit `size_t`,
 Multipaz ships no 32-bit Longfellow, and the provers need more memory than a
 32-bit process has).
+Next to every library it builds, `build.sh` writes `<library>.third-party.json`
+with `third_party.py`: the Rust crates linked into that library (no
+proc-macro, build-only or project crates), their license files and the
+runtimes linked with them. The app build turns these into the About page's
+third-party list (`third-party/README.md`); keep them with the library when
+copying `native/dist`, because a CI build fails on a library without its list.
 On Windows the tasks run Git for Windows' bash, because `bash` there starts WSL. Both use release Rust libraries. The Android
 application uses its existing R8 release build plus native/zk.pro. Do not edit
 the generated Kotlin binding. It uses the JNA cleaner on both platforms,
