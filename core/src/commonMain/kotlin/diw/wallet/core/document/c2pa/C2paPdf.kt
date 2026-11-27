@@ -1,5 +1,6 @@
 package diw.wallet.core.document.c2pa
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.pdf.PdfArray
 import diw.wallet.core.document.pdf.PdfDict
@@ -62,12 +63,12 @@ object C2paPdf {
     fun cannotEmbed(b: ByteArray): String? = runCatching {
         val pdf = PdfFile(b)
         when {
-            pdf.encrypted -> "encrypted PDF"
-            pdf.reconstructed -> "PDF with a broken cross-reference table"
-            pdf.dict(pdf.catalog["Perms"])?.has("DocMDP") == true -> "certified PDF (DocMDP)"
+            pdf.encrypted -> ct("core_c2pa_sidecar_pdf_encrypted")
+            pdf.reconstructed -> ct("core_c2pa_sidecar_pdf_xref")
+            pdf.dict(pdf.catalog["Perms"])?.has("DocMDP") == true -> ct("core_c2pa_sidecar_pdf_certified")
             else -> null
         }
-    }.getOrElse { it.message ?: "unreadable PDF" }
+    }.getOrElse { ct("core_c2pa_sidecar_unreadable", it.message ?: "") }
 
     /**
      * [base] with an incremental update holding [store]: the embedded file stream, its file specification, the

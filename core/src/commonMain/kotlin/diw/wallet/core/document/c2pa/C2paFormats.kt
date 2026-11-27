@@ -1,5 +1,6 @@
 package diw.wallet.core.document.c2pa
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCryptoUtil
 import diw.wallet.core.document.c2pa.C2paBytes as B
 import kotlin.io.encoding.Base64
@@ -576,12 +577,12 @@ object C2paContainers {
             // The pages left once an earlier C2PA-only last IFD is stripped; a multi-page file then takes one more IFD.
             val kept = if (pages.size > 1 && pages.last().entries.singleOrNull()?.tag == TAG) pages.size - 1 else pages.size
             when {
-                !complete -> "TIFF directory chain that does not end (a loop, a bad offset or over $MAX_PAGES pages)"
-                kept > 1 && kept + 1 > MAX_PAGES -> "TIFF with too many pages for one more directory ($kept)"
-                !l.big && b.size > 0xFFFF0000L -> "TIFF over 4 GB"
+                !complete -> ct("core_c2pa_sidecar_tiff_chain", MAX_PAGES)
+                kept > 1 && kept + 1 > MAX_PAGES -> ct("core_c2pa_sidecar_tiff_pages", kept)
+                !l.big && b.size > 0xFFFF0000L -> ct("core_c2pa_sidecar_tiff_size")
                 else -> null
             }
-        }.getOrElse { it.message }
+        }.getOrElse { ct("core_c2pa_sidecar_unreadable", it.message ?: "") }
 
         fun strip(b: ByteArray): ByteArray {
             val l = layout(b)
@@ -739,8 +740,8 @@ object C2paContainers {
         }
 
         fun cannotEmbed(b: ByteArray): String? {
-            val r = rootStart(text(b)) ?: return "SVG without a root element"
-            return if (text(b).substring(r.first, r.second).endsWith("/>")) "empty SVG" else null
+            val r = rootStart(text(b)) ?: return ct("core_c2pa_sidecar_svg_root")
+            return if (text(b).substring(r.first, r.second).endsWith("/>")) ct("core_c2pa_sidecar_svg_empty") else null
         }
 
         fun strip(b: ByteArray): ByteArray {
@@ -759,15 +760,11 @@ object C2paContainers {
         fun embed(base: ByteArray, store: ByteArray): C2paLayout {
             var text = text(base)
             val r = rootStart(text) ?: fail("SVG without a root element")
-            var end = r.second
-            if (!Regex("xmlns:c2pa\\s*=").containsMatchIn(text.substring(r.first, r.second))) {
-                val insert = " xmlns:c2pa=\"$NS\""
-                text = text.substring(0, end - 1) + insert + text.substring(end - 1)
-                end += insert.length
-            }
+            // The namespace is declared on the manifest element: the c2pa prefix may already mean something else on the root.
+            val end = r.second
             val prefix = if (r.third.contains(':')) r.third.substringBefore(':') + ":" else ""
             val encoded = Base64.Default.encode(store)
-            val head = "<${prefix}metadata><c2pa:manifest>"
+            val head = "<${prefix}metadata><c2pa:manifest xmlns:c2pa=\"$NS\">"
             val element = head + encoded + "</c2pa:manifest></${prefix}metadata>"
             text = text.substring(0, end) + element + text.substring(end)
             val start = end + head.length
@@ -842,8 +839,8 @@ object C2paContainers {
             if (!B.at(b, 0, "ID3")) return null
             val version = B.u8(b, 3)
             return when {
-                version != 3 && version != 4 -> "ID3v2.$version"
-                B.u8(b, 5) and 0x80 != 0 -> "ID3 unsynchronisation"
+                version != 3 && version != 4 -> ct("core_c2pa_sidecar_id3_version", version)
+                B.u8(b, 5) and 0x80 != 0 -> ct("core_c2pa_sidecar_id3_unsync")
                 else -> null
             }
         }

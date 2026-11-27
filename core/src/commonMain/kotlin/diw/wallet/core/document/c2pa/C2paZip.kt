@@ -1,5 +1,6 @@
 package diw.wallet.core.document.c2pa
 
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.c2pa.C2paBytes as B
 
@@ -152,18 +153,19 @@ object C2paZip {
     fun cannotEmbed(b: ByteArray): String? = runCatching {
         val a = read(b)
         when {
-            a.zip64 || a.entries.any { it.large } -> "ZIP64 archive"
-            B.le16(b, a.eocd + 4) != 0 || B.le16(b, a.eocd + 6) != 0 -> "multi-disk ZIP"
-            a.cdEnd != a.eocd.toLong() -> "ZIP with data after the central directory"
-            a.entries.map { uri(it) }.let { it.size != it.toSet().size } -> "ZIP with two entries of the same name"
+            a.zip64 || a.entries.any { it.large } -> ct("core_c2pa_sidecar_zip64")
+            B.le16(b, a.eocd + 4) != 0 || B.le16(b, a.eocd + 6) != 0 -> ct("core_c2pa_sidecar_zip_multidisk")
+            a.cdEnd != a.eocd.toLong() -> ct("core_c2pa_sidecar_zip_trailing")
+            a.entries.map { uri(it) }.let { it.size != it.toSet().size } ->
+                ct("core_c2pa_sidecar_zip_duplicate", a.entries.map { uri(it) }.groupingBy { it }.eachCount().entries.first { it.value > 1 }.key)
             hashedEntries(a).any { !validUri(uri(it)) } ->
-                "ZIP entry with a path a collection hash cannot name (" + hashedEntries(a).first { !validUri(uri(it)) }.name + ")"
+                ct("core_c2pa_sidecar_zip_path", hashedEntries(a).first { !validUri(uri(it)) }.name)
             // The manifest and META-INF/ are added; the archive stays one without ZIP64 records.
-            a.entries.size + 2 > 0xFFFF -> "ZIP with too many entries for a manifest without ZIP64"
-            b.size > 0xFFFFFFFFL - 0x4000000L -> "ZIP too large for a manifest without ZIP64"
+            a.entries.size + 2 > 0xFFFF -> ct("core_c2pa_sidecar_zip_entries")
+            b.size > 0xFFFFFFFFL - 0x4000000L -> ct("core_c2pa_sidecar_zip_size")
             else -> null
         }
-    }.getOrElse { it.message ?: "unreadable ZIP" }
+    }.getOrElse { ct("core_c2pa_sidecar_unreadable", it.message ?: "") }
 
     private fun localHeader(name: ByteArray, crc: Long, size: Long): ByteArray =
         B.le32b(LFH) + B.le16b(20) + B.le16b(0) + B.le16b(0) + B.le16b(0) + B.le16b(0x21) +

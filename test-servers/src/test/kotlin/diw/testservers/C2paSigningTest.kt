@@ -655,6 +655,17 @@ class C2paSigningTest {
         assertEquals(1, Regex("<c2pa:manifest").findAll(again.bytes.decodeToString()).count(), "the old element is removed")
     }
 
+    @Test
+    fun svgWhoseRootUsesTheC2paPrefixGetsTheRightNamespace() = runBlocking<Unit> {
+        trustRoot()
+        val taken = svg.decodeToString().replaceFirst("<svg ", "<svg xmlns:c2pa=\"urn:unrelated\" ").encodeToByteArray()
+        val signed = sign(taken, request("向量圖.svg", C2paAuthoring.Opened)).bytes
+        val text = signed.decodeToString()
+        assertTrue(text.contains("<c2pa:manifest xmlns:c2pa=\"http://c2pa.org/manifest\">"), "the manifest element declares the C2PA namespace")
+        assertTrue(text.contains("xmlns:c2pa=\"urn:unrelated\""), "the declaration of the root stays")
+        assertSignedAndTrusted(inspect(signed, "prefix.svg"), "svg with a taken prefix")
+    }
+
     /** A ZIP of stored entries written by hand, so that two entries may share a name. */
     private fun rawZip(entries: List<Pair<String, ByteArray>>): ByteArray {
         val local = ByteArrayOutputStream()
@@ -765,9 +776,9 @@ class C2paSigningTest {
     @Test
     fun strippingRestoresTheOriginalFile() = runBlocking<Unit> {
         trustRoot()
-        // PDF keeps its incremental update, TIFF the rewritten IFD, JPEG XL its container, GIF its version 89a, SVG
-        // the c2pa namespace, an ID3 tag stays and ZIP the META-INF directory; the other containers come back as they were.
-        for (c in cases().filter { it.format !in setOf(C2paFormat.PDF, C2paFormat.TIFF, C2paFormat.JXL, C2paFormat.GIF, C2paFormat.MP3, C2paFormat.ZIP, C2paFormat.SVG) }) {
+        // PDF keeps its incremental update, TIFF the rewritten IFD, JPEG XL its container, GIF its version 89a, an
+        // ID3 tag stays and ZIP the META-INF directory; the other containers come back as they were.
+        for (c in cases().filter { it.format !in setOf(C2paFormat.PDF, C2paFormat.TIFF, C2paFormat.JXL, C2paFormat.GIF, C2paFormat.MP3, C2paFormat.ZIP) }) {
             val signed = sign(c.bytes, request("測試檔.${c.name}", C2paAuthoring.Opened, binding = c.binding)).bytes
             assertTrue(C2paContainers.strip(signed, c.format).contentEquals(c.bytes), c.name)
         }
