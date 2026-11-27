@@ -140,8 +140,9 @@ class SyntheticDocumentsTest {
         val normal = SyntheticDocuments.multiPage(fonts, material)
         assertFalse(PdfZkSupport.keepsAnnotationText(PdfFile(normal), PdfTextExtractor.pages(PdfFile(normal))[2]))
 
-        // Actual text in the structure tree and a bookmark title to page 3 are dictionaries too.
-        for (variant in listOf("structure", "outline")) {
+        // Actual text in the structure tree, in a marked-content property and a bookmark title to page 3 are
+        // dictionaries too.
+        for (variant in listOf("structure", "marked-content", "outline")) {
             val document = SyntheticDocuments.multiPage(fonts, material, variant)
             assertTrue(PdfZkSupport.keepsTextOutsideStreams(PdfFile(document), listOf(2)), variant)
             assertFailsWith<PdfException>(variant) { ZkPdfPlanner.plan(document, profile) }
@@ -191,6 +192,25 @@ class SyntheticDocumentsTest {
             listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
         val plan = ZkPdfPlanner.plan(pdf, profile)
         assertTrue(group in plan.layout.windows.filter { it.role == "opaque" }.map { it.objectNumber })
+    }
+
+    /** Shadings, painted with `sh` or through a shading pattern, keep their data in streams; a hidden page's are private. */
+    @Test fun shadingsOfHiddenPagesArePrivate() = runBlocking<Unit> {
+        val pdf = SyntheticDocuments.multiPage(fonts, material, "shading")
+        val file = PdfFile(pdf)
+        val pages = PdfTextExtractor.pages(file)
+        val resources = file.dict(pages[2]["Resources"])!!
+        val direct = (file.dict(resources["Shading"])!!["Sh"] as PdfRef).num
+        val pattern = (file.dict(file.dict(resources["Pattern"])!!["Pt"])!!["Shading"] as PdfRef).num
+        val drawn = PdfZkSupport.drawnStreams(file, pages[2])
+        assertTrue(direct in drawn && pattern in drawn)
+        val used = PdfZkSupport.usedStreams(file, pages[2])
+        assertTrue(direct in used && pattern in used)
+        val profile = ZkPdfProfile("test.multi-page-1/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
+        val plan = ZkPdfPlanner.plan(pdf, profile)
+        val opaque = plan.layout.windows.filter { it.role == "opaque" }.map { it.objectNumber }
+        assertTrue(direct in opaque && pattern in opaque)
     }
 
     @Test fun everyPdfHasAnIntactSignatureFromTheTestPki() = runBlocking<Unit> {

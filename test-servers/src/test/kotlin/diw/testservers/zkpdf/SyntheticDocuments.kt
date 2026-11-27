@@ -165,7 +165,8 @@ object SyntheticDocuments {
      * [variant] `annotation-text` gives the annotation a text value; `shared-unused` lists the form of page 3 in the
      * resources of page 1 as well, and `shared-drawn` also draws it on page 1; `soft-mask` adds a graphics state on
      * page 3 whose soft mask group draws text; `structure` adds a structure element with actual text, and `outline`
-     * a bookmark to page 3.
+     * a bookmark to page 3; `shading` paints page 3 with a shading and a shading pattern whose stream data carries
+     * text, and `marked-content` gives page 3 a marked-content property with actual text.
      */
     fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
@@ -187,10 +188,23 @@ object SyntheticDocuments {
         out.obj(12, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 13 0 R /Resources << $fontResources >> >>")
         out.stream(13, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, true, "normal").toByteArray()))
         val mask = variant == "soft-mask"
-        val states = if (mask) " /ExtGState << /Gs 21 0 R >>" else ""
+        val shading = variant == "shading"
+        val marked = variant == "marked-content"
+        val states = when {
+            mask -> " /ExtGState << /Gs 21 0 R >>"
+            shading -> " /Shading << /Sh 21 0 R >> /Pattern << /Pt 22 0 R >>"
+            marked -> " /Properties << /Mc << /ActualText ($HIDDEN_LATIN) >> >>"
+            else -> ""
+        }
         out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >>$states >> >>")
         out.stream(15, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("BT /FHanzi 14 Tf 1 0 0 1 55 790 Tm <${fonts.encode(HIDDEN_NAME)}> Tj ET\n"))
-        out.stream(16, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate((if (mask) "/Gs gs\n" else "") + "q 1 0 0 1 0 -60 cm /Fm Do Q\n"))
+        val painted = when {
+            mask -> "/Gs gs\n"
+            shading -> "q /Sh sh Q\nq /Pattern cs /Pt scn 0 0 595 100 re f Q\n"
+            marked -> "/Span /Mc BDC EMC\n"
+            else -> ""
+        }
+        out.stream(16, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate(painted + "q 1 0 0 1 0 -60 cm /Fm Do Q\n"))
         val form = PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
             "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(595), PdfNumber.of(842))))
         out.stream(17, 0, form, flate("BT /FLatin 14 Tf 1 0 0 1 55 700 Tm ($HIDDEN_LATIN) Tj ET\n"))
@@ -208,6 +222,15 @@ object SyntheticDocuments {
                 "Group" to PdfDict.of("S" to PdfName("Transparency"))),
                 flate("BT /FLatin 14 Tf 1 0 0 1 55 500 Tm ($HIDDEN_LATIN) Tj ET\n"))
         }
+        if (shading) {
+            // Free-form shadings whose vertex data spells the hidden text: stream data like any other.
+            fun mesh() = PdfDict.of("ShadingType" to PdfNumber.of(4), "ColorSpace" to PdfName("DeviceGray"),
+                "BitsPerCoordinate" to PdfNumber.of(8), "BitsPerComponent" to PdfNumber.of(8), "BitsPerFlag" to PdfNumber.of(8),
+                "Decode" to PdfArray(listOf(0, 595, 0, 842, 0, 1).map { PdfNumber.of(it) }), "Filter" to PdfName("FlateDecode"))
+            out.stream(21, 0, mesh(), compressed(HIDDEN_LATIN.toByteArray()))
+            out.obj(22, 0, "<< /Type /Pattern /PatternType 2 /Shading 23 0 R >>")
+            out.stream(23, 0, mesh(), compressed(HIDDEN_LATIN.reversed().toByteArray()))
+        }
         if (variant == "structure") {
             out.obj(23, 0, "<< /Type /StructTreeRoot /K 24 0 R >>")
             out.obj(24, 0, "<< /Type /StructElem /S /P /P 23 0 R /Pg 14 0 R /ActualText ($HIDDEN_LATIN) /K 0 >>")
@@ -216,7 +239,7 @@ object SyntheticDocuments {
             out.obj(25, 0, "<< /Type /Outlines /First 26 0 R /Last 26 0 R /Count 1 >>")
             out.obj(26, 0, "<< /Title ($HIDDEN_LATIN) /Parent 25 0 R /Dest [14 0 R /Fit] >>")
         }
-        val size = when (variant) { "soft-mask" -> 23; "structure" -> 25; "outline" -> 27; else -> 21 }
+        val size = when (variant) { "soft-mask" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
         out.xrefTable(PdfDict.of("Size" to PdfNumber.of(size), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }

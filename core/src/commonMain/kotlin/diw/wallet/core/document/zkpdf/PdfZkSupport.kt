@@ -25,58 +25,68 @@ object PdfZkSupport {
 
     /**
      * Object numbers of the streams that [page] shows besides its fonts, in the order they are found: its content
-     * streams, its thumbnail, every XObject of its resources (form XObjects with the XObjects and patterns of their
-     * own resources, images with their masks), tiling patterns, the soft mask groups of graphics states, and the appearance streams of its annotations with
-     * their resources, except those of signature fields (the signature itself stays public). These are the streams whose data a masked file must not keep for a page that is not proven
-     * (p4-circuits.md 3.11). Only object structure is read, so it works on the masked file as well.
+     * streams, thumbnail and metadata, every stream that its resources lead to (XObjects with their masks, patterns,
+     * shadings, soft mask groups, colour spaces and functions, through the resources of forms, patterns and groups
+     * in turn), and the appearance streams of its annotations with what they lead to, except those of signature
+     * fields (the signature itself stays public). Fonts stay public and are not followed. These are the streams whose
+     * data a masked file must not keep for a page that is not proven (p4-circuits.md 3.13). Only object structure is
+     * read, so it works on the masked file as well.
      */
-    fun drawnStreams(pdf: PdfFile, page: PdfDict): List<Int> = zkPdfInput {
+    fun drawnStreams(pdf: PdfFile, page: PdfDict): List<Int> = zkPdfInput { walkDrawn(pdf, page) {} }
+
+    /** Keys that lead away from what a page draws: fonts (public), other pages, structure and navigation. */
+    private val NOT_DRAWN = setOf("Font", "Parent", "P", "Pg", "Dest", "A", "AA", "Next", "Prev", "First", "Last", "Popup", "IRT", "StructParent", "StructParents")
+
+    /**
+     * Walks what [page] draws (see [drawnStreams]) and returns the streams; [onDict] sees every dictionary reached,
+     * including stream dictionaries, so that callers can look for text kept outside streams.
+     */
+    private fun walkDrawn(pdf: PdfFile, page: PdfDict, onDict: (PdfDict) -> Unit): List<Int> {
         val out = LinkedHashSet<Int>()
-        fun stream(o: PdfObject?): PdfStream? {
-            val ref = o as? PdfRef ?: return null
-            if (ref.num in out) return null
-            val s = pdf.getObject(ref.num) as? PdfStream ?: return null
-            out.add(ref.num)
-            return s
-        }
-        lateinit var resources: (PdfObject?, Int) -> Unit
-        fun xobject(s: PdfStream, depth: Int) {
-            when (s.dict.name("Subtype")) {
-                "Form" -> resources(s.dict["Resources"], depth + 1)
-                "Image" -> { stream(s.dict["SMask"]); stream(s.dict["Mask"]) }
-            }
-        }
-        fun appearance(o: PdfObject?, depth: Int) {
-            stream(o)?.let { resources(it.dict["Resources"], depth + 1); return }
-            pdf.dict(o)?.entries?.values?.forEach { state -> stream(state)?.let { resources(it.dict["Resources"], depth + 1) } }
-        }
-        resources = fun(o: PdfObject?, depth: Int) {
-            require(depth <= 16) { "Resources nested too deeply" }
-            val r = pdf.dict(o) ?: return
-            pdf.dict(r["XObject"])?.entries?.values?.forEach { x -> stream(x)?.let { xobject(it, depth) } }
-            pdf.dict(r["Pattern"])?.entries?.values?.forEach { p -> stream(p)?.let { resources(it.dict["Resources"], depth + 1) } }
-            // A soft mask of a graphics state is a transparency group form, which draws like any other form.
-            pdf.dict(r["ExtGState"])?.entries?.values?.forEach { g ->
-                stream(pdf.dict(pdf.dict(g)?.get("SMask"))?.get("G"))?.let { resources(it.dict["Resources"], depth + 1) }
+        val visited = HashSet<Int>()
+        var budget = 200_000
+        fun visit(o: PdfObject?, depth: Int) {
+            require(depth <= 64 && budget-- > 0) { "Resources nested too deeply" }
+            when (o) {
+                is PdfRef -> {
+                    val target = pdf.getObject(o.num)
+                    if (target is PdfStream) {
+                        if (out.add(o.num)) visit(target.dict, depth + 1)
+                    } else if (visited.add(o.num)) visit(target, depth + 1)
+                }
+                is PdfStream -> visit(o.dict, depth + 1)
+                is PdfDict -> {
+                    if (o.name("Type") in setOf("Page", "Pages", "Catalog")) return
+                    onDict(o)
+                    o.entries.forEach { (key, value) -> if (key !in NOT_DRAWN) visit(value, depth + 1) }
+                }
+                is PdfArray -> o.forEach { visit(it, depth + 1) }
+                else -> {}
             }
         }
         when (val contents = page["Contents"]) {
-            is PdfRef -> if (stream(contents) == null) pdf.array(contents)?.forEach { stream(it) }
-            is PdfArray -> contents.forEach { stream(it) }
+            is PdfRef -> if (pdf.getObject(contents.num) is PdfStream) visit(contents, 0) else pdf.array(contents)?.forEach { visit(it, 0) }
+            is PdfArray -> contents.forEach { visit(it, 0) }
             else -> {}
         }
-        stream(page["Thumb"])
-        stream(page["Metadata"])
-        resources(page["Resources"], 0)
+        visit(page["Thumb"], 0)
+        visit(page["Metadata"], 0)
+        visit(page["Resources"], 0)
         pdf.array(page["Annots"])?.forEach { a ->
             val annotation = pdf.dict(a) ?: return@forEach
             // A signature field shows the signature, which the masked file keeps public anyway.
             if (isSignatureWidget(pdf, annotation)) return@forEach
-            val ap = pdf.dict(annotation["AP"]) ?: return@forEach
-            listOf("N", "R", "D").forEach { appearance(ap[it], 0) }
+            visit(annotation["AP"], 0)
         }
-        out.toList()
+        return out.toList()
     }
+
+    /**
+     * Whether a stream can show page content (an image, form, pattern or shading), as opposed to a colour profile,
+     * function or metadata that only describes how content is shown.
+     */
+    fun showsContent(stream: PdfStream): Boolean =
+        stream.dict.name("Subtype") in setOf("Image", "Form") || stream.dict["PatternType"] != null || stream.dict["ShadingType"] != null
 
     private fun isSignatureWidget(pdf: PdfFile, annotation: PdfDict) = annotation.name("Subtype") == "Widget" &&
         (annotation.name("FT") ?: pdf.dict(annotation["Parent"])?.name("FT")) == "Sig"
@@ -185,6 +195,15 @@ object PdfZkSupport {
     fun keepsTextOutsideStreams(pdf: PdfFile, hidden: List<Int>): Boolean = zkPdfInput {
         val pages = PdfTextExtractor.pages(pdf)
         if (hidden.any { keepsAnnotationText(pdf, pages[it]) || pages[it]["PieceInfo"] != null }) return@zkPdfInput true
+        // Marked-content properties and the dictionaries of what a hidden page draws may carry its text as well.
+        val textKeys = listOf("ActualText", "Alt", "E")
+        for (index in hidden) {
+            var found = false
+            walkDrawn(pdf, pages[index]) { d ->
+                if (!found) found = textKeys.any { (pdf.resolve(d[it]) as? PdfString)?.bytes?.isNotEmpty() == true }
+            }
+            if (found) return@zkPdfInput true
+        }
         var budget = 200_000
         val seen = HashSet<Int>()
         fun hasText(d: PdfDict) = listOf("Alt", "ActualText", "E").any { (pdf.resolve(d[it]) as? PdfString)?.bytes?.isNotEmpty() == true }
@@ -233,14 +252,23 @@ object PdfZkSupport {
         lateinit var draw: (ByteArray, PdfDict?, Int) -> Unit
         fun named(resources: PdfDict?, category: String, name: String, depth: Int) {
             val o = pdf.dict(resources?.get(category))?.get(name) ?: return
-            val stream = pdf.resolve(o) as? PdfStream ?: return
-            val num = (o as? PdfRef)?.num
-            if (num != null && !out.add(num)) return
-            if (category == "XObject" && stream.dict.name("Subtype") == "Image") {
-                listOf("SMask", "Mask").forEach { key -> (stream.dict[key] as? PdfRef)?.num?.let { out.add(it) } }
+            val value = pdf.resolve(o)
+            // A shading pattern is a dictionary; what it shows is its shading.
+            if (category == "Pattern" && value is PdfDict) {
+                (value["Shading"] as? PdfRef)?.num?.takeIf { pdf.getObject(it) is PdfStream }?.let { out.add(it) }
                 return
             }
-            if (category == "XObject" && stream.dict.name("Subtype") != "Form") return
+            val stream = value as? PdfStream ?: return
+            val num = (o as? PdfRef)?.num
+            if (num != null && !out.add(num)) return
+            when {
+                category == "Shading" -> return
+                category == "XObject" && stream.dict.name("Subtype") == "Image" -> {
+                    listOf("SMask", "Mask").forEach { key -> (stream.dict[key] as? PdfRef)?.num?.let { out.add(it) } }
+                    return
+                }
+                category == "XObject" && stream.dict.name("Subtype") != "Form" -> return
+            }
             draw(pdf.decode(stream), pdf.dict(stream.dict["Resources"]) ?: resources, depth + 1)
         }
         fun graphicsState(resources: PdfDict?, name: String, depth: Int) {
@@ -260,6 +288,7 @@ object PdfZkSupport {
                     "Do" -> named(resources, "XObject", name, depth)
                     "scn", "SCN" -> named(resources, "Pattern", name, depth)
                     "gs" -> graphicsState(resources, name, depth)
+                    "sh" -> named(resources, "Shading", name, depth)
                 }
                 operands.clear()
             }

@@ -304,7 +304,9 @@ object ZkPdfPlanner {
         val others = pages.indices.filter { it !in proven }.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet()
         if (others.isEmpty()) return
         val listed = proven.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet()
-        val shared = (others intersect listed) - layout.windows.map { it.objectNumber }.toSet()
+        // Colour profiles, functions and metadata only describe how content is shown; they may stay shared.
+        val shared = ((others intersect listed) - layout.windows.map { it.objectNumber }.toSet())
+            .filter { (signed.getObject(it) as? PdfStream)?.let(PdfZkSupport::showsContent) == true }
         if (shared.isEmpty()) return
         val used = proven.flatMap { PdfZkSupport.usedStreams(signed, pages[it]) }.toSet()
         require(shared.all { it in used }) { "A stream of another page is only listed on a proven page" }
