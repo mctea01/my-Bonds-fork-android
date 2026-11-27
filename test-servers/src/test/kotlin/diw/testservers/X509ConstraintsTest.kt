@@ -454,6 +454,26 @@ class X509ConstraintsTest {
         assertTrue(ConstraintRule.NAME_CONSTRAINTS in untrusted.constraints.rules(ConstraintSeverity.FAIL), untrusted.constraints.toString())
     }
 
+    /** A rejected path does not hide another enabled anchor lower on the chain whose shorter path keeps the rules. */
+    @Test
+    fun anotherAnchorIsTriedAfterARejectedPath() = runBlocking<Unit> {
+        val excluded = Ext(Extension.nameConstraints, true, NameConstraints(null, arrayOf(GeneralSubtree(GeneralName(GeneralName.dNSName, "blocked.tw")))))
+        val r = root(excluded)
+        val m = mid(ca(), caUsage)
+        val l = leaf(signUsage, san(GeneralName(GeneralName.dNSName, "www.blocked.tw")))
+        val registry = TrustRegistry(EphemeralStorage(), EnvironmentPolicy())
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.PRODUCTION, r, "Constraint Root", official = false, source = "test")
+        val onlyRoot = registry.evaluate(TrustRole.DOCUMENT, listOf(l, m, r))
+        assertNull(onlyRoot.match, onlyRoot.toString())
+        assertTrue(ConstraintRule.NAME_CONSTRAINTS in onlyRoot.constraints.rules(ConstraintSeverity.FAIL))
+        registry.addAnchor(TrustRole.DOCUMENT, TrustEnvironment.USER, m, "Constraint CA", official = false, source = "test")
+        val ev = registry.evaluate(TrustRole.DOCUMENT, listOf(l, m, r))
+        val found = assertNotNull(ev.match, ev.toString())
+        assertEquals(m, found.anchor)
+        assertEquals(listOf(l, m), ev.path)
+        assertFalse(ev.constraints.failed, ev.constraints.toString())
+    }
+
     /**
      * An intermediate trust anchor signed with SHA-1: the decision does not rely on that signature, and the chain
      * screen, drawn on to the root above the anchor, shows the decision's findings rather than checking again.

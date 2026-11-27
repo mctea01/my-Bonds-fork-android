@@ -480,7 +480,18 @@ class TrustRegistry(
                 used = longer
             }
         }
-        return judge(role, used, m, atTime, docType)
+        val judged = judge(role, used, m, atTime, docType)
+        val rejected = judged.rejected ?: return judged
+        // Another enabled anchor lower on the same path (an intermediate the user or a list trusts) may give a
+        // shorter path that keeps the rules, so the leading parts of the path are tried before rejecting it.
+        for (k in judged.path.size - 1 downTo 1) {
+            val prefix = judged.path.subList(0, k)
+            val other = matchChain(role, prefix, atTime, docType) ?: continue
+            if (other.anchor == rejected.anchor) continue
+            val again = judge(role, prefix, other, atTime, docType)
+            if (again.match != null) return again
+        }
+        return judged
     }
 
     private fun judge(role: TrustRole, chain: List<X509Cert>, m: AnchorMatch?, atTime: Instant, docType: String?): ChainEvaluation {
