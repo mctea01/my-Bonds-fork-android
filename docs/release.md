@@ -20,7 +20,7 @@
 | `DIW-MY-WALLET-<版本>.aab`、`DIW-MY-WALLET-<版本>-debug.aab` | release／debug App Bundle，供 Google Play 或 bundletool 使用，不能直接安裝 |
 | `DIW-MY-WALLET-<版本>-mapping.txt` | release 版的 R8 mapping，與 AAB 一起上傳 Google Play 以還原當機記錄 |
 | `DIW-MY-WALLET-<版本>.msi` | Windows 安裝檔（ProGuard 最佳化，內含 Java 執行環境，不需系統管理員權限） |
-| `diw-my-wallet_<版本>_amd64.deb` | Linux 安裝檔（同上） |
+| `DIW-MY-WALLET-<版本>-x86_64.AppImage` | Linux 版（同上，ProGuard 最佳化並內含 Java）：單一檔案，加上執行權限即可執行，不需安裝；CI 以 `:app:createReleaseDistributable` 的 jpackage 應用程式映像，由 `tools/linux-appimage.sh` 加上固定版本並核對 SHA-256 的 AppImage type 2 執行階段（AppImage/type2-runtime，MIT，靜態連結，不需 libfuse2）與 SquashFS 組成，並在 CI 以 `--appimage-extract-and-run` 實際啟動檢查。2026-11-27 起取代 `.deb` |
 | `DIW-MY-WALLET-<平台>-<版本>-release.jar` | 需自行安裝 Java 21，以 `java -jar` 執行；macOS（Apple 晶片）只提供這個檔案 |
 | `DIW-MY-WALLET-<版本>-windows-x64-native.zip`、`-linux-x64-native.tar.gz` | 實驗的 GraalVM 原生桌面版（不需要 Java），`desktop-native` 工作成功時才有，見下方 |
 | `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |

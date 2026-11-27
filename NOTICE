@@ -111,9 +111,14 @@ change.
 - Android Key Attestation library (com.android.keyattestation), cbor-java
   (co.nstant.in:cbor) - Apache License 2.0; Protocol Buffers (javalite,
   kotlin-lite) - BSD 3-Clause
-- Java runtime packaged in the .msi and .deb installers: a jlink image of
-  Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath Exception.
-  The jar distributions carry no Java runtime.
+- Java runtime packaged in the .msi installer and the Linux AppImage: a jlink
+  image of Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath
+  Exception. The jar distributions carry no Java runtime.
+- The Linux AppImage starts with the AppImage type 2 runtime
+  (https://github.com/AppImage/type2-runtime, release 20251108, unmodified),
+  MIT License; it is statically linked with musl (MIT), squashfuse
+  (BSD 2-Clause), zstd and zlib (BSD / zlib) and libfuse 3 (GNU LGPL 2.1).
+  Its source is available at that address.
 - Experimental native executables (the -native archives of a release, with
   this NOTICE and LICENSE beside the executable) are built with GraalVM
   Community native-image and contain its Substrate VM runtime and the JDK

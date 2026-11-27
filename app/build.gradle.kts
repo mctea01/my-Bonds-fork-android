@@ -517,7 +517,9 @@ compose.desktop {
         // runs in the native library, whose memory is outside the heap and not limited by this.
         jvmArgs += listOf("-XX:MaxRAMPercentage=50", "-Dfile.encoding=UTF-8")
         nativeDistributions {
-            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm)
+            // Linux is released as an AppImage built from createReleaseDistributable (tools/linux-appimage.sh); the
+            // other Linux formats can still be built locally.
+            targetFormats(TargetFormat.Msi, TargetFormat.Exe, TargetFormat.Deb, TargetFormat.Rpm, TargetFormat.AppImage)
             packageName = "DIW-MY-WALLET"
             // Each installer upgrades the previous one, as the patch number grows.
             packageVersion = desktopVersion
