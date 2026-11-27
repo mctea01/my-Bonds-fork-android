@@ -114,10 +114,12 @@ change.
 - Java runtime packaged in the .msi and .deb installers: a jlink image of
   Eclipse Temurin (OpenJDK) 21 - GNU GPL 2.0 with the Classpath Exception.
   The jar distributions carry no Java runtime.
-- Experimental native executables (CI artifacts only, not part of a release)
-  are built with GraalVM Community native-image and contain its Substrate VM
-  runtime and the JDK class library - GNU GPL 2.0 with the Classpath
-  Exception
+- Experimental native executables (the -native archives of a release, with
+  this NOTICE and LICENSE beside the executable) are built with GraalVM
+  Community native-image and contain its Substrate VM runtime and the JDK
+  class library; the JDK native libraries beside the executable (awt, jawt,
+  j2pcsc and others) come from the same GraalVM - GNU GPL 2.0 with the
+  Classpath Exception
 
 ========================================================================
 4. Native libraries (native/, Rust and C++)
