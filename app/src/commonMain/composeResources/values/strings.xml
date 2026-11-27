@@ -841,6 +841,7 @@
     <string name="core_c2pa_boxes_unknown">The box hash does not list the boxes of the file in order (%1$s)</string>
     <string name="core_c2pa_collection_cd_mismatch">The central directory of the ZIP file does not match the collection hash</string>
     <string name="core_c2pa_collection_count">The collection hash and the ZIP file list different files (%1$s)</string>
+    <string name="core_c2pa_collection_duplicate">Two entries of the ZIP file have the same name (%1$s); the collection hash cannot tell them apart</string>
     <string name="core_c2pa_collection_external">The collection hash covers separate files; only a ZIP based file can be checked</string>
     <string name="core_c2pa_collection_malformed">The collection hash assertion cannot be read</string>
     <string name="core_c2pa_collection_mismatch">The file %1$s does not match the collection hash; it was changed after signing</string>

@@ -841,6 +841,7 @@
     <string name="core_c2pa_boxes_unknown">方塊雜湊沒有依序列出檔案的方塊（%1$s）</string>
     <string name="core_c2pa_collection_cd_mismatch">ZIP 檔的中央目錄與集合雜湊不符</string>
     <string name="core_c2pa_collection_count">集合雜湊與 ZIP 檔列出的檔案不同（%1$s）</string>
+    <string name="core_c2pa_collection_duplicate">ZIP 檔有兩個同名項目（%1$s），集合雜湊無法區分</string>
     <string name="core_c2pa_collection_external">集合雜湊涵蓋的是另外的檔案，只能檢查以 ZIP 為基礎的檔案</string>
     <string name="core_c2pa_collection_malformed">無法讀取集合雜湊宣告</string>
     <string name="core_c2pa_collection_mismatch">檔案 %1$s 與集合雜湊不符，簽署後被修改</string>

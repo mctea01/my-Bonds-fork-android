@@ -652,6 +652,47 @@ class C2paSigningTest {
         assertEquals(1, Regex("<c2pa:manifest").findAll(again.bytes.decodeToString()).count(), "the old element is removed")
     }
 
+    /** A ZIP of stored entries written by hand, so that two entries may share a name. */
+    private fun rawZip(entries: List<Pair<String, ByteArray>>): ByteArray {
+        val local = ByteArrayOutputStream()
+        val cd = ByteArrayOutputStream()
+        fun le16(v: Int) = byteArrayOf(v.toByte(), (v ushr 8).toByte())
+        for ((name, data) in entries) {
+            val n = name.encodeToByteArray()
+            val crc = CRC32().also { it.update(data) }.value.toInt()
+            val offset = local.size()
+            local.write(le32(0x04034b50) + le16(20) + le16(0x800) + le16(0) + le16(0) + le16(0x21) + le32(crc) + le32(data.size) + le32(data.size) + le16(n.size) + le16(0) + n + data)
+            cd.write(le32(0x02014b50) + le16(20) + le16(20) + le16(0x800) + le16(0) + le16(0) + le16(0x21) + le32(crc) + le32(data.size) + le32(data.size) +
+                le16(n.size) + le16(0) + le16(0) + le16(0) + le16(0) + le32(0) + le32(offset) + n)
+        }
+        val cdBytes = cd.toByteArray()
+        val eocd = le32(0x06054b50) + le16(0) + le16(0) + le16(entries.size) + le16(entries.size) + le32(cdBytes.size) + le32(local.size()) + le16(0)
+        return local.toByteArray() + cdBytes + eocd
+    }
+
+    @Test
+    fun zipWithTwoEntriesOfOneNameGetsASidecar() = runBlocking<Unit> {
+        trustRoot()
+        val data = payload(500)
+        val unique = rawZip(listOf("a.txt" to data, "b.txt" to data))
+        assertFalse(sign(unique, request("封存.zip", C2paAuthoring.Opened)).sidecar, "the hand-made ZIP can take a manifest")
+        val twice = rawZip(listOf("a.txt" to data, "a.txt" to data))
+        val out = sign(twice, request("封存.zip", C2paAuthoring.Opened))
+        assertTrue(out.sidecar, "a collection hash could not tell the two entries apart")
+        assertNotNull(out.sidecarReason)
+    }
+
+    @Test
+    fun svgInAnotherEncodingKeepsItsBytes() = runBlocking<Unit> {
+        trustRoot()
+        val text = "<?xml version=\"1.0\" encoding=\"ISO-8859-1\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\"><text>caf\u00E9</text></svg>\n"
+        val latin1 = text.toByteArray(Charsets.ISO_8859_1)
+        val signed = sign(latin1, request("latin1.svg", C2paAuthoring.Opened)).bytes
+        val word = "<text>caf\u00E9</text>".toByteArray(Charsets.ISO_8859_1)
+        assertTrue(indexOf(signed, word) >= 0, "the ISO-8859-1 text is kept byte for byte")
+        assertSignedAndTrusted(inspect(signed, "latin1.svg"), "latin1 svg")
+    }
+
     @Test
     fun bmffOffsetsFollowTheMovedMediaData() = runBlocking<Unit> {
         trustRoot()

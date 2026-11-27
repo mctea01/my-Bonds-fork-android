@@ -626,9 +626,18 @@ object C2paContainers {
         const val NS = "http://c2pa.org/manifest"
 
         fun isSvg(b: ByteArray): Boolean {
-            val head = b.copyOfRange(0, minOf(b.size, 4096)).decodeToString()
+            val head = text(b.copyOfRange(0, minOf(b.size, 4096)))
             return rootStart(head) != null
         }
+
+        /**
+         * The file as one character per byte (ISO-8859-1), so that character offsets are byte offsets and writing
+         * back keeps every byte of the document whatever its declared encoding (UTF-8, ISO-8859-x, Big5...); the
+         * markup C2PA needs is ASCII. A UTF-16 or UTF-32 SVG has no ASCII root tag and gets a sidecar instead.
+         */
+        private fun text(b: ByteArray): String = buildString(b.size) { for (x in b) append((x.toInt() and 0xFF).toChar()) }
+
+        private fun bytes(s: String): ByteArray = ByteArray(s.length) { s[it].code.toByte() }
 
         /** The root svg start tag: (start, end after '>', qualified name). */
         fun rootStart(text: String): Triple<Int, Int, String>? {
@@ -704,35 +713,35 @@ object C2paContainers {
         }
 
         fun locate(b: ByteArray): Pair<ByteArray, C2paRange>? {
-            val text = b.decodeToString()
+            val text = text(b)
             val el = element(text) ?: return null
             val encoded = text.substring(el[2], el[3])
             val jumbf = Base64.Default.decode(encoded.trim())
             // Character offsets are byte offsets only up to the first non-ASCII character: count the UTF-8 bytes.
-            val start = text.substring(0, el[2]).encodeToByteArray().size
-            return jumbf to C2paRange(start.toLong(), encoded.encodeToByteArray().size.toLong())
+            val start = el[2]
+            return jumbf to C2paRange(start.toLong(), encoded.length.toLong())
         }
 
         fun cannotEmbed(b: ByteArray): String? {
-            val r = rootStart(b.decodeToString()) ?: return "SVG without a root element"
-            return if (b.decodeToString().substring(r.first, r.second).endsWith("/>")) "empty SVG" else null
+            val r = rootStart(text(b)) ?: return "SVG without a root element"
+            return if (text(b).substring(r.first, r.second).endsWith("/>")) "empty SVG" else null
         }
 
         fun strip(b: ByteArray): ByteArray {
-            var text = b.decodeToString()
+            var text = text(b)
             val el = element(text) ?: return b
             text = text.removeRange(el[0], el[1])
             // An enclosing metadata element left empty goes too.
-            val r = rootStart(text) ?: return text.encodeToByteArray()
+            val r = rootStart(text) ?: return bytes(text)
             val prefix = r.third.substringBefore(":svg", "").let { if (it.isEmpty() || it == r.third) "" else "$it:" }
             val empty = "<${prefix}metadata></${prefix}metadata>"
             val at = text.indexOf(empty, r.second)
             if (at == r.second) text = text.removeRange(at, at + empty.length)
-            return text.encodeToByteArray()
+            return bytes(text)
         }
 
         fun embed(base: ByteArray, store: ByteArray): C2paLayout {
-            var text = base.decodeToString()
+            var text = text(base)
             val r = rootStart(text) ?: fail("SVG without a root element")
             var end = r.second
             if (!Regex("xmlns:c2pa\\s*=").containsMatchIn(text.substring(r.first, r.second))) {
@@ -745,8 +754,8 @@ object C2paContainers {
             val head = "<${prefix}metadata><c2pa:manifest>"
             val element = head + encoded + "</c2pa:manifest></${prefix}metadata>"
             text = text.substring(0, end) + element + text.substring(end)
-            val start = text.substring(0, end).encodeToByteArray().size + head.encodeToByteArray().size
-            return C2paLayout(text.encodeToByteArray(), C2paRange(start.toLong(), encoded.length.toLong()))
+            val start = end + head.length
+            return C2paLayout(bytes(text), C2paRange(start.toLong(), encoded.length.toLong()))
         }
     }
 

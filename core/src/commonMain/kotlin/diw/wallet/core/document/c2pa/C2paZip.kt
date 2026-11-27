@@ -151,6 +151,7 @@ object C2paZip {
             a.zip64 || a.entries.any { it.large } -> "ZIP64 archive"
             B.le16(b, a.eocd + 4) != 0 || B.le16(b, a.eocd + 6) != 0 -> "multi-disk ZIP"
             a.cdEnd != a.eocd.toLong() -> "ZIP with data after the central directory"
+            a.entries.map { uri(it) }.let { it.size != it.toSet().size } -> "ZIP with two entries of the same name"
             else -> null
         }
     }.getOrElse { it.message ?: "unreadable ZIP" }

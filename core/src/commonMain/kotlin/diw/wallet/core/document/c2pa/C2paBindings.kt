@@ -219,6 +219,11 @@ object C2paBindings {
             else -> return status("assertion.collectionHash.malformed", "core_c2pa_collection_malformed")
         }
         if (listed.isEmpty()) return status("assertion.collectionHash.malformed", "core_c2pa_collection_malformed")
+        // Two entries (or two listed URIs) of one name: a check of one would vouch for the other, which is never read.
+        val entryUris = archive.entries.map { C2paZip.uri(it) }
+        entryUris.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }?.let { return status("assertion.collectionHash.malformed", "core_c2pa_collection_duplicate", it.key) }
+        listed.map { it.first.replace('\\', '/').trimEnd('/') }.groupingBy { it }.eachCount().entries.firstOrNull { it.value > 1 }
+            ?.let { return status("assertion.collectionHash.malformed", "core_c2pa_collection_duplicate", it.key) }
         val byUri = archive.entries.filter { it.name != C2paZip.MANIFEST }.associateBy { C2paZip.uri(it) }
         for ((uri, e) in listed) {
             val norm = uri.replace('\\', '/').trimEnd('/')

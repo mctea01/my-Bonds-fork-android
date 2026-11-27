@@ -92,6 +92,7 @@ object CoreStrings {
         "core_c2pa_claim_unsigned" to "C2PA 聲明沒有簽章",
         "core_c2pa_collection_cd_mismatch" to "ZIP 檔的中央目錄與集合雜湊不符",
         "core_c2pa_collection_count" to "集合雜湊與 ZIP 檔列出的檔案不同（%1\$s）",
+        "core_c2pa_collection_duplicate" to "ZIP 檔有兩個同名項目（%1\$s），集合雜湊無法區分",
         "core_c2pa_collection_external" to "集合雜湊涵蓋的是另外的檔案，只能檢查以 ZIP 為基礎的檔案",
         "core_c2pa_collection_malformed" to "無法讀取集合雜湊宣告",
         "core_c2pa_collection_mismatch" to "檔案 %1\$s 與集合雜湊不符，簽署後被修改",

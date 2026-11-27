@@ -841,6 +841,7 @@
     <string name="core_c2pa_boxes_unknown">方块哈希没有依序列出文件的方块（%1$s）</string>
     <string name="core_c2pa_collection_cd_mismatch">ZIP 文件的中央目录与集合哈希不符</string>
     <string name="core_c2pa_collection_count">集合哈希与 ZIP 文件列出的文件不同（%1$s）</string>
+    <string name="core_c2pa_collection_duplicate">ZIP 文件有两个同名项目（%1$s），集合哈希无法区分</string>
     <string name="core_c2pa_collection_external">集合哈希涵盖的是另外的文件，只能检查以 ZIP 为基础的文件</string>
     <string name="core_c2pa_collection_malformed">无法读取集合哈希声明</string>
     <string name="core_c2pa_collection_mismatch">文件 %1$s 与集合哈希不符，签署后被修改</string>
