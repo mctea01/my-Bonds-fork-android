@@ -681,6 +681,17 @@ class C2paSigningTest {
         assertSignedAndTrusted(inspect(signed, "cdata.svg"), "svg with cdata")
     }
 
+    @Test
+    fun openDmlAviWithFurtherRiffPartsGetsASidecar() = runBlocking<Unit> {
+        trustRoot()
+        val single = avi()
+        assertNull(C2paContainers.cannotEmbed(single, C2paFormat.AVI))
+        val avix = "RIFF".encodeToByteArray() + le32(12) + "AVIX".encodeToByteArray() + "JUNK".encodeToByteArray() + le32(0)
+        val out = sign(single + avix, request("影片.avi", C2paAuthoring.Opened))
+        assertTrue(out.sidecar, "the later RIFF part would move under its absolute indexes")
+        assertNotNull(out.sidecarReason)
+    }
+
     /** A ZIP of stored entries written by hand, so that two entries may share a name. */
     private fun rawZip(entries: List<Pair<String, ByteArray>>): ByteArray {
         val local = ByteArrayOutputStream()

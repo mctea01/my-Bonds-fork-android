@@ -133,6 +133,7 @@ object C2paContainers {
         C2paFormat.ZIP -> C2paZip.cannotEmbed(b)
         C2paFormat.SVG -> Svg.cannotEmbed(b)
         C2paFormat.TIFF, C2paFormat.DNG -> Tiff.cannotEmbed(b)
+        C2paFormat.AVI -> Riff.cannotEmbedAvi(b)
         else -> null
     }
 
@@ -318,6 +319,16 @@ object C2paContainers {
                 i = minOf(b.size, i + 8 + len.toInt() + (len.toInt() and 1))
             }
             return out to maxOf(i, minOf(end, b.size))
+        }
+
+        /**
+         * An OpenDML AVI with later RIFF AVIX parts: the store would move them, and their super and standard indexes
+         * hold absolute file offsets, so such a file gets a sidecar.
+         */
+        fun cannotEmbedAvi(b: ByteArray): String? {
+            // Right after the first RIFF, with or without the pad byte of its last chunk.
+            val end = walk(b).second
+            return if (listOf(end, end - 1).any { it >= 0 && it + 12 <= b.size && B.at(b, it, "RIFF") }) ct("core_c2pa_sidecar_avi_parts") else null
         }
 
         /** End of the first RIFF chunk (its size field plus the header, clamped to the file). */

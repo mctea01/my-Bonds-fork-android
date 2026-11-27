@@ -852,6 +852,7 @@
     <string name="core_c2pa_sidecar_tiff_pages">TIFF 頁數過多，無法再加一個目錄（%1$s 頁）</string>
     <string name="core_c2pa_sidecar_tiff_entries">TIFF 目錄的項目數已達可讀回的上限（%1$s）</string>
     <string name="core_c2pa_sidecar_tiff_size">TIFF 超過 4 GB</string>
+    <string name="core_c2pa_sidecar_avi_parts">含後續 RIFF 區段的 OpenDML AVI，其索引使用絕對位址</string>
     <string name="core_c2pa_sidecar_svg_root">SVG 沒有根元素</string>
     <string name="core_c2pa_sidecar_svg_empty">SVG 根元素是空元素</string>
     <string name="core_c2pa_sidecar_id3_version">ID3v2.%1$s 標籤，必須改寫成其他版本</string>

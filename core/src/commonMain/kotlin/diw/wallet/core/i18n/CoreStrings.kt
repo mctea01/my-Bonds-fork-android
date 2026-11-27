@@ -118,6 +118,7 @@ object CoreStrings {
         "core_c2pa_present" to "含 C2PA 內容憑證（%1\$s 份 manifest，存放於 %2\$s）",
         "core_c2pa_reserve_exceeded" to "簽章超出檔案內預留的空間，請重試或改用其他金鑰",
         "core_c2pa_rsa_pss_unsupported" to "C2PA 與 CAWG 只接受 RSA 金鑰的 RSASSA-PSS 簽章，這個簽章來源無法產生",
+        "core_c2pa_sidecar_avi_parts" to "含後續 RIFF 區段的 OpenDML AVI，其索引使用絕對位址",
         "core_c2pa_sidecar_id3_unsync" to "ID3 標籤使用 unsynchronisation",
         "core_c2pa_sidecar_id3_version" to "ID3v2.%1\$s 標籤，必須改寫成其他版本",
         "core_c2pa_sidecar_no_asset" to "獨立的 manifest 檔沒有附上原始檔案，無法檢查",

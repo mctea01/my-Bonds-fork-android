@@ -852,6 +852,7 @@
     <string name="core_c2pa_sidecar_tiff_pages">the TIFF has too many pages to take one more directory (%1$s)</string>
     <string name="core_c2pa_sidecar_tiff_entries">the TIFF directory already holds the most entries that can be read back (%1$s)</string>
     <string name="core_c2pa_sidecar_tiff_size">a TIFF over 4 GB</string>
+    <string name="core_c2pa_sidecar_avi_parts">an OpenDML AVI with further RIFF parts, whose indexes hold absolute offsets</string>
     <string name="core_c2pa_sidecar_svg_root">the SVG has no root element</string>
     <string name="core_c2pa_sidecar_svg_empty">the SVG root element is empty</string>
     <string name="core_c2pa_sidecar_id3_version">an ID3v2.%1$s tag, which would have to be rewritten in another version</string>
