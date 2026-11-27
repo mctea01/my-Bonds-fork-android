@@ -1,7 +1,8 @@
 name: Google Play
 
 # Publishes the release App Bundle of a GitHub release (the "nightly" pre-release by default) to Google Play with its R8
-# mapping and release notes made by tools/release-notes.py from the same changes as the GitHub release. A manual run
+# mapping and release notes made by tools/release-notes.py from the same changes as the GitHub release (the commits up
+# to the release's tag, with the tools and listing of the branch this workflow runs on). A manual run
 # picks the track and status, and can also write the store listing of distribution/play/listing. Running again for
 # a version Play already has (same SHA-256) does not upload the bundle again: it writes the release of the track again
 # with the current release notes. With the repository variable PLAY_AUTO_TRACK set (for example internal), every
@@ -107,8 +108,9 @@ jobs:
             echo "SKIP=1" >> "$GITHUB_ENV"
             exit 0
           fi
-          # Release notes and listing come from the commit of the release, as in the GitHub release body.
-          git checkout --quiet --detach "$target"
+          # The tools and the listing stay at the commit of this workflow; release notes are the changes up to the
+          # commit of the release, as in the GitHub release body (also for releases older than the tools).
+          echo "TARGET=$target" >> "$GITHUB_ENV"
           mkdir -p dist
           gh release download "$TAG" --dir dist --pattern 'DIW-MY-WALLET-*.aab' --pattern 'DIW-MY-WALLET-*-mapping.txt'
           rm -f dist/*-debug.aab
@@ -134,7 +136,7 @@ jobs:
           python3 -m venv /tmp/play-venv
           /tmp/play-venv/bin/pip install --quiet opencc || echo "::warning::OpenCC not installed: zh-CN notes stay Traditional"
           case "$TAG" in v[0-9]*) channel=stable ;; *) channel=nightly ;; esac
-          /tmp/play-venv/bin/python -I tools/release-notes.py --channel "$channel" --version "$RELEASE_NAME" --tag "$TAG" --play-out whatsnew
+          /tmp/play-venv/bin/python -I tools/release-notes.py --channel "$channel" --version "$RELEASE_NAME" --tag "$TAG" --ref "$TARGET" --play-out whatsnew
           python3 -I tools/play-store.py check
           for f in whatsnew/*; do echo "== $f"; cat "$f"; done
       - name: Publish to Google Play
