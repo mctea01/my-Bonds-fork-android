@@ -113,6 +113,54 @@ object PdfZkSupport {
         } ?: false
     }
 
+    /**
+     * Whether the signed revision keeps stream data that masking would not reach: an earlier version of a stream (an
+     * object written again by a later update; found as an object header outside the newest streams at an offset the
+     * cross-reference data no longer points to), or a stream that nothing in the document refers to. Masking clears
+     * the newest streams that pages draw, so such bytes would reach the verifier. Cross-reference and object streams
+     * are part of the structure and are exempt, and so is document metadata (XMP `/Type /Metadata`, public like the
+     * document information dictionary; signing tools often rewrite it).
+     */
+    fun keepsUnreachableStreams(pdf: PdfFile): Boolean = zkPdfInput {
+        fun structural(s: PdfStream) = s.dict.name("Type") in setOf("XRef", "ObjStm", "Metadata")
+        val bytes = pdf.bytes
+        val current = pdf.storedObjects.associateWith { runCatching { pdf.getObject(it) }.getOrNull() }
+        val extents = current.filterValues { it is PdfStream }.keys
+            .mapNotNull { runCatching { streamExtent(pdf, it) }.getOrNull() }.sortedBy { it.first }
+        val starts = extents.map { it.first }
+        fun insideStream(position: Int): Boolean {
+            val i = starts.binarySearch(position).let { if (it >= 0) it else -it - 2 }
+            return i >= 0 && position in extents[i]
+        }
+        val text = String(CharArray(bytes.size) { (bytes[it].toInt() and 255).toChar() })
+        for (m in Regex("(?<![0-9])([0-9]{1,10})\\s+([0-9]{1,5})\\s+obj(?![A-Za-z])").findAll(text)) {
+            val position = m.range.first
+            if (insideStream(position)) continue
+            val num = m.groupValues[1].toIntOrNull() ?: continue
+            if (pdf.offsetOf(num) == position) continue
+            val end = text.indexOf("endobj", m.range.last).let { if (it < 0) bytes.size else it }
+            if (text.indexOf("stream", m.range.last + 1).let { it < 0 || it >= end }) continue
+            val old = runCatching {
+                PdfParser(bytes, position) { d -> (pdf.resolve(d["Length"]) as? PdfNumber)?.int ?: 0 }.parseIndirect().third
+            }.getOrNull()
+            if (old !is PdfStream || !structural(old)) return@zkPdfInput true
+        }
+        val reached = HashSet<Int>()
+        val pending = ArrayList<PdfObject>(pdf.trailer.entries.values)
+        var budget = 2_000_000
+        while (pending.isNotEmpty()) {
+            require(budget-- > 0) { "Document too large" }
+            when (val o = pending.removeAt(pending.size - 1)) {
+                is PdfRef -> if (reached.add(o.num)) runCatching { pdf.getObject(o.num) }.getOrNull()?.let { pending.add(it) }
+                is PdfDict -> pending.addAll(o.entries.values)
+                is PdfArray -> pending.addAll(o.items)
+                is PdfStream -> pending.addAll(o.dict.entries.values)
+                else -> {}
+            }
+        }
+        current.any { (num, o) -> num !in reached && o is PdfStream && !structural(o) }
+    }
+
     /** Object numbers of the page objects, in the order of [PdfTextExtractor.pages]. */
     fun pageObjects(pdf: PdfFile): List<Int> = zkPdfInput {
         val out = ArrayList<Int>()

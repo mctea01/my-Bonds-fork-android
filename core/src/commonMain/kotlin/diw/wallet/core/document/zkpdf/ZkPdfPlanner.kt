@@ -168,6 +168,8 @@ object ZkPdfPlanner {
         val others = pages.indices.filter { it !in provenPages }
         // Masking clears stream data only: text kept in dictionaries (annotations, outlines, structure tree) would stay public.
         require(!PdfZkSupport.keepsTextOutsideStreams(signed, others)) { "Text outside streams" }
+        // So are earlier versions of streams and streams nothing refers to, which masking does not reach.
+        require(!PdfZkSupport.keepsUnreachableStreams(signed)) { "Unreachable stream data" }
         val hidden = (others.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) } + thumbs)
             .distinct().filter { it !in shown && it !in private && PdfZkSupport.streamExtent(signed, it).count() > 0 }
         val parts = own.map { (content, images) ->

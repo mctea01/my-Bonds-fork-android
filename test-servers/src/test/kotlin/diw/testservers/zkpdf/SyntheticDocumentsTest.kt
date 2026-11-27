@@ -164,6 +164,21 @@ class SyntheticDocumentsTest {
         assertEquals((PdfZkSupport.drawnStreams(file, pages[1]) + PdfZkSupport.drawnStreams(file, pages[2])).toSet() - form, opaque)
     }
 
+    /** An earlier version of a hidden page's stream, rewritten or left unreferenced before signing, would stay public. */
+    @Test fun streamsUpdatedBeforeSigningAreRefused() = runBlocking<Unit> {
+        val profile = ZkPdfProfile("test.multi-page-1/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
+        for (variant in listOf("rewritten", "replaced")) {
+            val pdf = SyntheticDocuments.updatedBeforeSigning(fonts, material, variant)
+            val range = ZkPdfPlanner.signature(PdfFile(pdf)).byteRange.map { it.toInt() }.toIntArray()
+            assertTrue(PdfZkSupport.keepsUnreachableStreams(PdfZkSupport.signedRevision(pdf, range)), variant)
+            assertFailsWith<PdfException>(variant) { ZkPdfPlanner.plan(pdf, profile) }
+        }
+        val normal = SyntheticDocuments.multiPage(fonts, material)
+        val range = ZkPdfPlanner.signature(PdfFile(normal)).byteRange.map { it.toInt() }.toIntArray()
+        assertFalse(PdfZkSupport.keepsUnreachableStreams(PdfZkSupport.signedRevision(normal, range)))
+    }
+
     /** A soft mask group of a graphics state draws like a form, so a hidden page's group is private too. */
     @Test fun softMaskGroupsOfHiddenPagesArePrivate() = runBlocking<Unit> {
         val pdf = SyntheticDocuments.multiPage(fonts, material, "soft-mask")

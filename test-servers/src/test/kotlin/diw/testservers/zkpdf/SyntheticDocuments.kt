@@ -224,6 +224,37 @@ object SyntheticDocuments {
     suspend fun multiPage(fonts: Fonts, material: Material, variant: String = "normal"): ByteArray =
         signWithContainer(unsignedMultiPage(fonts, variant), material.signer)
 
+    /**
+     * The three pages with an update before signing that changes page 3: `rewritten` writes its first content stream
+     * again under the same object number, `replaced` gives the page a new content stream and leaves the old one
+     * unreferenced. Either way the earlier text stays in the signed bytes.
+     */
+    suspend fun updatedBeforeSigning(fonts: Fonts, material: Material, variant: String): ByteArray {
+        val base = unsignedMultiPage(fonts)
+        val latin = String(CharArray(base.size) { (base[it].toInt() and 255).toChar() })
+        val previous = Regex("startxref\\s+(\\d+)").findAll(latin).last().groupValues[1]
+        val id = Regex("/ID\\s*(\\[[^\\]]*\\])").findAll(latin).last().groupValues[1]
+        val out = ByteArrayOutputStream().apply { write(base) }
+        val offsets = sortedMapOf<Int, Int>()
+        fun obj(num: Int, body: ByteArray) {
+            offsets[num] = out.size()
+            out.write("$num 0 obj\n".toByteArray()); out.write(body); out.write("\nendobj\n".toByteArray())
+        }
+        val data = compressed("BT /FLatin 14 Tf 1 0 0 1 55 790 Tm (Updated) Tj ET\n".toByteArray())
+        val stream = "<< /Length ${data.size} /Filter /FlateDecode >>\nstream\n".toByteArray() + data + "\nendstream".toByteArray()
+        val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
+        if (variant == "rewritten") obj(15, stream) else {
+            obj(21, stream)
+            obj(14, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [21 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >> >> >>".toByteArray())
+        }
+        val xref = out.size()
+        out.write("xref\n0 1\n0000000000 65535 f \n".toByteArray())
+        for ((num, offset) in offsets) out.write("$num 1\n${"%010d".format(offset)} 00000 n \n".toByteArray())
+        val size = if (variant == "rewritten") 21 else 22
+        out.write("trailer\n<< /Size $size /Root 1 0 R /Prev $previous /ID $id >>\nstartxref\n$xref\n%%EOF\n".toByteArray())
+        return signWithContainer(out.toByteArray(), material.signer)
+    }
+
     private fun encrypt(bytes: ByteArray): ByteArray = Loader.loadPDF(bytes).use { document ->
         document.documentId = FIXED_MILLIS
         document.protect(StandardProtectionPolicy("synthetic-owner-only", "", AccessPermission()).apply {

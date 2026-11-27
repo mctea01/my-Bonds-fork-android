@@ -108,6 +108,12 @@ class PdfFile(val bytes: ByteArray, password: String = "") {
     /** Where an object stored directly in the file begins, or null. */
     fun offsetOf(num: Int): Int? = (entries[num] as? Entry.InFile)?.offset
 
+    /** Object numbers stored directly in the file, by their newest definition. */
+    val storedObjects: Set<Int> get() = entries.filterValues { it is Entry.InFile }.keys
+
+    /** True when the newest cross-reference data marks [num] as free. */
+    fun isFree(num: Int): Boolean = entries[num] is Entry.Free
+
     private fun readAt(offset: Int, expectedNum: Int): PdfObject {
         if (offset < 0 || offset >= bytes.size) throw PdfException("Object $expectedNum outside the file")
         val p = PdfParser(bytes, offset, ::streamLength)
