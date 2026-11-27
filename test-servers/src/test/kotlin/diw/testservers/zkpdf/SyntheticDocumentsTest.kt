@@ -141,8 +141,9 @@ class SyntheticDocumentsTest {
         assertFalse(PdfZkSupport.keepsAnnotationText(PdfFile(normal), PdfTextExtractor.pages(PdfFile(normal))[2]))
 
         // Actual text in the structure tree, in a marked-content property and a bookmark title to page 3 are
-        // dictionaries too, and so are ink coordinates, the reference to an attached file and a field default value.
-        for (variant in listOf("structure", "marked-content", "outline", "ink", "attachment", "field-default")) {
+        // dictionaries too, and so are ink coordinates, the reference to an attached file, a field default value and a
+        // button caption.
+        for (variant in listOf("structure", "marked-content", "outline", "ink", "attachment", "field-default", "caption")) {
             val document = SyntheticDocuments.multiPage(fonts, material, variant)
             assertTrue(PdfZkSupport.keepsTextOutsideStreams(PdfFile(document), listOf(2)), variant)
             assertFailsWith<PdfException>(variant) { ZkPdfPlanner.plan(document, profile) }

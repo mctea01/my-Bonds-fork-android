@@ -168,7 +168,7 @@ object SyntheticDocuments {
      * a bookmark to page 3; `shading` paints page 3 with a shading and a shading pattern whose stream data carries
      * text, and `marked-content` gives page 3 a marked-content property with actual text; `ink` adds an ink
      * annotation whose coordinates stay in its dictionary, `attachment` a file attachment annotation, and
-     * `field-default` a text field whose default value is text.
+     * `field-default` a text field whose default value is text, and `caption` a push button with a caption.
      */
     fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
@@ -198,7 +198,7 @@ object SyntheticDocuments {
             marked -> " /Properties << /Mc << /ActualText ($HIDDEN_LATIN) >> >>"
             else -> ""
         }
-        val annotation = if (variant in setOf("ink", "attachment", "field-default")) " 21 0 R" else ""
+        val annotation = if (variant in setOf("ink", "attachment", "field-default", "caption")) " 21 0 R" else ""
         out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R$annotation] /Resources << $fontResources /XObject << /Fm 17 0 R >>$states >> >>")
         out.stream(15, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("BT /FHanzi 14 Tf 1 0 0 1 55 790 Tm <${fonts.encode(HIDDEN_NAME)}> Tj ET\n"))
         val painted = when {
@@ -235,6 +235,7 @@ object SyntheticDocuments {
             out.stream(23, 0, mesh(), compressed(HIDDEN_LATIN.reversed().toByteArray()))
         }
         if (variant == "ink") out.obj(21, 0, "<< /Type /Annot /Subtype /Ink /Rect [55 400 300 430] /InkList [[60 405 80 425 100 405]] >>")
+        if (variant == "caption") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Btn /Ff 65536 /T (b) /Rect [55 400 300 430] /MK << /CA ($HIDDEN_LATIN) >> >>")
         if (variant == "field-default") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Tx /T (f) /Rect [55 400 300 430] /DV ($HIDDEN_LATIN) >>")
         if (variant == "attachment") {
             out.obj(21, 0, "<< /Type /Annot /Subtype /FileAttachment /Rect [55 400 70 415] /FS << /Type /Filespec /F (a.txt) /EF << /F 22 0 R >> >> >>")
@@ -248,7 +249,7 @@ object SyntheticDocuments {
             out.obj(25, 0, "<< /Type /Outlines /First 26 0 R /Last 26 0 R /Count 1 >>")
             out.obj(26, 0, "<< /Title ($HIDDEN_LATIN) /Parent 25 0 R /Dest [14 0 R /Fit] >>")
         }
-        val size = when (variant) { "ink", "field-default" -> 22; "soft-mask", "attachment" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
+        val size = when (variant) { "ink", "field-default", "caption" -> 22; "soft-mask", "attachment" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
         out.xrefTable(PdfDict.of("Size" to PdfNumber.of(size), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }

@@ -101,6 +101,34 @@ object PdfZkSupport {
     /** Further keys of a form field widget: the field type, flags and design, and the value (checked on its own). */
     private val WIDGET_KEYS = setOf("FT", "Ff", "Kids", "H", "MK", "MaxLen", "DR", "TU", "TM", "Opt", "DV", "V", "RV")
 
+    /** Strings of an annotation that only style or identify it: appearance and style strings, unique name, dates. */
+    private val STYLE_STRINGS = setOf("DA", "DS", "NM", "M", "CreationDate")
+
+    /** Entries that lead to other objects, checked on their own or public: fields above, page, appearance, resources. */
+    private val NOT_OWN = setOf("Parent", "Kids", "P", "AP", "Popup", "DR")
+
+    /**
+     * Whether annotation or field dictionary [d] holds a non-empty string anywhere in its own entries (also inside
+     * dictionaries and arrays such as `/MK` captions), apart from style strings and, for a form field, its name `/T`.
+     */
+    private fun keepsStrings(pdf: PdfFile, d: PdfDict, field: Boolean): Boolean {
+        var budget = 10_000
+        val seen = HashSet<Int>()
+        fun scan(o: PdfObject?, depth: Int): Boolean {
+            require(depth <= 32 && budget-- > 0) { "Annotation too large" }
+            if (o is PdfRef && !seen.add(o.num)) return false
+            return when (val v = pdf.resolve(o)) {
+                is PdfString -> v.bytes.isNotEmpty()
+                is PdfArray -> v.any { scan(it, depth + 1) }
+                is PdfDict -> v.entries.any { (key, value) -> key !in STYLE_STRINGS && key !in NOT_OWN && scan(value, depth + 1) }
+                else -> false
+            }
+        }
+        return d.entries.any { (key, value) ->
+            key !in STYLE_STRINGS && key !in NOT_OWN && !(field && key == "T") && scan(value, 0)
+        }
+    }
+
     /** Field entries that hold what a form field shows or offers: its value, default value and options. */
     private val FIELD_CONTENT = listOf("V", "RV", "DV", "Opt", "I")
 
@@ -124,7 +152,8 @@ object PdfZkSupport {
      * (for example page piece data, actions, article beads or viewports), or an annotation that does. For annotations
      * that is the text of a note or free-text annotation (`/Contents`, `/RC`), its author and subject (`/T`, `/Subj`),
      * the value, default value or options of a form field (`/V`, `/RV`, `/DV`, `/Opt`, `/I`, on the widget or a
-     * parent field), or any entry beyond placement, style and
+     * parent field), any other string such as a caption in `/MK` or a tooltip (only style strings, dates, the unique
+     * name and field names may stay), or any entry beyond placement, style and
      * appearance: ink and polygon coordinates, quad points, attached files, sounds, movies, link targets, actions and
      * replies all keep what a page shows or points to in dictionaries. Masking clears stream data only, so a page
      * that is not proven must not have any; signature fields are left out as in [drawnStreams]. Only object
@@ -139,14 +168,13 @@ object PdfZkSupport {
             val widget = annotation.name("Subtype") == "Widget"
             val allowed = if (widget) ANNOTATION_KEYS + WIDGET_KEYS else ANNOTATION_KEYS
             if (annotation.entries.any { (key, value) -> key !in allowed && present(value) }) return@any true
-            val keys = if (widget) listOf("Contents") else listOf("Contents", "RC", "T", "Subj")
-            if (keys.any { present(annotation[it]) }) return@any true
+            if (keepsStrings(pdf, annotation, widget)) return@any true
             if (!widget) return@any false
             // A field value may sit on the widget or on any field above it.
             var field: PdfDict? = annotation
             var depth = 0
             while (field != null && depth++ < 16) {
-                if (FIELD_CONTENT.any { present(field[it]) }) return@any true
+                if (FIELD_CONTENT.any { present(field[it]) } || keepsStrings(pdf, field, true)) return@any true
                 field = pdf.dict(field["Parent"])
             }
             false
