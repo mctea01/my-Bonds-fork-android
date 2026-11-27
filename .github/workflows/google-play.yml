@@ -1,9 +1,12 @@
 name: Google Play
 
-# Uploads the release App Bundle of a GitHub release (the "nightly" pre-release by default) to Google Play, with its
-# R8 mapping and the release notes in distribution/whatsnew. A manual run picks the track and status. With the
-# repository variable PLAY_AUTO_TRACK set (for example internal), every successful CI run of a push to main also
-# uploads its nightly there. The first bundle of the app is uploaded by hand in Play Console. Setup: docs/google-play.md.
+# Publishes the release App Bundle of a GitHub release (the "nightly" pre-release by default) to Google Play with its R8
+# mapping and release notes made by tools/release-notes.py from the same changes as the GitHub release. A manual run
+# picks the track and status, and can also write the store listing of distribution/play/listing. Running again for
+# a version Play already has (same SHA-256) does not upload the bundle again: it writes the release of the track again
+# with the current release notes. With the repository variable PLAY_AUTO_TRACK set (for example internal), every
+# successful CI run of a push to main also uploads its nightly there. The first bundle of the app is uploaded by hand
+# in Play Console. Setup: docs/google-play.md.
 on:
   workflow_dispatch:
     inputs:
@@ -21,8 +24,16 @@ on:
         description: Staged rollout fraction for inProgress, between 0 and 1 (for example 0.1)
         required: false
       tag:
-        description: GitHub release that holds the App Bundle
+        description: GitHub release that holds the App Bundle (nightly, or a stable tag such as v0.5.25)
         default: nightly
+      bundle:
+        description: Publish the App Bundle and its release notes to the track
+        type: boolean
+        default: true
+      listing:
+        description: Also write the store listing (title, short and full description of every language)
+        type: boolean
+        default: false
   workflow_run:
     workflows: [CI]
     types: [completed]
@@ -42,7 +53,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event.workflow_run.conclusion == 'success' && github.event.workflow_run.event == 'push' && vars.PLAY_AUTO_TRACK != '')
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 30
     # The secret can live on this environment, and its protection rules (required reviewers) gate every upload.
     environment: google-play
     env:
@@ -51,10 +62,13 @@ jobs:
       TRACK: ${{ inputs.track || vars.PLAY_AUTO_TRACK }}
       STATUS: ${{ inputs.status || vars.PLAY_AUTO_STATUS || 'draft' }}
       USER_FRACTION: ${{ inputs.user_fraction }}
+      BUNDLE: ${{ github.event_name == 'workflow_run' || inputs.bundle }}
+      LISTING: ${{ github.event_name == 'workflow_dispatch' && inputs.listing }}
     steps:
+      # Full history and tags: the release notes are the commits since the previous stable tag.
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7
         with:
-          sparse-checkout: distribution
+          fetch-depth: 0
       - name: Check settings
         env:
           PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
@@ -67,15 +81,18 @@ jobs:
             echo "::error::PLAY_SERVICE_ACCOUNT_JSON is not the JSON key of a service account"
             exit 1
           fi
+          if [ "$BUNDLE" != "true" ] && [ "$LISTING" != "true" ]; then
+            echo "::error::Nothing to do: choose bundle, listing or both"
+            exit 1
+          fi
           case "$STATUS" in
             inProgress)
               if [ -z "$USER_FRACTION" ]; then echo "::error::Status inProgress needs user_fraction"; exit 1; fi ;;
-            draft|completed)
-              echo "USER_FRACTION=" >> "$GITHUB_ENV" ;;
+            draft|completed) ;;
             *)
               echo "::error::Unknown status $STATUS (PLAY_AUTO_STATUS takes draft or completed)"; exit 1 ;;
           esac
-          echo "Track $TRACK, status $STATUS, release $TAG"
+          echo "Track $TRACK, status $STATUS, release $TAG, bundle $BUNDLE, listing $LISTING"
       - name: Release files
         env:
           GH_TOKEN: ${{ github.token }}
@@ -83,14 +100,15 @@ jobs:
           RUN_SHA: ${{ github.event.workflow_run.head_sha }}
         run: |
           # After a CI run, upload only the nightly that this run published; a newer push may already have replaced it.
-          if [ -n "$RUN_SHA" ]; then
-            target=$(gh release view "$TAG" --json targetCommitish --jq .targetCommitish)
-            if [ "$target" != "$RUN_SHA" ]; then
-              echo "::notice::Release $TAG is at $target, not at $RUN_SHA of this CI run: nothing uploaded"
-              echo "SKIP=1" >> "$GITHUB_ENV"
-              exit 0
-            fi
+          git fetch --force --tags origin
+          target=$(git rev-parse "refs/tags/$TAG^{commit}")
+          if [ -n "$RUN_SHA" ] && [ "$target" != "$RUN_SHA" ]; then
+            echo "::notice::Release $TAG is at $target, not at $RUN_SHA of this CI run: nothing uploaded"
+            echo "SKIP=1" >> "$GITHUB_ENV"
+            exit 0
           fi
+          # Release notes and listing come from the commit of the release, as in the GitHub release body.
+          git checkout --quiet --detach "$target"
           mkdir -p dist
           gh release download "$TAG" --dir dist --pattern 'DIW-MY-WALLET-*.aab' --pattern 'DIW-MY-WALLET-*-mapping.txt'
           rm -f dist/*-debug.aab
@@ -109,16 +127,26 @@ jobs:
           else
             echo "::warning::No R8 mapping in release $TAG: crash reports in Play Console stay obfuscated"
           fi
-      - name: Upload to Google Play
+      - name: Release notes
         if: env.SKIP != '1'
-        uses: r0adkll/upload-google-play@e738b9dd8f2476ea806d921b64aacd24f34515a5 # v1.1.5
-        with:
-          serviceAccountJsonPlainText: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
-          packageName: ${{ env.PLAY_PACKAGE }}
-          releaseFiles: ${{ env.AAB }}
-          releaseName: ${{ env.RELEASE_NAME }}
-          tracks: ${{ env.TRACK }}
-          status: ${{ env.STATUS }}
-          userFraction: ${{ env.USER_FRACTION }}
-          mappingFile: ${{ env.MAPPING }}
-          whatsNewDirectory: distribution/whatsnew
+        run: |
+          # OpenCC writes the Simplified Chinese notes; without it they keep the Traditional commit subjects.
+          python3 -m venv /tmp/play-venv
+          /tmp/play-venv/bin/pip install --quiet opencc || echo "::warning::OpenCC not installed: zh-CN notes stay Traditional"
+          case "$TAG" in v[0-9]*) channel=stable ;; *) channel=nightly ;; esac
+          /tmp/play-venv/bin/python -I tools/release-notes.py --channel "$channel" --version "$RELEASE_NAME" --tag "$TAG" --play-out whatsnew
+          python3 -I tools/play-store.py check
+          for f in whatsnew/*; do echo "== $f"; cat "$f"; done
+      - name: Publish to Google Play
+        if: env.SKIP != '1'
+        env:
+          PLAY_SERVICE_ACCOUNT_JSON: ${{ secrets.PLAY_SERVICE_ACCOUNT_JSON }}
+        run: |
+          set -- --package "$PLAY_PACKAGE"
+          if [ "$BUNDLE" = "true" ]; then
+            set -- "$@" --aab "$AAB" --track "$TRACK" --status "$STATUS" --name "$RELEASE_NAME" --whatsnew whatsnew
+            if [ -n "$MAPPING" ]; then set -- "$@" --mapping "$MAPPING"; fi
+            if [ "$STATUS" = "inProgress" ]; then set -- "$@" --fraction "$USER_FRACTION"; fi
+          fi
+          if [ "$LISTING" = "true" ]; then set -- "$@" --listing; fi
+          python3 -I tools/play-store.py publish "$@"
