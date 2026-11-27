@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（修正 main 的 Android release 建置：Guava 下限把沒有後綴的 18.0 提成不存在的 33.8.0，`:core:extractReleaseAnnotations` 找不到 lint 工具的相依；Linux 桌面版由 .deb 改為 AppImage（`tools/linux-appimage.sh`，執行階段為本專案的 `tools/appimage-runtime`，不含 LGPL 的 libfuse、不需 FUSE）；Windows 原生桌面版：執行檔加入版本資源與圖示，發佈資料夾附 LICENSE 與 NOTICE，自我檢查與冒煙執行的記錄移出發佈壓縮檔；`tools/windows-sign.ps1` 簽署子資料夾在內的所有 .exe、.dll 並確認沒有遺漏；main 到 PR #176）。
+最後更新：2026-11-27（Google Play 商店資訊納入翻譯管理：各語言的標題、說明、版本資訊範本與截圖在 `distribution/play/listing`（zh-TW、en-US、zh-CN），Play 版本資訊由 `tools/release-notes.py --play-out` 產生、與 GitHub Release 的變更清單相同；上傳改用 `tools/play-store.py`，同一版本重跑只更新版本資訊，可選擇一併寫入商店資訊；README 加入 Google Play 測試資訊；main 到 PR #185）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -8,7 +8,7 @@
 
 ## 1. 一眼看完
 
-- 版本線 `0.5`（[version.properties](../version.properties)，對應 P5），main 每次更新由 CI 發佈 nightly；穩定版由手動的 `Stable release` workflow 發佈為 `v<版本>` 標籤，見 [release.md](release.md#穩定版發佈)。workflow 檔已由使用者貼上，還沒有發過穩定版。
+- 版本線 `0.5`（[version.properties](../version.properties)，對應 P5），main 每次更新由 CI 發佈 nightly；穩定版由手動的 `Stable release` workflow 發佈為 `v<版本>` 標籤，見 [release.md](release.md#穩定版發佈)；已發佈 `v0.5.13`、`v0.5.25`。
 - P1 到 P4 與其後的延伸功能都已合併進 main；P5（驗證者透明與主動驗證）已完成並合併（PR #152），P6（iOS）尚未開始。
 - 平台：Android（API 29 以上）與 Windows、Linux 桌面版為正式發佈；macOS 只提供 jar。
 - 正式服務端在另一個 repo [diw-wallet-server](https://github.com/mctea01/diw-wallet-server)，狀態見該 repo 的 `docs/STATUS.md`。
@@ -35,7 +35,7 @@ P4 之後合併的工作：
 | TWDIW 新版應用簽章（1.0.14 格式） | 實作完成；官方平台是否接受未驗收 | [twdiw-application-signature.md](acceptance/twdiw-application-signature.md) |
 | 法律聲明、首次啟動同意、專門聲明（PR #80）；首次啟動改為一頁勾選（2026-11-27，Play 測試回饋「要同意的內容太多」） | 完成；用戶協議與隱私權政策為唯一的必要勾選項，各專門聲明為預設不勾選的可選項，文件名稱點開看全文，各項附重點摘要與營運者官方說明連結；行動自然人憑證只在有可用 SP（內建、手動或服務端）時才詢問；未勾選的服務之後可在設定開啟 | [legal/README.md](legal/README.md) |
 | i18n：英文與繁體中文（PR #89）；簡體中文與新增語言的方法（PR #173） | 完成；簡體中文由繁體中文轉換（OpenCC），法律文件顯示繁體原文 | [i18n.md](design/i18n.md)、[translation.md](guides/translation.md) |
-| Google Play 上架準備（PR #84） | 文件、圖像與自動提交 workflow 已在 main；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
+| Google Play 上架準備（PR #84）；商店資訊翻譯與版本資訊（2026-11-27） | 封閉測試中（Google 群組 `test-soyokaze`、`my-diw-walllet`，回饋走 GitHub Issues），預計直接發布正式版；商店文字、版本資訊範本與截圖依語言放在 `distribution/play/listing`（zh-TW、en-US、zh-CN，簡體由 `i18n.py play-hans` 轉換，`LocalizationTest` 檢查字數）；版本資訊與 GitHub Release 的變更清單相同（每語言 500 字內）；新版 `google-play.yml`（改用 `tools/play-store.py`，可勾選寫入商店資訊，同版本重跑只更新版本資訊）待使用者貼上；實際上架進度以 Play Console 為準 | [google-play.md](google-play.md) |
 | 電子護照讀取與 zkPassport（Z1 到 Z4、PR #121、#127） | 完成 | [zkpassport.md](design/zkpassport.md) |
 | zkPassport 人臉比對（PR #134） | Android 版完成：相機比對、本專案電路（金鑰證明版、自我聲明版）、查驗與等級；金鑰證明版的 78 個電路已於 2026-11-15 發佈到 `zkpassport-facematch-v1` release（金鑰雜湊與 `circuits.json` 相同）；2026-11-21 實機回報提示是英文、比對一直失敗：提示改為 App 的語言，失敗改報原因與最高相似度，JPEG 2000 照片改由錢包解碼；重測最高相似度 0.46；2026-11-26 門檻以 LFW 校準為誤接受十萬分之一（`tools/facematch-eval`）：MobileFaceNet 0.47（同一人 90% 通過），每次比對取 5 幀正臉特徵平均（`AveragedFaceSession`）；FaceNet-512 做成選用隨選模組 `features/facenet`（門檻 0.74，同一人 65% 通過），在 zkPassport 設定切換與安裝；2026-11-27 實機回報 0.47 能通過、戴眼鏡時失敗：新增「朗讀人臉比對的指示」開關（手機文字轉語音），比對畫面的提示字放大；語音與 Play 隨選安裝待實機驗證 | [zkpassport.md](design/zkpassport.md) 第 5.6 節 |
 | 原生依賴跨平台：Windows zkPDF（無 GPL 執行階段）、Linux ARM64、Android 32 位元（PR #121） | 完成 | [native-dependencies](research/native-dependencies/README.md) |
@@ -122,7 +122,7 @@ P4 之後合併的工作：
 | 項目 | 說明 | 等待 |
 |---|---|---|
 | P6 iOS | | 排程 |
-| 穩定版發佈 workflow | `stable-release.yml` 與 CI 的標籤發佈已貼上；`minor`、`major` 另需 `RELEASE_TOKEN`；尚未實際發佈過穩定版 | 第一次以 `Stable release` 發佈並確認 Release 頁 |
+| Google Play workflow 更新 | 新版 `google-play.yml` 在專案共用資料夾 `diw-wallet/play/2026-11-27/`；舊版讀取已移除的 `distribution/whatsnew`，合併後要貼上新版才能再上傳 | 使用者貼上 workflow；服務帳戶要寫商店資訊時加「管理商店資訊」權限 |
 | Windows 程式碼簽章 | `tools/windows-sign.ps1` 在本機以 YubiKey（或 `-SignCommand` 的 jsign 等命令）簽署 MSI、其中的程式與 jar 內的零知識原生程式庫（改寫 `.sha256`），或實驗原生版，並傳回 Release；2026-11-21 使用者在 Windows 實跑：exe、dll 簽章成功，以 WiX 7 重建 MSI 時的 WIX0091 已由 PR #165 修正；2026-11-27 簽署改為列舉資料夾與子資料夾內所有 .exe、.dll（原生版的 `bin\jawt.dll`），簽完確認沒有遺漏，否則失敗 | 使用者重跑確認 MSI 能產生、安裝與零知識功能正常，見 [release.md](release.md#windows-程式碼簽章) |
 | Release 附上原生桌面版 | `release` 工作打包 `desktop-native` 的 Windows 與 Linux 執行檔附到 nightly 與穩定版，下載指引列在「實驗版」，README 與使用教程補上解壓與執行步驟；改過的 `github-actions-ci.yml` 已由使用者貼上（PR #168） | 合併後確認下一次 nightly 有這兩個檔案 |
 | TWDIW 新版夥伴卡 | 應用簽章格式已照 1.0.14 實作（appHash 為 `tw.gov.moda.diw`，簽章金鑰是本錢包自己的應用配對），官方平台准入與端到端領卡沒有驗收 | 合法的應用金鑰或官方契約 |

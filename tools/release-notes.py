@@ -8,6 +8,12 @@ updates folded away.
 
   python3 -I tools/release-notes.py --channel nightly --version 0.5.3 --tag nightly --dir dist > notes.md
   python3 -I tools/release-notes.py --channel stable --version 0.5.3 --tag v0.5.3 --dir dist > notes.md
+
+With --play-out DIR it writes the Google Play release notes instead: DIR/whatsnew-<language> for every language of
+distribution/play/listing that has release_notes_header.txt, the same changes as the release body in at most 500
+characters, then a link to the release. --dir is not needed then.
+
+  python3 -I tools/release-notes.py --channel nightly --version 0.5.3 --tag nightly --play-out whatsnew
 """
 import argparse
 import os
@@ -17,6 +23,9 @@ import subprocess
 import sys
 
 MAX_CHANGES = 100
+PLAY_LIMIT = 500
+PLAY_ITEM = 120
+LISTING = pathlib.Path(__file__).resolve().parents[1] / "distribution/play/listing"
 BOTS = ("renovate[bot]", "dependabot[bot]", "github-actions[bot]")
 
 
@@ -49,14 +58,65 @@ def changes(channel):
     return title, previous, features[:MAX_CHANGES], deps, truncated
 
 
+def play_notes(language_dir, version, url, features):
+    """Release notes of one Play language: header, as many changes as fit, the count left out and the link."""
+    def part(name, **values):
+        text = (language_dir / f"release_notes_{name}.txt").read_text(encoding="utf-8").strip()
+        return text.format(**values)
+
+    convert = None
+    if language_dir.name == "zh-CN":
+        try:
+            import opencc
+            convert = opencc.OpenCC("tw2sp").convert
+        except ImportError:
+            pass
+    header = part("header", version=version)
+    footer = part("footer", url=url)
+    items = []
+    for line in features:
+        subject = re.sub(r" \(#\d+\)$", "", line[2:]).strip()
+        if convert:
+            subject = convert(subject)
+        if len(subject) > PLAY_ITEM:
+            subject = subject[:PLAY_ITEM - 1].rstrip() + "\u2026"
+        items.append("- " + subject)
+    for n in range(len(items), -1, -1):
+        lines = [header, *items[:n]]
+        if n < len(items):
+            lines.append(part("more", count=len(items) - n))
+        text = "\n".join(lines + [footer])
+        if len(text) <= PLAY_LIMIT:
+            return text
+    raise SystemExit(f"{language_dir.name}: the header and footer alone exceed {PLAY_LIMIT} characters")
+
+
+def write_play(a):
+    _, _, features, _, _ = changes(a.channel)
+    url = f"https://github.com/{a.repo}/releases/tag/{a.tag}"
+    out = pathlib.Path(a.play_out)
+    out.mkdir(parents=True, exist_ok=True)
+    for language_dir in sorted(LISTING.iterdir()):
+        if (language_dir / "release_notes_header.txt").is_file():
+            text = play_notes(language_dir, a.version, url, features)
+            (out / f"whatsnew-{language_dir.name}").write_text(text + "\n", encoding="utf-8", newline="\n")
+            print(f"whatsnew-{language_dir.name}: {len(text)} characters", file=sys.stderr)
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--channel", choices=["nightly", "stable"], required=True)
     ap.add_argument("--version", required=True)
     ap.add_argument("--tag", required=True)
-    ap.add_argument("--dir", required=True)
+    ap.add_argument("--dir")
+    ap.add_argument("--play-out")
     ap.add_argument("--repo", default=os.environ.get("GITHUB_REPOSITORY", "mctea01/my-Bonds-fork-android"))
     a = ap.parse_args()
+    if a.play_out:
+        write_play(a)
+        return
+    if not a.dir:
+        ap.error("--dir is required without --play-out")
 
     files = {p.name: p for p in sorted(pathlib.Path(a.dir).iterdir()) if p.is_file()}
     v = a.version

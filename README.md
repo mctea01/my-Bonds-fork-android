@@ -127,8 +127,21 @@
 
 - **[最新穩定版](https://github.com/mctea01/my-Bonds-fork-android/releases/latest)**：一般使用請裝這個。
 - **[nightly](https://github.com/mctea01/my-Bonds-fork-android/releases/tag/nightly)**：main 每次更新後的自動建置，想試最新功能時使用，另附區網測試用的 debug 版。
+- **[Google Play](https://play.google.com/store/apps/details?id=diw.wallet.app)**：Android 從 Play 安裝與自動更新。Play 版與 GitHub 的 APK 簽章相同、功能一致，兩者可以互相覆蓋更新，資料會保留。
 
 每個 Release 頁最上方都有「下載哪個檔案」的對照表，依手機或電腦選一個檔案即可。支援 Android 10 以上（零知識證明需要 64 位元裝置）、Windows 10 以上、Linux x86_64（AppImage）；macOS（Apple 晶片）與其他系統可用 Java 21 執行 jar。Windows 與 Linux 另有不需要 Java 的實驗版原生執行檔（壓縮檔，解壓即可執行）。安裝步驟見[使用教程](docs/guides/user-guide.md#1-安裝)；版本號與發佈流程見 [docs/release.md](docs/release.md)。
+
+<!-- Google Play 測試期間的說明：正式上架後刪除從這裡到 end 標記的整段，只保留上面的 Google Play 入口。 -->
+### Google Play 測試
+
+App 在 Google Play 還在測試階段，只有測試人員可以安裝：
+
+1. 用手機上的 Google 帳號加入任一個測試群組：[test-soyokaze](https://groups.google.com/g/test-soyokaze)（`test-soyokaze@googlegroups.com`）或 [my-diw-walllet](https://groups.google.com/g/my-diw-walllet)（`my-diw-walllet@googlegroups.com`）。
+2. 用同一個帳號打開[測試人員加入頁](https://play.google.com/apps/testing/diw.wallet.app)，按「成為測試人員」。
+3. 回到 [Play 商店頁](https://play.google.com/store/apps/details?id=diw.wallet.app)安裝。加入後可能要幾分鐘才看得到。
+
+問題與建議請到 [GitHub Issues](https://github.com/mctea01/my-Bonds-fork-android/issues) 回報，Play 商店頁的測試人員意見回饋也會連到這裡。
+<!-- end：Google Play 測試期間的說明 -->
 
 ## 建置與測試
 
@@ -177,7 +190,7 @@ DIW_SCREENSHOTS=build/shots ./gradlew :app:desktopTest --tests '*uiScreenshots' 
 | `features/facenet` | Android 隨選模組：人臉比對的選用模型 FaceNet-512 |
 | `templates` | 零知識證明版型包（zkTLS 查驗頁、zkPDF 版型） |
 | `tools` | 開發工具：內建根憑證產生器（`trust-roots`）、EU DSS 交叉驗證（`dss-check`）、自架 zkPDF 證明主機（`zk-prover-server`）、字串與 JSON-LD context 工具等 |
-| `distribution` | Google Play 商店圖像與版本說明 |
+| `distribution` | Google Play 商店資訊（各語言的標題與說明、版本資訊範本）與圖像 |
 | `docs` | 現況、設計、研究、驗收與發佈文件 |
 
 ## 文件

@@ -25,7 +25,7 @@
 | `DIW-MY-WALLET-<版本>-windows-x64-native.zip`、`-linux-x64-native.tar.gz` | 實驗的 GraalVM 原生桌面版（不需要 Java），`desktop-native` 工作成功時才有，見下方 |
 | `zk-templates.jwt` | 零知識證明版型包（zkTLS 查驗頁與 zkPDF 版型），以 `ZK_TEMPLATES_KEY` 簽章；沒有設定這個 secret 時不附上。格式與手動發佈見 [templates/README.md](../templates/README.md) |
 
-Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，預設從 nightly 取 AAB 上傳，手動執行時 `tag` 填穩定版標籤如 `v0.5.3` 即上傳穩定版）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。
+Google Play 的上架步驟、自動提交 workflow（`google-play.yml`，預設從 nightly 取 AAB 上傳，手動執行時 `tag` 填穩定版標籤如 `v0.5.3` 即上傳穩定版）、商店資訊與資料安全表單見 [google-play.md](google-play.md)。Play 的版本資訊由同一個 `tools/release-notes.py` 以 `--play-out` 產生，變更清單與 Release 頁相同，每個語言限 500 字。
 
 每個 64 位元平台都連結零知識證明的 OpenAC 年齡證明、TLSNotary（zkTLS）與 zkPDF／zkPassport（Barretenberg 6.0.0）後端，另含驗證舊 zkPassport 電路的 Barretenberg 5（CI 以 `DIW_ZK_FEATURES=openac,tlsn,zkpdf,bb5` 建置；Android 的 Barretenberg 5 是選用元件，見下方）。Windows 的函式庫不能在 Windows 主機上連結 zkPDF，CI 在 Linux 上交叉建置整個函式庫（`native/build.sh x86_64-pc-windows-gnullvm`，腳本會下載固定版本的 llvm-mingw；產物靜態連結 libc++ 等寬鬆授權的執行階段，不含 libstdc++ 與 libgcc）。各平台有哪些後端見 [專案現況](STATUS.md#35-平台)。Android 的 32 位元 ABI（`armeabi-v7a`、`x86`）只有不含證明後端的 runtime 函式庫，用來解碼 JPEG 2000 相片。zkPDF 的電路資產在 `zkpdf-v1-bb6` release，由手動執行的 `zkPDF assets` workflow 從原始碼建置並核對雜湊後發佈，App 依 `native/assets.json` 下載並核對；CI 的測試也從這裡取得資產（`native/circuits/tools/fetch_assets.py`），尚未發佈時略過 zkPDF 證明測試並警告。zkPassport 人臉比對的金鑰證明版電路在 `zkpassport-facematch-v1` release，由手動執行的 `zkPassport FaceMatch assets` workflow 從 `native/circuits-zkpassport` 建置，金鑰雜湊須與 `circuits.json` 相同才發佈；App 只在需要時下載這台裝置用得到的那一個。Linux 的 Barretenberg 須以 clang 編譯（GCC 版對 P-256 簽章電路算出不同的驗證金鑰，見 `native/zkpdf-prover/README.md`）。mdoc 的 Longfellow 由 Multipaz 提供，沒有 Windows 版。
 

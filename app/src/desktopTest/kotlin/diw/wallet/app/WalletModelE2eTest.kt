@@ -547,14 +547,16 @@ class WalletModelE2eTest {
     }
 
     /**
-     * Google Play phone screenshots (1080 x 1920, 9:16) with fictional test data: DIW_PLAY_SCREENSHOTS names the output
-     * folder (distribution/play/screenshots in the repository). Snackbars are cleared before each shot.
+     * Google Play phone screenshots (1080 x 1920, 9:16) with fictional test data: DIW_PLAY_SCREENSHOTS names the store
+     * listing folder (distribution/play/listing in the repository), and every language folder there with a title.txt
+     * gets its shots in images/phoneScreenshots, drawn in that interface language. Snackbars are cleared before each shot.
      */
     @Test
     fun playScreenshots() = runBlocking<Unit> {
         val dir = System.getenv("DIW_PLAY_SCREENSHOTS")
         org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
-        val out = java.io.File(dir!!).apply { mkdirs() }
+        val languages = java.io.File(dir!!).listFiles().orEmpty().filter { java.io.File(it, "title.txt").isFile }.sortedBy { it.name }
+        assertTrue(languages.isNotEmpty(), "no language folders with title.txt in $dir")
         start()
         val (m, _) = newWallet()
         issue(m, offer(listOf("pid_sd_jwt", "mdl_mdoc")), null)
@@ -565,20 +567,25 @@ class WalletModelE2eTest {
             m.tab.value = tab
             m.screen.value = s
             m.message.value = null
-            val scene = androidx.compose.ui.ImageComposeScene(1080, 1920, androidx.compose.ui.unit.Density(1080f / 412f)) {
-                diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {})
-            }
-            try {
-                var image = scene.render(0)
-                for (i in 1..12) {
-                    Thread.sleep(150)
-                    m.message.value = null
-                    image = scene.render(i * 100_000_000L)
+            for (language in languages) {
+                m.setAppLanguage(AppLanguage.of(language.name))
+                val out = java.io.File(language, "images/phoneScreenshots").apply { mkdirs() }
+                val scene = androidx.compose.ui.ImageComposeScene(1080, 1920, androidx.compose.ui.unit.Density(1080f / 412f)) {
+                    diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {})
                 }
-                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
-            } finally {
-                scene.close()
+                try {
+                    var image = scene.render(0)
+                    for (i in 1..12) {
+                        Thread.sleep(150)
+                        m.message.value = null
+                        image = scene.render(i * 100_000_000L)
+                    }
+                    java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+                } finally {
+                    scene.close()
+                }
             }
+            m.setAppLanguage(AppLanguage.SYSTEM)
         }
 
         val text = http.post("$base/verifier/sessions") {

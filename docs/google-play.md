@@ -64,8 +64,8 @@ Google 建議兩件事都要做：
 1. **聯絡資訊驗證**（第 1 節）。
 2. **建立應用程式**：名稱 `DIW MY WALLET`、預設語言「中文（台灣）– zh-TW」、類型「應用程式」、免費。
 3. **Play 應用程式簽署**：建立第一個版本時選擇。這個決定日後只能用金鑰輪替改變，見第 3.1 節。
-4. **第一個 App Bundle 手動上傳**：API 只能上傳到已經有套件名稱的應用程式，所以第一次要在 Play Console 上傳。從 nightly 下載 `DIW-MY-WALLET-<版本>.aab`（不是 `-debug.aab`），到「測試 > 封閉測試」建立測試群組（可以只有自己的帳號）、建立版本、上傳，「版本資訊」貼 `distribution/whatsnew/` 的內容。
-5. **應用程式內容**與**商店資訊**：照第 5、6 節填寫。全部完成後「發布總覽」才能送審。
+4. **第一個 App Bundle 手動上傳**：API 只能上傳到已經有套件名稱的應用程式，所以第一次要在 Play Console 上傳。從 nightly 下載 `DIW-MY-WALLET-<版本>.aab`（不是 `-debug.aab`），到「測試 > 封閉測試」建立測試群組（可以只有自己的帳號）、建立版本、上傳，「版本資訊」貼上 `python3 -I tools/release-notes.py --channel stable --version <版本> --tag v<版本> --play-out whatsnew` 產生的各語言檔（第 5.4 節）。
+5. **應用程式內容**與**商店資訊**：照第 5、6 節填寫；商店資訊的文字可以由 workflow 上傳（第 4 節）。全部完成後「發布總覽」才能送審。
 6. 送審通過後，之後的版本可以用自動提交 workflow（第 4 節）。
 
 ### 3.1 簽署金鑰的選擇
@@ -81,14 +81,18 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 ## 4. 自動提交 workflow
 
-檔案：`.github/workflows/google-play.yml`（新檔），另外 `github-actions-ci.yml` 的 release 建置要把 R8 mapping 一起發佈到 nightly（`DIW-MY-WALLET-<版本>-mapping.txt`）。兩個檔案的完整內容放在專案共用資料夾 `diw-wallet/play/`，由使用者手動放進 `.github/workflows/`。
+檔案：`.github/workflows/google-play.yml`，由使用者手動放進 `.github/workflows/`（最新版本在專案共用資料夾 `diw-wallet/play/2026-11-27/`）；`github-actions-ci.yml` 的 release 建置把 R8 mapping 一起發佈到 nightly（`DIW-MY-WALLET-<版本>-mapping.txt`）。
 
-做法：從 GitHub Release（預設 `nightly`）下載 release AAB 與 mapping，以 [r0adkll/upload-google-play](https://github.com/r0adkll/upload-google-play) v1.1.5（固定 commit SHA）上傳，版本資訊取自 `distribution/whatsnew/whatsnew-<語言>`。不重新建置，所以上傳的檔案與 nightly 完全相同。
+做法：從 GitHub Release（預設 `nightly`，也可以填穩定版標籤如 `v0.5.25`）下載 release AAB 與 mapping，切到該 Release 的 commit，以 `tools/release-notes.py --play-out` 產生各語言的版本資訊（第 5.4 節），再由 `tools/play-store.py publish` 經 Google Play Developer API 在同一個 edit 內上傳並提交。不重新建置，所以上傳的檔案與 GitHub Release 完全相同。`tools/play-store.py` 只用 Python 標準函式庫與 `openssl` 命令簽署服務帳戶的權杖，不依賴第三方 Action。
 
 觸發方式：
 
-- **手動**（Actions > Google Play > Run workflow）：選擇 track（`internal`、`alpha` 封閉測試、`beta` 開放測試、`production`）、狀態（`draft`、`completed`、`inProgress` 加分階段比例）與來源 release。
-- **自動**（可選）：設定 repository variable `PLAY_AUTO_TRACK`（例如 `internal`）後，每次 push 到 main 的 CI 成功，就把該次 nightly 上傳到這個 track；`PLAY_AUTO_STATUS` 預設 `draft`，可改 `completed`。如果 nightly 已被更新的 push 取代，該次不上傳。沒有設定 `PLAY_AUTO_TRACK` 時不會自動上傳。
+- **手動**（Actions > Google Play > Run workflow）：選擇 track（`internal`、`alpha` 封閉測試、`beta` 開放測試、`production`）、狀態（`draft`、`completed`、`inProgress` 加分階段比例）與來源 release。兩個勾選項：
+  - `bundle`（預設勾選）：上傳 AAB 並把版本資訊寫進該 track 的版本。
+  - `listing`（預設不勾）：把 `distribution/play/listing` 各語言的標題、簡短說明與完整說明寫進 Play 的商店資訊（Play 沒有的語言會新增）。只勾 `listing` 可以只更新商店資訊。
+- **自動**（可選）：設定 repository variable `PLAY_AUTO_TRACK`（例如 `internal`）後，每次 push 到 main 的 CI 成功，就把該次 nightly 上傳到這個 track；`PLAY_AUTO_STATUS` 預設 `draft`，可改 `completed`。如果 nightly 已被更新的 push 取代，該次不上傳。自動上傳不寫商店資訊。沒有設定 `PLAY_AUTO_TRACK` 時不會自動上傳。
+
+**同一個版本重跑**：Play 已經有相同 SHA-256 的 App Bundle 時，不再上傳（Play 不接受重複的 versionCode），改為以該 versionCode 重新寫入 track 的版本與目前的版本資訊。因此可以對同一個 Release 再跑一次，例如勾選 `listing` 補上商店資訊，或在新增語言後補上該語言的版本資訊。同一個 versionCode 但內容不同的 AAB 仍會被 Play 拒絕。
 
 上傳在 `google-play` environment 執行，可以在 repo 的 Settings > Environments 設定「Required reviewers」，讓每次上傳都要手動核准。
 
@@ -96,7 +100,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 1. Google Cloud Console 建立（或選擇）專案，啟用「Google Play Android Developer API」。
 2. 「IAM 與管理 > 服務帳戶」建立服務帳戶，不指派任何 Cloud 角色；在「金鑰」新增 JSON 金鑰並下載。
-3. Play Console「使用者和權限」邀請服務帳戶的電子郵件，應用程式權限給「DIW MY WALLET」：「發布到測試群組」，要從 workflow 上正式版時再加「發布到正式版、排除裝置及使用 Play 應用程式簽署」。
+3. Play Console「使用者和權限」邀請服務帳戶的電子郵件，應用程式權限給「DIW MY WALLET」：「發布到測試群組」，要從 workflow 上正式版時再加「發布到正式版、排除裝置及使用 Play 應用程式簽署」，要由 workflow 寫商店資訊時再加「管理商店資訊」。
 4. GitHub repo 的 Settings > Secrets and variables > Actions（或 `google-play` environment 的 secrets）新增 `PLAY_SERVICE_ACCOUNT_JSON`，內容是整個 JSON 檔。
 
 | 設定 | 種類 | 內容 |
@@ -109,7 +113,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 - 從未發布過的應用程式只接受 `draft`：第一次通過審查之前，workflow 只能建立草稿，再到 Play Console 按「送審」。
 - 上正式版之前，必須先有版本經過測試 track。
-- 同一個 versionCode 只能上傳一次。versionCode 由 `version.properties` 與 commit 數算出（[release.md](release.md#版本號)），只要從 main 依序建置就一定變大；重跑同一個 nightly 會被 Play 拒絕，這是正常的。
+- 同一個 versionCode 只能上傳一次。versionCode 由 `version.properties` 與 commit 數算出（[release.md](release.md#版本號)），只要從 main 依序建置就一定變大。重跑同一個 Release 時 AAB 不再上傳，只更新版本資訊（第 4 節）。
 - 零知識原生程式庫沒有附除錯符號，Play Console 會顯示「未上傳原生偵錯符號」的警告，不影響上架。
 
 ## 5. 商店資訊
@@ -118,8 +122,8 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 | 欄位 | 內容 |
 |---|---|
-| 應用程式名稱（zh-TW，30 字內） | `DIW MY WALLET：憑證、簽章與文件` |
-| 應用程式名稱（en-US） | `DIW MY WALLET: ID & Documents` |
+| 應用程式名稱、簡短說明、完整說明 | 各語言的檔案，見第 5.2 節 |
+| 預設語言 | 中文（台灣）– zh-TW；另有 en-US、zh-CN |
 | 類別 | 工具（Tools） |
 | 標記 | 選與「工具」「生產力」相關、描述憑證與文件的標記；不要選「政府」相關 |
 | 聯絡電子郵件 | 開發者帳號的公開聯絡信箱（必填，會公開顯示） |
@@ -128,117 +132,52 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 名稱不要使用「數位憑證皮夾」：這是數位發展部官方 App 的名稱，Play 會以冒用政策（Impersonation）審查。
 
-### 5.2 簡短說明（80 字內）
+### 5.2 各語言的文字
 
-zh-TW：
+商店文字與介面翻譯一樣放在 repo 管理，每個語言一個資料夾 `distribution/play/listing/<Play 語言代碼>/`，格式與 fastlane supply 相同（Weblate 的「App store metadata files」格式可直接讀取，見 [translation.md](guides/translation.md) 第 5 節）：
 
-```
-持有與出示數位憑證、保存並驗證簽章文件、以自然人憑證簽署，資料只存在你的裝置。
-```
+| 檔案 | 內容 | 上限 |
+|---|---|---|
+| `title.txt` | 應用程式名稱 | 30 字 |
+| `short_description.txt` | 簡短說明 | 80 字 |
+| `full_description.txt` | 完整說明 | 4,000 字 |
+| `release_notes_header.txt` | 版本資訊的第一行，`{version}` 換成版本號 | 與下面兩行和變更清單合計 500 字 |
+| `release_notes_more.txt` | 清單放不下時的一行，`{count}` 換成未列出的項數 | |
+| `release_notes_footer.txt` | 最後一行，`{url}` 換成 GitHub Release 頁 | |
 
-en-US：
+- `zh-TW` 是原文，`en-US` 與它同時維護；`zh-CN` 由 `python3 tools/i18n/i18n.py play-hans` 以 OpenCC 從繁體中文轉換（只補缺的檔案；改了繁體中文後用 `play-hans full_description.txt` 等檔名重新轉換），之後可以直接修改。
+- 新增語言：建立該語言的資料夾與上面的檔案（Play 的語言代碼，例如 `ja-JP`、`ko-KR`），沒有版本資訊三個檔案時該語言不產生版本資訊。
+- `python3 -I tools/play-store.py check` 檢查字數與佔位符；`LocalizationTest.playListingFitsPlayLimits` 在 CI 做同樣的檢查，並確認 `zh-CN` 沒有常見的繁體專用字。
+- 寫入 Play：workflow 手動執行勾選 `listing`（第 4 節），或在 Play Console 貼上。
+- 功能說明要與當時的版本相符：尚未提供的功能不要寫成已提供；Play 會以「誤導性聲明」處理不實描述。改變功能、新增語言或平台時一併更新這些檔案。完整說明保留「重要說明」一段（第 7 節）。
 
-```
-Hold and present digital credentials, verify signed documents and sign them.
-```
+### 5.3 測試人員與意見回饋
 
-### 5.3 完整說明（4,000 字內）
+封閉測試的測試人員以 Google 群組管理（Play Console「測試 > 封閉測試 > 測試人員」）：`test-soyokaze@googlegroups.com` 與 `my-diw-walllet@googlegroups.com`；意見回饋網址填 `https://github.com/mctea01/my-Bonds-fork-android/issues`。測試人員以 `https://play.google.com/apps/testing/diw.wallet.app` 加入，步驟寫在 [README](../README.md#google-play-測試)；正式上架後刪除 README 中以註解標出的那一段，只保留商店頁連結。
 
-zh-TW：
+### 5.4 版本資訊
 
-```
-DIW MY WALLET 是開放原始碼的整合數位皮夾：在同一個 App 內領取與出示數位憑證、查驗他人的證件、保存並檢查簽章文件、以自然人憑證或遠端簽章服務簽署文件，並把文件轉成可出示的衍生憑證。
+版本資訊與 GitHub Release 內文的變更清單相同，由 `tools/release-notes.py --play-out <資料夾>` 產生 `whatsnew-<語言>`：第一行是 `release_notes_header.txt`，接著是上一個穩定版以來的變更（commit 標題，去掉 PR 編號，相依套件更新不列），依序放到 500 字為止，放不下的以 `release_notes_more.txt` 註明項數，最後是 GitHub Release 頁的連結。commit 標題以撰寫時的語言列出（多數為繁體中文），`zh-CN` 經 OpenCC 轉換。workflow 每次上傳時以該 Release 的 commit 產生，所以與 Release 頁一致。
 
-【數位憑證】
-・領取：OpenID4VCI 1.0 與舊版草案，支援 ISO mdoc、SD-JWT VC 與 W3C VC
-・出示：OpenID4VP 1.0、ISO/IEC 18013-5 近距離出示（NFC、藍牙、QR Code）與 Digital Credentials API
-・相容台灣數位憑證皮夾（TWDIW）、Microsoft Entra Verified ID、EUDI Wallet 參考實作、Multipaz 與 Bonds 的發證端與查驗端
-・出示前清楚顯示查驗方身分、信任等級、用途與要交出的欄位，由你決定是否同意
-・憑證狀態依規格原文顯示（Token Status List、Bitstring Status List 等）
+Play 不接受商店資訊沒有的語言的版本資訊，`tools/play-store.py` 會略過這些語言並列出；先以 `listing` 建立該語言即可。
 
-【文件與簽章】
-・保存並驗證 PAdES、CAdES、XAdES、ASiC、OFD、電子公文簽核檔與 RFC 3161 時戳
-・自動加時戳並保存撤銷資訊，同類文件可並存並依年度整理
-・以自然人憑證卡（NFC）、PKCS#12 或 CSC 遠端簽章服務簽署，可選 B-B 至 B-LTA 保證層級
-・從文件產生可出示的衍生憑證
+### 5.5 圖像
 
-【零知識證明】
-・年齡證明：只證明「已滿某個年齡」，不交出生日
-・網站查驗證明（zkTLS）與 mdoc 零知識出示
-・zkPassport：以電子護照查驗他人或回應零知識證明請求
-・證明預設在你的裝置上產生，zkPassport 回應也可以交給你自己的電腦產生；需要的電路參數從專案的 GitHub Release 下載並核對雜湊
-
-【查驗】
-・App 也可以當查驗方，以 NFC、QR Code 或藍牙查驗證件與年齡證明
-
-【隱私】
-・證件、文件與金鑰只加密保存在你的裝置
-・只有在你同意出示、領卡或簽署時，才把必要的資料傳給你選擇的發證端、查驗方或簽章服務；OpenCerts 證書選擇「以發證機構樣式顯示」時，證書內容會送到發證機構的顯示程式
-・沒有廣告，沒有分析或追蹤 SDK，不需要註冊帳號
-・紀錄只記欄位名稱，不記內容
-
-【重要說明】
-・本 App 為個人開發的開源專案（Apache-2.0），不是數位發展部、內政部、Microsoft、歐盟或任何政府機關發行的 App，也未獲得其背書或授權。各機關的名稱與商標屬於其所有人，僅用於說明相容性。
-・與官方服務的相容性依各服務公開的行為實作，服務端變更時可能暫時無法使用。
-・App 仍在開發中；正式與測試環境在同一個 App 內，測試環境的結果一律標示為不具效力。
-・目前介面為繁體中文。
-
-原始碼與問題回報：https://github.com/mctea01/my-Bonds-fork-android
-```
-
-en-US：
-
-```
-DIW MY WALLET is an open-source wallet that brings digital credentials, signed documents and electronic signatures together in one app.
-
-Digital credentials
-- Receive credentials with OpenID4VCI 1.0 and earlier drafts: ISO mdoc, SD-JWT VC and W3C VC
-- Present with OpenID4VP 1.0, ISO/IEC 18013-5 proximity (NFC, Bluetooth, QR code) and the Digital Credentials API
-- Works with issuers and verifiers of the Taiwan Digital Wallet (TWDIW), Microsoft Entra Verified ID, the EUDI Wallet reference implementation, Multipaz and Bonds
-- Before you share anything, see who is asking, how far they are trusted, why, and which fields they get
-
-Documents and signatures
-- Keep and verify PAdES, CAdES, XAdES, ASiC, OFD and RFC 3161 time stamps
-- Sign with a Taiwan citizen digital certificate card (NFC), PKCS#12 or a CSC remote signing service, at levels B-B to B-LTA
-- Turn documents into credentials you can present
-
-Zero-knowledge proofs
-- Prove you are over an age without revealing your birth date
-- zkTLS website proofs and mdoc zero-knowledge presentation
-- zkPassport: verify others or answer zero-knowledge proof requests with your e-passport
-- Proofs are made on your device by default, and zkPassport answers can also be made on your own computer; circuit parameters are downloaded from the project's GitHub releases and checked against their hashes
-
-Privacy
-- Credentials, documents and keys are stored encrypted on your device only
-- Data leaves the device only when you agree to present, receive or sign, and only to the issuer, verifier or signing service you chose; viewing an OpenCerts certificate in the issuer's style sends it to the issuer's renderer
-- No ads, no analytics or tracking SDKs, no account
-
-Important
-- This is an independent open-source project (Apache-2.0). It is not published, endorsed or authorized by the Ministry of Digital Affairs, the Ministry of the Interior, Microsoft, the European Union or any government agency. Their names and marks belong to their owners and are used only to describe compatibility.
-- The app is under development. The user interface is currently in Traditional Chinese.
-
-Source code and issues: https://github.com/mctea01/my-Bonds-fork-android
-```
-
-功能說明要與當時的版本相符：尚未提供的功能（例如 zkPDF）不要寫成已提供；Play 會以「誤導性聲明」處理不實描述。
-
-### 5.4 圖像
-
-素材在 `distribution/play/`，可直接上傳到 Play Console 的「主要商店資訊」：
+素材在各語言資料夾的 `images/`（fastlane supply 的排法），workflow 勾選 `listing` 時一併上傳（手機截圖整組取代），也可以手動上傳到 Play Console：
 
 | 素材 | 規格 | 檔案 |
 |---|---|---|
-| 應用程式圖示 | 512 × 512 PNG，32 位元含 alpha，1 MB 內 | `icon-512.png`：由啟動圖示的向量（`res/drawable/ic_launcher_*.xml`）以 108 × 108 全畫布輸出，與 Android Studio 的 Play 商店圖示相同，圓角由 Play 套用 |
-| 主題圖片 | 1,024 × 500 JPG 或 24 位元 PNG，不含 alpha | `feature-graphic.png`：品牌靛藍底、圖示與「數位憑證、簽章文件與零知識證明，整合在一個開源錢包」 |
-| 手機螢幕截圖 | 2 到 8 張，每邊 320 到 3,840 像素，長邊不超過短邊的 2 倍 | `screenshots/01` 到 `07`，1,080 × 1,920（9:16）：證件、出示同意、文件、簽署、年齡證明、查驗、信任錨點 |
+| 應用程式圖示 | 512 × 512 PNG，32 位元含 alpha，1 MB 內 | `zh-TW/images/icon.png`：由啟動圖示的向量（`res/drawable/ic_launcher_*.xml`）以 108 × 108 全畫布輸出，與 Android Studio 的 Play 商店圖示相同，圓角由 Play 套用 |
+| 主題圖片 | 1,024 × 500 JPG 或 24 位元 PNG，不含 alpha | `zh-TW/images/featureGraphic.png`：品牌靛藍底、圖示與「數位憑證、簽章文件與零知識證明，整合在一個開源錢包」；其他語言沒有自己的主題圖片時沿用預設語言的 |
+| 手機螢幕截圖 | 2 到 8 張，每邊 320 到 3,840 像素，長邊不超過短邊的 2 倍 | `<語言>/images/phoneScreenshots/01` 到 `07`，1,080 × 1,920（9:16），以該語言的介面繪製：證件、出示同意、文件、簽署、年齡證明、查驗、信任錨點 |
 
-截圖由 `WalletModelE2eTest.playScreenshots` 以虛構的測試資料離屏繪製，介面改變後重新產生：
+截圖由 `WalletModelE2eTest.playScreenshots` 以虛構的測試資料離屏繪製，每個有 `title.txt` 的語言資料夾各產生一組（語言依資料夾名稱選擇介面翻譯）；介面改變或新增語言後重新產生：
 
 ```bash
-DIW_PLAY_SCREENSHOTS=$PWD/distribution/play/screenshots ./gradlew :app:desktopTest --tests '*playScreenshots'
+DIW_PLAY_SCREENSHOTS=$PWD/distribution/play/listing ./gradlew :app:desktopTest --tests '*playScreenshots'
 ```
 
-截圖是電腦版測試環境的畫面，所以有紅色的測試橫幅與「TEST 測試」浮水印，簽署畫面會顯示「此平台不支援 NFC 讀取」；這些都是實際行為，沒有加工。不要出現 TWDIW 卡面上的政府標誌、真實姓名或證號，避免冒用與個資問題。i18n 完成後以英文介面另外產生 en-US 的截圖。
+截圖是電腦版測試環境的畫面，所以有紅色的測試橫幅與「TEST 測試」浮水印，簽署畫面會顯示「此平台不支援 NFC 讀取」；這些都是實際行為，沒有加工。測試資料（姓名、文件內容）是中文，其他語言的截圖也一樣。不要出現 TWDIW 卡面上的政府標誌、真實姓名或證號，避免冒用與個資問題。
 
 ## 6. 應用程式內容（App content）
 
@@ -324,7 +263,7 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 
 ## 7. 政策風險
 
-- **冒用與政府關聯**：名稱、圖示、截圖與說明都不能讓人以為是政府或 Microsoft 的官方 App。完整說明保留第 5.3 節的「重要說明」；圖示不要使用政府標誌。
+- **冒用與政府關聯**：名稱、圖示、截圖與說明都不能讓人以為是政府或 Microsoft 的官方 App。完整說明保留「重要說明」一段（第 5.2 節）；圖示不要使用政府標誌。
 - **TWDIW 私有協定**：App 對 TWDIW 的支援依官方 App 的實際行為實作，不是官方授權的整合。審查若詢問，回覆它是使用者自己的憑證、由使用者主動領取與出示。專門聲明與確認頁由法律聲明的工作提供。
 - **個人與敏感資料**：同意畫面就是 Play 要求的「明確揭露與同意」，出示前必須顯示，不能預設同意。
 - **動態載入**：只能下載資料，不可以下載或載入程式碼（第 2 節）。
@@ -335,6 +274,6 @@ Play 的「收集」是指資料由 App 傳出裝置，不論對象是開發者�
 |---|---|---|
 | 隱私權政策公開網址、用戶協議 | 法律聲明（`docs/legal/`，PR #80） | 完成（已合併進 main） |
 | 首次啟動頁與 TWDIW、Microsoft Verified ID 專門聲明 | 法律聲明（PR #80） | 完成（已合併進 main） |
-| 介面多語系 | i18n（[design/i18n.md](design/i18n.md)，PR #89） | 完成（已合併進 main）；英文商店資訊與英文截圖在 Play Console 補上 |
-| 圖示 PNG、主題圖片、截圖 | 上架 | 完成（`distribution/play/`） |
+| 介面多語系 | i18n（[design/i18n.md](design/i18n.md)，PR #89、#173） | 完成；商店資訊有 zh-TW、en-US、zh-CN（第 5.2 節）；截圖只有繁體中文介面 |
+| 圖示 PNG、主題圖片、截圖 | 上架 | 完成（`distribution/play/listing/`，截圖有 zh-TW、en-US、zh-CN） |
 | `google-play.yml` 與 CI mapping 發佈 | 使用者手動放入 `.github/workflows/` | 完成（已在 main） |

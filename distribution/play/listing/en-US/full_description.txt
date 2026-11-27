@@ -1,0 +1,44 @@
+DIW MY WALLET is an open-source wallet for digital credentials, verification, signed documents, electronic signatures and zero-knowledge proofs.
+
+Digital credentials
+- Receive credentials with OpenID4VCI 1.0 and earlier drafts: ISO mdoc, SD-JWT VC and W3C VC (including bbs-2023 selective disclosure)
+- Present with OpenID4VP 1.0, ISO/IEC 18013-5 proximity (NFC, Bluetooth, QR code) and the Digital Credentials API (requests from browsers and other apps)
+- Works with issuers and verifiers of the Taiwan Digital Wallet (TWDIW), Microsoft Entra Verified ID, the EUDI Wallet reference implementation, Multipaz and Bonds
+- Before you share anything, see who is asking, how far they are trusted, why, how risky the request is and which fields they get
+- Credential status is shown in the words of its specification
+
+Verification
+- Send online requests (OpenID4VP) or proximity requests over QR code and Bluetooth as your own verifier, with a signed verifier statement
+- Read mdocs over NFC or a card reader, and check offline challenges, age proofs and zkPassport proofs
+
+Documents and signatures
+- Keep and verify PAdES, CAdES, XAdES, ASiC, OFD with electronic seals, Taiwan e-document approval files, RFC 3161 time stamps, OpenCerts, OpenPGP and C2PA content credentials of images
+- Every signature shows its integrity, the trust of its certificate chain (all the way to the root), its time stamp and changes made after signing
+- Sign with a Taiwan citizen digital certificate card (NFC), PIV card, OpenPGP card, PKCS#12 or a CSC remote signing service, at levels B-B to B-LTA, with a visible signature if you like
+- Time stamps and revocation data are added and kept automatically; documents of the same kind are kept side by side by year
+- Read e-passport chips with passive authentication
+- Fetch documents from sites such as MyData and turn them into credentials you can present
+
+Zero-knowledge proofs
+- Prove you are over an age without revealing your birth date
+- zkTLS website proofs, mdoc zero-knowledge presentation and field proofs of signed PDFs (zkPDF, slow on phones)
+- zkPassport: verify others or answer zero-knowledge proof requests with your e-passport
+- Proofs are made on your device by default, or on your own computer; circuit parameters are downloaded from the project's GitHub releases and checked against their hashes, and no code is downloaded
+
+Privacy
+- Credentials, documents and keys are stored encrypted on your device only
+- Data leaves the device only when you agree to present, receive or sign, and only to the issuer, verifier or signing service you chose; viewing an OpenCerts certificate in the issuer's style sends it to the issuer's renderer
+- No ads, no analytics or tracking SDKs, no account
+- The history records field names only, never their values
+
+Languages and platforms
+- The interface is available in English, Traditional Chinese and Simplified Chinese
+- Desktop versions for Windows and Linux are available on GitHub
+
+Important
+- This is an independent open-source project (Apache-2.0). It is not published, endorsed or authorized by the Ministry of Digital Affairs, the Ministry of the Interior, Microsoft, the European Union or any government agency. Their names and marks belong to their owners and are used only to describe compatibility.
+- The Taiwan Digital Wallet, Microsoft Verified ID, the mobile citizen digital certificate, MyData and zkPassport are run by their operators. Each asks for your consent to its own statement before first use; declining turns off only that service.
+- Compatibility with official services follows their public behavior and may break when a service changes.
+- The app is under development. Production and test environments share the app, and results from a test environment are always marked as having no legal effect.
+
+Source code, user guide and issues: https://github.com/mctea01/my-Bonds-fork-android

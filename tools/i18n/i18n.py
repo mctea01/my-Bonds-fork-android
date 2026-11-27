@@ -26,6 +26,11 @@ Translation files (docs/guides/translation.md):
   hans [KEY...]           writes the Simplified Chinese strings (values-zh-rCN) missing there from Traditional Chinese
                           with OpenCC (pip install opencc) and drops keys the default file no longer has; listed KEYs
                           are converted again even when present
+
+Google Play store listing (distribution/play/listing, docs/google-play.md):
+  play-hans [FILE...]     writes the Simplified Chinese listing (zh-CN) files missing there from the Traditional
+                          Chinese ones (zh-TW) with OpenCC; listed FILEs (for example full_description.txt) are
+                          converted again even when present
 """
 import html
 import json
@@ -35,6 +40,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[2]
 RES = ROOT / "app/src/commonMain/composeResources"
+LISTING = ROOT / "distribution/play/listing"
 CORE_STRINGS = ROOT / "core/src/commonMain/kotlin/diw/wallet/core/i18n/CoreStrings.kt"
 HAN = re.compile(r"[\u3400-\u9fff\uff00-\uffef\u3000-\u303f]")
 
@@ -463,6 +469,23 @@ def cmd_hans(keys):
     print("%d Simplified Chinese strings written to %s" % (added, f.relative_to(ROOT)))
 
 
+def cmd_play_hans(names):
+    try:
+        import opencc  # noqa: F401
+    except ImportError:
+        sys.exit("pip install opencc, then python3 tools/i18n/i18n.py play-hans")
+    src, dst = LISTING / "zh-TW", LISTING / "zh-CN"
+    dst.mkdir(exist_ok=True)
+    written = 0
+    for f in sorted(src.glob("*.txt")):
+        out = dst / f.name
+        if out.exists() and f.name not in names:
+            continue
+        out.write_text(to_hans(f.read_text(encoding="utf-8")), encoding="utf-8", newline="\n")
+        written += 1
+    print("%d Simplified Chinese listing files written to %s" % (written, dst.relative_to(ROOT)))
+
+
 if __name__ == "__main__":
     a = sys.argv[1:]
     if a[:1] == ["extract"]:
@@ -481,5 +504,7 @@ if __name__ == "__main__":
         cmd_import(a[1], a[2])
     elif a[:1] == ["hans"]:
         cmd_hans(a[1:])
+    elif a[:1] == ["play-hans"]:
+        cmd_play_hans(a[1:])
     else:
         sys.exit(__doc__)

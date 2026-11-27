@@ -1,0 +1,1 @@
+Digital IDs, signed documents and zero-knowledge proofs, kept on your device.

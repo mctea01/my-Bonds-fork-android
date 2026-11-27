@@ -73,6 +73,28 @@ class LocalizationTest {
         }
     }
 
+    /** The Google Play store listing (distribution/play/listing) fits Play's limits in every language. */
+    @Test
+    fun playListingFitsPlayLimits() {
+        val listing = File("../distribution/play/listing")
+        val dirs = listing.listFiles().orEmpty().filter { it.isDirectory }
+        assertTrue(dirs.map { it.name }.containsAll(listOf("zh-TW", "en-US", "zh-CN")), "languages in $listing")
+        val limits = mapOf("title.txt" to 30, "short_description.txt" to 80, "full_description.txt" to 4000)
+        val notes = mapOf("release_notes_header.txt" to "{version}", "release_notes_more.txt" to "{count}", "release_notes_footer.txt" to "{url}")
+        for (dir in dirs) {
+            limits.forEach { (name, limit) ->
+                val text = File(dir, name).readText().trim()
+                assertTrue(text.isNotEmpty() && text.codePointCount(0, text.length) <= limit, "${dir.name}/$name: at most $limit characters")
+            }
+            notes.forEach { (name, placeholder) ->
+                assertTrue(placeholder in File(dir, name).readText(), "${dir.name}/$name must contain $placeholder")
+            }
+        }
+        listing.resolve("zh-CN").listFiles().orEmpty().forEach {
+            assertTrue(!traditionalOnly.containsMatchIn(it.readText()), "Traditional characters in zh-CN/${it.name} (python3 tools/i18n/i18n.py play-hans)")
+        }
+    }
+
     @Test
     fun stringsFollowTheLanguage() = runBlocking<Unit> {
         val en = MemoryLanguageStore("en")
