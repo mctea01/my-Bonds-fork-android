@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（X.509 完整解析與金鑰、擴充限制檢查；函式庫帶入的 Guava 提高到 33.8.0（GHSA-xxph-c9ww-hj94）；Dependabot 告警修補：cryptography 50、rustix 1.1.6，Renovate 規則；工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限與其拒絕、取消、返回的處理；文件簽署、憑證領取與 TWDIW 離線流程的取消與返回；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
+最後更新：2026-11-27（X.509 完整解析與金鑰、擴充限制檢查；首次啟動同意改為一頁勾選：必要與可選分開、文件名稱為連結、各項附重點摘要，法律文字不變；函式庫帶入的 Guava 提高到 33.8.0（GHSA-xxph-c9ww-hj94）；Dependabot 告警修補：cryptography 50、rustix 1.1.6，Renovate 規則；工具鏈升級：AGP 9.5、Gradle 9.9、Compose Multiplatform 1.12、compileSdk 與 targetSdk 37、Ktor 3.6.2 並解除 OkHttp 固定；targetSdk 37 的區域網路權限與其拒絕、取消、返回的處理；文件簽署、憑證領取與 TWDIW 離線流程的取消與返回；CodeQL 告警修補；介面加入簡體中文與新增語言的方法；main 到 PR #174）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
