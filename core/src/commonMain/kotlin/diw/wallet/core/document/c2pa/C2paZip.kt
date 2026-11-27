@@ -152,6 +152,9 @@ object C2paZip {
             B.le16(b, a.eocd + 4) != 0 || B.le16(b, a.eocd + 6) != 0 -> "multi-disk ZIP"
             a.cdEnd != a.eocd.toLong() -> "ZIP with data after the central directory"
             a.entries.map { uri(it) }.let { it.size != it.toSet().size } -> "ZIP with two entries of the same name"
+            // The manifest and META-INF/ are added; the archive stays one without ZIP64 records.
+            a.entries.size + 2 > 0xFFFF -> "ZIP with too many entries for a manifest without ZIP64"
+            b.size > 0xFFFFFFFFL - 0x4000000L -> "ZIP too large for a manifest without ZIP64"
             else -> null
         }
     }.getOrElse { it.message ?: "unreadable ZIP" }
