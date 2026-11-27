@@ -100,6 +100,41 @@
         "cargo"
       ],
       "automerge": false
+    },
+    {
+      "description": "bincode 3.0.0 is an empty release that only fails to compile (the project stopped); zktls stays on 1.x until it moves to another format",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "bincode"
+      ],
+      "allowedVersions": "<2.0.0"
+    },
+    {
+      "description": "LiteRT moves with Multipaz FaceNet, which is built against LiteRT 1.x; a 2.x runtime under it needs a device check of face matching",
+      "matchPackageNames": [
+        "com.google.ai.edge.litert:**"
+      ],
+      "allowedVersions": "<2.0.0"
+    },
+    {
+      "description": "Git-pinned proving stacks move only on purpose: the Noir revision goes with the nargo and bb versions in native/circuits/VERSIONS and the compiled circuits, TLSNotary is an alpha protocol, Spartan2 backs the OpenAC age circuit keys",
+      "matchManagers": [
+        "cargo"
+      ],
+      "matchPackageNames": [
+        "acvm",
+        "bn254_blackbox_solver",
+        "noirc_abi",
+        "tlsn",
+        "spartan2"
+      ],
+      "matchUpdateTypes": [
+        "digest"
+      ],
+      "dependencyDashboardApproval": true,
+      "automerge": false
     }
   ]
 }
