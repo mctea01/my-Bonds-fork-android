@@ -90,7 +90,7 @@ class LocalizationTest {
                 assertTrue(placeholder in File(dir, name).readText(), "${dir.name}/$name must contain $placeholder")
             }
         }
-        listing.resolve("zh-CN").listFiles().orEmpty().forEach {
+        listing.resolve("zh-CN").listFiles().orEmpty().filter { it.isFile && it.name.endsWith(".txt") }.forEach {
             assertTrue(!traditionalOnly.containsMatchIn(it.readText()), "Traditional characters in zh-CN/${it.name} (python3 tools/i18n/i18n.py play-hans)")
         }
     }
