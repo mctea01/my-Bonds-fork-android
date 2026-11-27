@@ -439,6 +439,8 @@ internal fun MobileMoicaPicker(model: WalletModel, onChange: (SignerChoice?) -> 
         value = configured?.let { url -> runCatching { model.server.mobileMoica(url) } } ?: Result.success(null)
     }
     val serverEnvironment = serverSp?.getOrNull()
+    // The server answered: its SP account makes the statement due if no other source did (LegalModel.usable).
+    LaunchedEffect(serverSp) { serverSp?.onSuccess { model.legal.noteServerMobileMoica(it != null) } }
     val server = configured?.takeIf { serverEnvironment != null }
     val serverNote = when {
         configured == null -> null

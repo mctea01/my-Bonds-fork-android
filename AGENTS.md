@@ -249,7 +249,7 @@
 
 - 法律文字（用戶協議、隱私權政策、`Integration` 的專門聲明）集中在 `app/legal/LegalTexts.kt`（繁體中文原文）與 `LegalTextsEn.kt`（英文譯文，註明以中文為準）；首次啟動與設定頁的字串由 `app/legal/LegalStrings.kt` 讀字串資源（`legal_*`）。不要把這些文字寫在畫面程式裡。
 - `docs/legal/*.md` 由 `LegalDocument.toMarkdown()` 產生，`LegalDocumentsTest` 檢查兩者一致；改文字後以 `DIW_UPDATE_LEGAL=1` 執行該測試重新產生。實質變更要調高 `version`，使用者下次開啟時只重新確認有變更的文件；錯字修正不調版本。
-- `LegalModel`（儲存區表格 `DiwLegal`）保存每份文件同意的版本與時間。`LegalConsent.complete` 之前，`handleUri` 把連結排到完成後、DC API 等待完成、`init` 不做背景查詢（狀態、信任清單、mdoc 簽署清單）；`WalletApp` 顯示 `OnboardingScreen`。
+- `LegalModel`（儲存區表格 `DiwLegal`）保存每份文件同意的版本與時間。`LegalConsent.complete` 之前，`handleUri` 把連結排到完成後、DC API 等待完成、`init` 不做背景查詢（狀態、信任清單、mdoc 簽署清單）；`WalletApp` 顯示 `OnboardingScreen`。首次啟動的頁面（`onboardingStep`：歡迎、確認、完成）把所有待決定的文件放在同一個確認頁：用戶協議與隱私權政策共用一個「必要」勾選項，每個 `Integration` 一個預設不勾選的「可選」勾選項，附用途（`LegalStrings.purpose`，新增 `Integration` 時一併加入）、營運者官方說明連結（`Integration.operatorUrl`）與重點摘要；勾選文字中的文件名稱以 `linkedText` 做成連結，全文蓋在確認頁上顯示，確認頁的狀態保留；`LegalModel.decideAll` 一次寫入所有選擇，未勾選即不同意。不能使用的服務不詢問（`LegalConsent.deferred`，不儲存，由 `LegalModel.usable` 決定；目前只有行動自然人憑證：建置內建 SP、開發者手動 SP 或服務端 `/info` 提供時才可用），可用來源出現時 `WalletApp` 因 `complete` 變為 false 重新顯示確認頁；全文層以 `SystemBackHandler` 接 Android 系統返回。介面形式改動不改聲明本文與版本。
 - 服務停用時：`blockedIntegration` 擋下 TWDIW 入口與含 wallet.gov.tw 位址的連結（含百分比編碼與 JSON 跳脫）、openid-vc，改開 `Screen.IntegrationStatement`（同意後接著處理連結）；解析後才知道位址的請求以 `requireTwdiwAllowed` 檢查；`StatusMonitor` 不查詢該服務證件的狀態、不重新判定其發行端；MyData 保存的身分證統一編號不使用。
 - 未上線的服務（`Integration.available = false`，目前沒有）只發佈聲明，在設定頁只能預覽、不在 App 內詢問；功能上線時改為 true，使用者下次開啟會被詢問。
 - 法律文字只用兩種 Markdown 標記：`**粗體**` 與反引號（主機名稱等），App 以 `legalAnnotated` 顯示，其他字元照原樣；不要用表格、連結語法或巢狀清單。
