@@ -594,7 +594,7 @@ jobs:
             features: openac,tlsn,zkpdf
           - os: ubuntu-latest
             name: linux
-            tasks: ":app:packageReleaseDeb :app:packageReleaseUberJarForCurrentOS"
+            tasks: ":app:createReleaseDistributable :app:packageReleaseUberJarForCurrentOS"
             features: openac,tlsn,zkpdf
           # Apple silicon; only the jar, since an unsigned app bundle is refused by Gatekeeper.
           - os: macos-latest
@@ -656,10 +656,10 @@ jobs:
           if not proofs or not loads or any(c.find("skipped") is not None for c in proofs + loads):
               sys.exit("the ZK native library tests did not run on Windows")
           PY
-      # fakeroot builds the .deb; xvfb starts the release build below.
-      - name: Install deb tools
+      # squashfs-tools builds the AppImage (tools/linux-appimage.sh); xvfb starts the release builds below.
+      - name: Install AppImage tools
         if: runner.os == 'Linux'
-        run: sudo apt-get update -q && sudo apt-get install -y -q fakeroot xvfb
+        run: sudo apt-get update -q && sudo apt-get install -y -q squashfs-tools xvfb
       - name: Package ${{ matrix.name }}
         run: ./gradlew --no-daemon --stacktrace ${{ matrix.tasks }}
       # The optimized build must still start: a class removed by ProGuard or a broken jar signature exits at once.
@@ -674,9 +674,25 @@ jobs:
       - name: Collect files
         run: |
           mkdir -p dist
-          if [ -d app/build/compose/binaries ]; then find app/build/compose/binaries -type f \( -name '*.msi' -o -name '*.deb' \) -exec cp {} dist/ \; ; fi
+          if [ -d app/build/compose/binaries ]; then find app/build/compose/binaries -type f -name '*.msi' -exec cp {} dist/ \; ; fi
           cp app/build/compose/jars/*.jar dist/
           ls -l dist
+      # The jpackage app image (ProGuard build with its Java runtime) as one AppImage file.
+      - name: AppImage
+        if: runner.os == 'Linux'
+        run: |
+          image=$(find app/build/compose/binaries/main-release/app -mindepth 1 -maxdepth 1 -type d | head -1)
+          [ -n "$image" ] || { echo "No app image from createReleaseDistributable"; exit 1; }
+          bash tools/linux-appimage.sh "$image" "dist/DIW-MY-WALLET-$APP_VERSION-x86_64.AppImage"
+      # The AppImage must start as a user starts it; the runner has no FUSE, so it unpacks itself and runs.
+      - name: Start the AppImage
+        if: runner.os == 'Linux'
+        run: |
+          set +e
+          DIW_WALLET_HOME="$RUNNER_TEMP/wallet-appimage" timeout 30 xvfb-run -a "dist/DIW-MY-WALLET-$APP_VERSION-x86_64.AppImage" --appimage-extract-and-run > start-appimage.log 2>&1
+          code=$?
+          cat start-appimage.log
+          if [ $code -ne 124 ]; then echo "The AppImage exited early (code $code)"; exit 1; fi
       - name: Upload ${{ matrix.name }} files
         uses: actions/upload-artifact@cf430e030ddbb5b0abf93d22962f4752f3646cd9 # v7
         with:
