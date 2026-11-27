@@ -680,16 +680,25 @@ object C2paContainers {
             return out
         }
 
-        /** The manifest element: (element start, element end, text start, text end). */
+        /**
+         * The manifest element: (element start, element end, text start, text end). The start tag may carry
+         * attributes (such as its own namespace declaration) and white space; an empty element holds no store.
+         */
         private fun element(text: String): IntArray? {
             for (p in prefixes(text)) {
-                val open = "<$p:manifest>"
-                val s = text.indexOf(open)
-                if (s < 0) continue
-                val close = "</$p:manifest>"
-                val e = text.indexOf(close, s)
-                if (e < 0) continue
-                return intArrayOf(s, e + close.length, s + open.length, e)
+                val open = "<$p:manifest"
+                var s = text.indexOf(open)
+                while (s >= 0) {
+                    val after = text.getOrNull(s + open.length)
+                    if (after != null && (after == '>' || after == '/' || after.isWhitespace())) {
+                        val textStart = tagEnd(text, s + open.length) ?: break
+                        if (text[textStart - 2] != '/') {
+                            val close = Regex("</" + Regex.escape(p) + ":manifest\\s*>").find(text, textStart) ?: break
+                            return intArrayOf(s, close.range.last + 1, textStart, close.range.first)
+                        }
+                    }
+                    s = text.indexOf(open, s + open.length)
+                }
             }
             return null
         }

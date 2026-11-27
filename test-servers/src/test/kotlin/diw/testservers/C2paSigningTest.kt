@@ -550,6 +550,19 @@ class C2paSigningTest {
         return out.toByteArray()
     }
 
+    /** A ZIP whose names are code page 437 without the UTF-8 flag; both names are one non-ASCII byte apart. */
+    private fun zipCp437(): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out, java.nio.charset.Charset.forName("IBM437")).use { z ->
+            for (n in listOf("\u00E9.txt", "\u00E2.txt")) {
+                z.putNextEntry(ZipEntry(n))
+                z.write(payload(1500).also { it[0] = n[0].code.toByte() })
+                z.closeEntry()
+            }
+        }
+        return out.toByteArray()
+    }
+
     private fun indexOf(b: ByteArray, x: ByteArray, from: Int = 0): Int {
         outer@ for (i in from..b.size - x.size) { for (j in x.indices) if (b[i + j] != x[j]) continue@outer; return i }
         return -1
@@ -582,6 +595,7 @@ class C2paSigningTest {
         Case("avif", fixture("sample1.avif"), C2paFormat.BMFF, "assertion.bmffHash.match", "c2pa.hash.bmff"),
         Case("pdf", fixture("basic.pdf"), C2paFormat.PDF, "assertion.dataHash.match", "c2pa.hash.data"),
         Case("zip", zip(), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
+        Case("cp437.zip", zipCp437(), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
         Case("docx", fixture("sample1.docx"), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
         Case("odt", fixture("sample1.odt"), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
         Case("box.jpg", picture("jpg"), C2paFormat.JPEG, "assertion.boxesHash.match", "c2pa.hash.boxes", C2paBinding.BOXES),
@@ -620,6 +634,22 @@ class C2paSigningTest {
             val bad = inspect(tamper(c.bytes, signed.bytes), "tampered.${c.name}")
             assertTrue(bad.codes().any { it.endsWith(".mismatch") }, "${c.name}: ${bad.codes()}")
         }
+    }
+
+    @Test
+    fun svgManifestElementWithAttributesIsFound() = runBlocking<Unit> {
+        trustRoot()
+        val signed = sign(svg, request("向量圖.svg", C2paAuthoring.Opened)).bytes.decodeToString()
+        // The namespace declared on the element itself, and white space before the closing brackets.
+        val moved = signed.replace(" xmlns:c2pa=\"http://c2pa.org/manifest\"", "")
+            .replace("<c2pa:manifest>", "<c2pa:manifest xmlns:c2pa='http://c2pa.org/manifest' >")
+            .replace("</c2pa:manifest>", "</c2pa:manifest >").encodeToByteArray()
+        assertNotNull(C2paManifests.read(moved), "the store is found")
+        val again = sign(moved, request("向量圖.svg", C2paAuthoring.Opened))
+        val r = inspect(again.bytes, "again.svg")
+        assertEquals(2, r.c2pa!!.manifests.size, "the earlier manifest is kept as the parent")
+        assertSignedAndTrusted(r, "svg again")
+        assertEquals(1, Regex("<c2pa:manifest").findAll(again.bytes.decodeToString()).count(), "the old element is removed")
     }
 
     @Test
