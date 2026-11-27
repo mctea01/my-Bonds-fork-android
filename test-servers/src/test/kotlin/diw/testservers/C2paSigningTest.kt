@@ -8,6 +8,10 @@ import diw.wallet.core.document.DocumentReport
 import diw.wallet.core.document.DocumentTrustSource
 import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.c2pa.C2paAuthoring
+import diw.wallet.core.document.c2pa.C2paBinding
+import diw.wallet.core.document.c2pa.C2paBoxHash
+import diw.wallet.core.document.c2pa.C2paContainers
+import diw.wallet.core.document.c2pa.C2paFormat
 import diw.wallet.core.document.c2pa.C2paIdentity
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.c2pa.C2paSignRequest
@@ -33,6 +37,11 @@ import io.ktor.http.HttpHeaders
 import io.ktor.http.HttpStatusCode
 import io.ktor.http.headersOf
 import kotlinx.coroutines.runBlocking
+import kotlinx.serialization.json.Json
+import kotlinx.serialization.json.int
+import kotlinx.serialization.json.jsonArray
+import kotlinx.serialization.json.jsonObject
+import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.io.bytestring.ByteString
 import org.bouncycastle.asn1.ASN1ObjectIdentifier
 import org.bouncycastle.asn1.x500.X500Name
@@ -55,6 +64,7 @@ import org.bouncycastle.tsp.TimeStampTokenGenerator
 import org.multipaz.crypto.X509Cert
 import org.multipaz.storage.ephemeral.EphemeralStorage
 import java.awt.image.BufferedImage
+import java.io.ByteArrayInputStream
 import java.io.ByteArrayOutputStream
 import java.io.File
 import java.math.BigInteger
@@ -64,7 +74,15 @@ import java.security.PrivateKey
 import java.security.PublicKey
 import java.security.spec.ECGenParameterSpec
 import java.util.Date
+import java.util.zip.CRC32
+import java.util.zip.ZipEntry
+import java.util.zip.ZipOutputStream
+import javax.imageio.IIOImage
 import javax.imageio.ImageIO
+import javax.sound.sampled.AudioFileFormat
+import javax.sound.sampled.AudioFormat
+import javax.sound.sampled.AudioInputStream
+import javax.sound.sampled.AudioSystem
 import kotlin.test.Test
 import kotlin.test.assertEquals
 import kotlin.test.assertFalse
@@ -177,8 +195,8 @@ class C2paSigningTest {
     private val webp = "RIFF".encodeToByteArray() + byteArrayOf(0x1a, 0, 0, 0) + "WEBPVP8L".encodeToByteArray() +
         byteArrayOf(0x0d, 0, 0, 0, 0x2f, 0, 0, 0, 0x10, 0x07, 0x10, 0x11, 0x11, 0x88.toByte(), 0x88.toByte(), 0xfe.toByte(), 0x07, 0x00)
 
-    private fun request(title: String, authoring: C2paAuthoring = C2paAuthoring.Created("digitalCapture"), order: SignerPayloadOrder = SignerPayloadOrder.DETERMINISTIC) =
-        C2paSignRequest(title, authoring, identity = true, roles = listOf("cawg.creator"), allowTraining = false, payloadOrder = order, generatorVersion = "test", time = Clock.System.now())
+    private fun request(title: String, authoring: C2paAuthoring = C2paAuthoring.Created("digitalCapture"), order: SignerPayloadOrder = SignerPayloadOrder.DETERMINISTIC, binding: C2paBinding? = null) =
+        C2paSignRequest(title, authoring, identity = true, roles = listOf("cawg.creator"), allowTraining = false, payloadOrder = order, generatorVersion = "test", time = Clock.System.now(), binding = binding)
 
     private suspend fun sign(asset: ByteArray, request: C2paSignRequest, claim: DocumentSigner = signer(ecKey, ecCert), identity: DocumentSigner? = null, ts: Timestamper? = timestamper): C2paSigned =
         C2paWriter.sign(asset, request, claim, identity, ts)
@@ -187,9 +205,9 @@ class C2paSigningTest {
     private fun DocumentReport.codes() = active().statuses.map { it.code }
     private fun C2paIdentity.codes() = statuses.map { it.code }
 
-    private fun assertSignedAndTrusted(r: DocumentReport, name: String) {
+    private fun assertSignedAndTrusted(r: DocumentReport, name: String, match: String = "assertion.dataHash.match", hashLabel: String = "c2pa.hash.data") {
         val codes = r.codes()
-        for (c in listOf("claimSignature.validated", "assertion.dataHash.match", "assertion.hashedURI.match", "signingCredential.trusted", "timeStamp.validated", "timeStamp.trusted")) {
+        for (c in listOf("claimSignature.validated", match, "assertion.hashedURI.match", "signingCredential.trusted", "timeStamp.validated", "timeStamp.trusted")) {
             assertTrue(c in codes, "$name: $c missing in $codes")
         }
         val id = r.active().identities.single()
@@ -199,8 +217,9 @@ class C2paSigningTest {
         assertTrue("cawg.identity.trusted" in id.codes(), "$name: ${id.codes()} ${id.detail}")
         assertEquals(Check.PASS, id.signature)
         assertEquals(listOf("cawg.creator"), id.roles)
-        assertTrue("c2pa.hash.data" in id.referenced, id.referenced.toString())
-        assertEquals(Check.PASS, r.signatures.single().integrity, "$name: ${r.signatures.single().problems}")
+        assertTrue(id.referenced.any { it.startsWith(hashLabel) }, id.referenced.toString())
+        val c2pa = r.signatures.last()
+        assertEquals(Check.PASS, c2pa.integrity, "$name: ${c2pa.problems}")
     }
 
     @Test
@@ -219,7 +238,7 @@ class C2paSigningTest {
             assertEquals(listOf("c2pa.created"), m.actions.map { it.action })
             assertEquals("digitalCapture", m.actions.first().digitalSourceType?.substringAfterLast('/'))
             assertTrue(m.training.isNotEmpty(), "cawg.training-mining is read")
-            assertEquals("ES256", r.signatures.single().algorithm)
+            assertEquals("ES256", r.signatures.last().algorithm)
         }
 
         val asset = "這是一份要附 C2PA 外部清單的文字檔。\n".encodeToByteArray()
@@ -432,4 +451,241 @@ class C2paSigningTest {
         assertTrue("cawg.ica.signer_payload.mismatch" in payload.codes(), payload.codes().toString())
         assertEquals(Check.FAIL, payload.signature)
     }
+
+    // ---------------------------------------------------------------- other containers (C2PA 2.2 Appendix A)
+
+    private fun fixture(name: String): ByteArray = javaClass.getResource("/c2pa/containers/$name")!!.readBytes()
+
+    private fun be32(v: Int) = byteArrayOf((v ushr 24).toByte(), (v ushr 16).toByte(), (v ushr 8).toByte(), v.toByte())
+    private fun le32(v: Int) = byteArrayOf(v.toByte(), (v ushr 8).toByte(), (v ushr 16).toByte(), (v ushr 24).toByte())
+    private fun bmffBox(type: String, body: ByteArray) = be32(8 + body.size) + type.encodeToByteArray() + body
+    private fun riffChunk(id: String, body: ByteArray) = id.encodeToByteArray() + le32(body.size) + body + if (body.size % 2 == 1) byteArrayOf(0) else ByteArray(0)
+
+    /** Media data that is easy to find again in a signed file. */
+    private fun payload(n: Int) = ByteArray(n) { ((it * 31 + 7) % 251).toByte() }
+
+    /** An MP4 whose sample table points into mdat, so moving mdat must move the chunk offset. */
+    private fun mp4(): ByteArray {
+        val ftyp = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0x200) + "isommp41".encodeToByteArray())
+        fun moov(offset: Int) = bmffBox("moov", bmffBox("trak", bmffBox("mdia", bmffBox("minf", bmffBox("stbl",
+            bmffBox("stco", be32(0) + be32(1) + be32(offset)))))))
+        val size = ftyp.size + moov(0).size
+        return ftyp + moov(size + 8) + bmffBox("mdat", payload(4096))
+    }
+
+    private fun stcoTarget(b: ByteArray): Int {
+        val at = indexOf(b, "stco".encodeToByteArray())
+        return java.nio.ByteBuffer.wrap(b, at + 12, 4).int
+    }
+
+    private fun wav(): ByteArray {
+        val pcm = payload(8000)
+        val out = ByteArrayOutputStream()
+        AudioSystem.write(AudioInputStream(ByteArrayInputStream(pcm), AudioFormat(8000f, 16, 1, true, false), pcm.size / 2L), AudioFileFormat.Type.WAVE, out)
+        return out.toByteArray()
+    }
+
+    private fun avi(): ByteArray {
+        val hdrl = "hdrl".encodeToByteArray() + riffChunk("avih", ByteArray(56))
+        val movi = "movi".encodeToByteArray() + riffChunk("00dc", payload(3001))
+        val body = "AVI ".encodeToByteArray() + riffChunk("LIST", hdrl) + riffChunk("LIST", movi) + riffChunk("idx1", ByteArray(16))
+        return "RIFF".encodeToByteArray() + le32(body.size) + body
+    }
+
+    /** Three MPEG-1 Layer III frames (128 kbit/s, 44.1 kHz). */
+    private fun mp3(): ByteArray = (0 until 3).fold(ByteArray(0)) { a, i ->
+        a + byteArrayOf(0xFF.toByte(), 0xFB.toByte(), 0x90.toByte(), 0x00) + payload(413).also { it[0] = i.toByte() }
+    }
+
+    private fun flac(): ByteArray = "fLaC".encodeToByteArray() + byteArrayOf(0x80.toByte(), 0, 0, 34) + payload(34) +
+        byteArrayOf(0xFF.toByte(), 0xF8.toByte()) + payload(2000)
+
+    private fun jxlCodestream(): ByteArray = byteArrayOf(0xFF.toByte(), 0x0A) + payload(3000)
+
+    private fun jxlContainer(): ByteArray = be32(12) + "JXL ".encodeToByteArray() + byteArrayOf(0x0D, 0x0A, 0x87.toByte(), 0x0A) +
+        bmffBox("ftyp", "jxl ".encodeToByteArray() + be32(0) + "jxl ".encodeToByteArray()) + bmffBox("jxlc", jxlCodestream())
+
+    private val svg = ("<?xml version=\"1.0\" encoding=\"UTF-8\"?>\n<svg xmlns=\"http://www.w3.org/2000/svg\" width=\"16\" height=\"16\">" +
+        "<title>測試向量圖</title><rect width=\"16\" height=\"16\" fill=\"#c00\"/>" + "<!-- padding -->".repeat(64) + "</svg>\n").encodeToByteArray()
+
+    private fun tiff(pages: Int): ByteArray {
+        val writer = ImageIO.getImageWritersByFormatName("tiff").next()
+        val out = ByteArrayOutputStream()
+        ImageIO.createImageOutputStream(out).use { ios ->
+            writer.output = ios
+            if (pages == 1) writer.write(BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB).also { fill(it) })
+            else {
+                writer.prepareWriteSequence(null)
+                repeat(pages) { writer.writeToSequence(IIOImage(BufferedImage(16, 16, BufferedImage.TYPE_INT_RGB).also { fill(it) }, null, null), null) }
+                writer.endWriteSequence()
+            }
+        }
+        writer.dispose()
+        return out.toByteArray()
+    }
+
+    private fun fill(img: BufferedImage) { for (x in 0 until 16) for (y in 0 until 16) img.setRGB(x, y, (x * 16) shl 16 or (y * 16 shl 8) or 0x80) }
+
+    /** A ZIP with a stored entry, a deflated one written with a data descriptor, a directory and a non-ASCII name. */
+    private fun zip(): ByteArray {
+        val out = ByteArrayOutputStream()
+        ZipOutputStream(out).use { z ->
+            val text = "這是封存檔裡的文字。\n".repeat(40).encodeToByteArray()
+            z.putNextEntry(ZipEntry("docs/"))
+            z.closeEntry()
+            z.putNextEntry(ZipEntry("docs/說明.txt"))
+            z.write(text)
+            z.closeEntry()
+            val raw = payload(2000)
+            z.putNextEntry(ZipEntry("data.bin").apply { method = ZipEntry.STORED; size = raw.size.toLong(); compressedSize = raw.size.toLong(); crc = CRC32().also { it.update(raw) }.value })
+            z.write(raw)
+            z.closeEntry()
+        }
+        return out.toByteArray()
+    }
+
+    private fun indexOf(b: ByteArray, x: ByteArray, from: Int = 0): Int {
+        outer@ for (i in from..b.size - x.size) { for (j in x.indices) if (b[i + j] != x[j]) continue@outer; return i }
+        return -1
+    }
+
+    /** [signed] with one byte flipped inside content that [original] had in the middle (not the manifest). */
+    private fun tamper(original: ByteArray, signed: ByteArray): ByteArray {
+        val mid = original.size / 2
+        val probe = original.copyOfRange(mid, mid + 16)
+        val at = indexOf(signed, probe)
+        assertTrue(at >= 0, "the original content is kept")
+        return signed.copyOf().also { it[at + 8] = (it[at + 8].toInt() xor 0x01).toByte() }
+    }
+
+    private class Case(val name: String, val bytes: ByteArray, val format: C2paFormat, val match: String, val label: String, val binding: C2paBinding? = null)
+
+    private fun cases() = listOf(
+        Case("gif", picture("gif"), C2paFormat.GIF, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("tif", tiff(1), C2paFormat.TIFF, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("pages.tif", tiff(3), C2paFormat.TIFF, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("wav", wav(), C2paFormat.WAV, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("avi", avi(), C2paFormat.AVI, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("mp3", mp3(), C2paFormat.MP3, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("flac", flac(), C2paFormat.FLAC, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("svg", svg, C2paFormat.SVG, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("jxl", jxlCodestream(), C2paFormat.JXL, "assertion.boxesHash.match", "c2pa.hash.boxes"),
+        Case("box.jxl", jxlContainer(), C2paFormat.JXL, "assertion.boxesHash.match", "c2pa.hash.boxes"),
+        Case("data.jxl", jxlContainer(), C2paFormat.JXL, "assertion.dataHash.match", "c2pa.hash.data", C2paBinding.DATA),
+        Case("mp4", mp4(), C2paFormat.BMFF, "assertion.bmffHash.match", "c2pa.hash.bmff"),
+        Case("avif", fixture("sample1.avif"), C2paFormat.BMFF, "assertion.bmffHash.match", "c2pa.hash.bmff"),
+        Case("pdf", fixture("basic.pdf"), C2paFormat.PDF, "assertion.dataHash.match", "c2pa.hash.data"),
+        Case("zip", zip(), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
+        Case("docx", fixture("sample1.docx"), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
+        Case("odt", fixture("sample1.odt"), C2paFormat.ZIP, "assertion.collectionHash.match", "c2pa.hash.collection"),
+        Case("box.jpg", picture("jpg"), C2paFormat.JPEG, "assertion.boxesHash.match", "c2pa.hash.boxes", C2paBinding.BOXES),
+        Case("box.png", picture("png"), C2paFormat.PNG, "assertion.boxesHash.match", "c2pa.hash.boxes", C2paBinding.BOXES),
+        Case("box.gif", picture("gif"), C2paFormat.GIF, "assertion.boxesHash.match", "c2pa.hash.boxes", C2paBinding.BOXES),
+    )
+
+    @Test
+    fun everyContainerRoundTrips() = runBlocking<Unit> {
+        trustRoot()
+        for (c in cases()) {
+            assertEquals(c.format, C2paContainers.detect(c.bytes), c.name)
+            val signed = sign(c.bytes, request("測試檔.${c.name}", C2paAuthoring.Opened, binding = c.binding))
+            assertFalse(signed.sidecar, "${c.name}: ${signed.sidecarReason}")
+            assertEquals(c.format.title, signed.container, c.name)
+            assertEquals(c.format, C2paContainers.detect(signed.bytes), "${c.name} keeps its format")
+            save("signed-c2pa.${c.name}", signed.bytes)
+            val r = inspect(signed.bytes, "signed.${c.name}")
+            assertEquals(c.format.title, r.c2pa?.container, c.name)
+            assertSignedAndTrusted(r, c.name, c.match, c.label)
+            assertEquals(listOf("c2pa.opened"), r.active().actions.map { it.action }, c.name)
+
+            // Signing again keeps the first manifest as the parent ingredient and replaces the store.
+            val again = sign(signed.bytes, request("測試檔.${c.name}", C2paAuthoring.Opened, binding = c.binding))
+            val r2 = inspect(again.bytes, "again.${c.name}")
+            assertEquals(2, r2.c2pa!!.manifests.size, c.name)
+            assertSignedAndTrusted(r2, "${c.name} again", c.match, c.label)
+
+            val bad = inspect(tamper(c.bytes, signed.bytes), "tampered.${c.name}")
+            assertTrue(bad.codes().any { it.endsWith(".mismatch") }, "${c.name}: ${bad.codes()}")
+        }
+    }
+
+    @Test
+    fun bmffOffsetsFollowTheMovedMediaData() = runBlocking<Unit> {
+        trustRoot()
+        val original = mp4()
+        val target = stcoTarget(original)
+        val expected = original.copyOfRange(target, target + 32)
+        val signed = sign(original, request("影片.mp4", C2paAuthoring.Opened)).bytes
+        val moved = stcoTarget(signed)
+        assertTrue(moved > target, "the store goes before mdat")
+        assertTrue(signed.copyOfRange(moved, moved + 32).contentEquals(expected), "stco points at the same samples")
+        val stripped = C2paContainers.strip(signed, C2paFormat.BMFF)
+        assertTrue(stripped.contentEquals(original), "removing the store restores the file")
+    }
+
+    @Test
+    fun strippingRestoresTheOriginalFile() = runBlocking<Unit> {
+        trustRoot()
+        // PDF keeps its incremental update, TIFF the rewritten IFD, JPEG XL its container, GIF its version 89a, SVG
+        // the c2pa namespace, an ID3 tag stays and ZIP the META-INF directory; the other containers come back as they were.
+        for (c in cases().filter { it.format !in setOf(C2paFormat.PDF, C2paFormat.TIFF, C2paFormat.JXL, C2paFormat.GIF, C2paFormat.MP3, C2paFormat.ZIP, C2paFormat.SVG) }) {
+            val signed = sign(c.bytes, request("測試檔.${c.name}", C2paAuthoring.Opened, binding = c.binding)).bytes
+            assertTrue(C2paContainers.strip(signed, c.format).contentEquals(c.bytes), c.name)
+        }
+    }
+
+    @Test
+    fun pdfThatCannotTakeAnUpdateGetsASidecar() = runBlocking<Unit> {
+        trustRoot()
+        val pdf = fixture("basic.pdf")
+        val text = pdf.decodeToString()
+        // A catalog with /Perms /DocMDP: an approval signature would be allowed, a C2PA update would break the certification.
+        val certified = text.replaceFirst("/Type /Catalog", "/Type /Catalog /Perms << /DocMDP 99 0 R >>").encodeToByteArray()
+        if (!certified.contentEquals(pdf)) {
+            val out = sign(certified, request("認證.pdf", C2paAuthoring.Opened))
+            assertTrue(out.sidecar)
+            assertNotNull(out.sidecarReason)
+        }
+    }
+
+    @Test
+    fun c2paRsSamplesOfOtherBindings() = runBlocking<Unit> {
+        // The box hash c2pa-rs computed for boxhash.jpg (boxhash.json): the same box names and the same hashes.
+        val jpeg = fixture("boxhash.jpg")
+        val boxes = C2paBoxHash.boxes(jpeg, C2paFormat.JPEG)
+        val expected = Json.parseToJsonElement(fixture("boxhash.json").decodeToString()).jsonObject["boxes"]!!.jsonArray
+        assertEquals(expected.flatMap { e -> e.jsonObject["names"]!!.jsonArray.map { it.jsonPrimitive.content } }, boxes.map { it.name })
+        var i = 0
+        for (e in expected) {
+            val names = e.jsonObject["names"]!!.jsonArray
+            val group = boxes.subList(i, i + names.size)
+            i += names.size
+            if (names.size == 1 && names[0].jsonPrimitive.content == C2paBoxHash.C2PA) continue
+            val hash = e.jsonObject["hash"]!!.jsonArray.map { it.jsonPrimitive.int.toByte() }.toByteArray()
+            val data = jpeg.copyOfRange(group.first().start.toInt(), group.last().end.toInt())
+            assertTrue(java.security.MessageDigest.getInstance("SHA-256").digest(data).contentEquals(hash), names.toString())
+        }
+        val dash = inspect(fixture("dashinit.mp4"), "dashinit.mp4")
+        assertTrue(dash.codes().none { it.endsWith(".mismatch") || it.endsWith(".malformed") }, dash.codes().toString())
+        assertTrue("assertion.bmffHash.match" in dash.codes(), dash.codes().toString())
+        assertTrue("claimSignature.validated" in dash.codes(), dash.codes().toString())
+    }
+
+    /**
+     * The larger signed samples of c2pa-rs (sdk/tests/fixtures), which are not kept in this repository: run with
+     * DIW_C2PA_FIXTURES set to that folder.
+     */
+    @Test
+    fun c2paRsLargeSamples() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_C2PA_FIXTURES")?.let(::File)?.takeIf { it.isDirectory } ?: return@runBlocking
+        for (name in listOf("video1.mp4", "legacy.mp4", "express-signed.pdf", "C.jpg", "CA.jpg", "exp-test1.png")) {
+            val f = dir.resolve(name).takeIf { it.isFile } ?: continue
+            val r = inspect(f.readBytes(), name)
+            val codes = r.codes()
+            println("$name: ${r.c2pa?.container} $codes")
+            assertTrue(codes.none { it.endsWith(".mismatch") || it.endsWith(".malformed") || it == "assertion.missing" }, "$name: $codes")
+            assertTrue(codes.any { it.endsWith("Hash.match") }, "$name: $codes")
+        }
+    }
 }
+

@@ -68,17 +68,27 @@ data class C2paSignRequest(
     val time: Instant,
     /** The validation results of the file's active manifest (for the ingredient's validationResults). */
     val previousResults: List<C2paStatus> = emptyList(),
+    /**
+     * The hard binding to use where the format allows a choice: [C2paBinding.BOXES] for JPEG, PNG and GIF (JPEG XL
+     * uses it by default), [C2paBinding.DATA] for JPEG XL. Null takes the format's default ([C2paFormat.binding]).
+     */
+    val binding: C2paBinding? = null,
 )
 
-/** A signed result: the file with the manifest embedded, or a sidecar manifest store for files that cannot hold one. */
-class C2paSigned(val bytes: ByteArray, val sidecar: Boolean, val manifestLabel: String, val container: String)
+/**
+ * A signed result: the file with the manifest embedded, or a sidecar manifest store for files that cannot hold one.
+ * [sidecarReason] says why a file of a supported container got a sidecar (an encrypted or certified PDF...).
+ */
+class C2paSigned(val bytes: ByteArray, val sidecar: Boolean, val manifestLabel: String, val container: String, val sidecarReason: String? = null)
 
 /**
- * Writes C2PA 2.x manifests (claim v2, ES256 or PS256 COSE claim signature with an optional sigTst2 time stamp) with
- * a data hash hard binding, into JPEG (APP11 JUMBF segments), PNG (caBX), WebP (C2PA chunk) or as a sidecar store,
- * and adds a CAWG identity assertion 1.3 (cawg.x509.cose) signed by a person's X.509 key. Space for the identity
- * assertion and the claim signature is reserved first and filled with zero padding (pad1/pad2, the COSE pad header),
- * so the data hash computed over the final layout stays valid (CAWG 1.3 section 6.3, C2PA 10.4).
+ * Writes C2PA 2.x manifests (claim v2, ES256 or PS256 COSE claim signature with an optional sigTst2 time stamp) into
+ * every container of [C2paContainers] (JPEG, PNG, WebP, WAV, AVI, GIF, TIFF, DNG, SVG, MP3, FLAC, JPEG XL, BMFF, PDF,
+ * ZIP) or as a sidecar store, with the hard binding of the format: a data hash, a box hash (JPEG XL, or on request
+ * JPEG, PNG and GIF), a v3 BMFF hash or a ZIP collection hash. It adds a CAWG identity assertion 1.3
+ * (cawg.x509.cose) signed by a person's X.509 key. Space for the identity assertion and the claim signature is
+ * reserved first and filled with zero padding (pad1/pad2, the COSE pad header), so the binding computed over the
+ * final layout stays valid (CAWG 1.3 section 6.3, C2PA 10.4).
  */
 object C2paWriter {
     private const val STORE = "6332706100110010800000aa00389b71"
@@ -93,22 +103,17 @@ object C2paWriter {
     const val IDENTITY_LABEL = "cawg.identity"
     const val X509_SIG_TYPE = "cawg.x509.cose"
 
-    enum class Kind(val mediaType: String, val title: String) {
-        JPEG("image/jpeg", "JPEG APP11"), PNG("image/png", "PNG caBX"), WEBP("image/webp", "WebP C2PA"), SIDECAR("application/c2pa", "sidecar")
-    }
-
-    /** Where a manifest for [bytes] goes: embedded in JPEG, PNG and WebP, a sidecar store for anything else. */
-    fun kindOf(bytes: ByteArray): Kind = when {
-        bytes.size > 4 && bytes[0] == 0xFF.toByte() && bytes[1] == 0xD8.toByte() -> Kind.JPEG
-        bytes.size > 8 && bytes[0] == 0x89.toByte() && ascii(bytes, 1, 3) == "PNG" -> Kind.PNG
-        bytes.size > 20 && ascii(bytes, 0, 4) == "RIFF" && ascii(bytes, 8, 4) == "WEBP" -> Kind.WEBP
-        else -> Kind.SIDECAR
+    /** Where a manifest for [bytes] goes: its container, or a sidecar store when it has none or cannot take one. */
+    fun formatOf(bytes: ByteArray): C2paFormat {
+        val f = C2paContainers.detect(bytes) ?: return C2paFormat.SIDECAR
+        return if (C2paContainers.cannotEmbed(bytes, f) == null) f else C2paFormat.SIDECAR
     }
 
     /**
      * Signs [asset]: [claimSigner] signs the claim (the claim generator's signature), [identitySigner] the CAWG
      * identity assertion when [C2paSignRequest.identity] is set (the same key may sign both). [timestamper] adds a
      * v2 time stamp (sigTst2) to the claim signature, which CAWG validators also use for the identity assertion.
+     * [mediaType] is the asset's type for the claim and the ingredient (the detected one when null or generic).
      */
     suspend fun sign(
         asset: ByteArray,
@@ -118,41 +123,71 @@ object C2paWriter {
         timestamper: Timestamper?,
         mediaType: String? = null,
     ): C2paSigned {
-        val kind = kindOf(asset)
-        val existing = if (kind == Kind.SIDECAR) null else runCatching { C2paManifests.read(asset) }.getOrNull()
-        val base = if (kind == Kind.SIDECAR) asset else strip(asset, kind)
+        val detected = C2paContainers.detect(asset)
+        val reason = detected?.let { C2paContainers.cannotEmbed(asset, it) }
+        val format = if (detected == null || reason != null) C2paFormat.SIDECAR else detected
+        val sidecar = format == C2paFormat.SIDECAR
+        val binding = when {
+            sidecar -> C2paBinding.DATA
+            request.binding == C2paBinding.BOXES && C2paBoxHash.supports(format) -> C2paBinding.BOXES
+            request.binding == C2paBinding.DATA && format.binding == C2paBinding.BOXES -> C2paBinding.DATA
+            else -> format.binding
+        }
+        val existing = if (sidecar) null else runCatching { C2paManifests.read(asset) }.getOrNull()
+        val base = if (sidecar) asset else C2paContainers.strip(asset, format)
         val oldManifests = existing?.root?.children.orEmpty().filter { m -> existing!!.manifests.any { it.box === m } }.map { it.rawBytes }
         val parent = existing?.active
         val label = "urn:c2pa:" + uuid()
         val claimKey = CoseKey(claimSigner)
         val idKey = if (request.identity) CoseKey(identitySigner ?: claimSigner) else null
-        val format = mediaType ?: if (kind == Kind.SIDECAR) "application/octet-stream" else kind.mediaType
+        val format0 = mediaType?.takeUnless { it.isBlank() || it == "application/octet-stream" }
+            ?: detected?.let { C2paContainers.mediaType(asset, it) } ?: "application/octet-stream"
 
         // Assertions that do not depend on the layout.
-        val ingredientBox = if (request.authoring is C2paAuthoring.Opened) assertionBox("c2pa.ingredient.v3", ingredient(request, format, parent)) else null
+        val ingredientBox = if (request.authoring is C2paAuthoring.Opened) assertionBox("c2pa.ingredient.v3", ingredient(request, format0, parent)) else null
         val actionsBox = assertionBox("c2pa.actions.v2", actions(request, ingredientBox))
         val trainingBox = request.allowTraining?.let { assertionBox("cawg.training-mining", training(it)) }
         val fixed = listOfNotNull(actionsBox, ingredientBox, trainingBox)
 
-        // Placeholders of the final sizes: the data hash (pad absorbs the integer widths), the identity assertion and
-        // the claim signature (zero padding absorbs the actual signature sizes).
-        val placeholderHash = assertionBox("c2pa.hash.data", dataHash(kind, PLACEHOLDER_INT, PLACEHOLDER_INT, ByteArray(32), HASH_PAD))
+        // The hard binding assertion: its size does not depend on the store, so a placeholder of that size goes in
+        // first (the data hash's pad absorbs the widths of its integers).
+        val hashLabel = when (binding) {
+            C2paBinding.DATA -> "c2pa.hash.data"
+            C2paBinding.BOXES -> "c2pa.hash.boxes"
+            C2paBinding.BMFF -> "c2pa.hash.bmff.v3"
+            C2paBinding.COLLECTION -> "c2pa.hash.collection.data"
+        }
+        fun bindingCbor(layout: C2paLayout, zero: Boolean): ByteArray = when (binding) {
+            C2paBinding.DATA -> {
+                val r = layout.region
+                val digest = when {
+                    zero -> ByteArray(32)
+                    sidecar -> DocCrypto.digest("SHA-256", base)
+                    else -> DocCrypto.digest("SHA-256", C2paBindings.without(layout.bytes, listOf(r)))
+                }
+                dataHash(sidecar, r.start, r.length, digest, padFor(sidecar, r.start, r.length))
+            }
+            C2paBinding.BOXES -> C2paBoxHash.assertionCbor(layout.bytes, format, zero = zero)
+            C2paBinding.BMFF -> C2paBmff.assertionCbor(if (zero) ByteArray(32) else C2paBmff.standardHash(layout.bytes))
+            C2paBinding.COLLECTION -> C2paZip.assertionCbor(layout.bytes, zero = zero)
+        }
+        fun embed(store: ByteArray): C2paLayout = try {
+            C2paContainers.embed(base, format, store)
+        } catch (e: C2paContainerException) {
+            throw SigningException(ct("core_c2pa_embed_failed", format.title, e.message ?: ""), e)
+        }
+        val placeholderHash = if (binding == C2paBinding.DATA) assertionBox(hashLabel, dataHash(sidecar, PLACEHOLDER_INT, PLACEHOLDER_INT, ByteArray(32), HASH_PAD))
+            else assertionBox(hashLabel, bindingCbor(embed(store(oldManifests, label, fixed, claim(request, label, fixed, emptyList()), ByteArray(0))), zero = true))
         val idTarget = idKey?.let { identityPlaceholderSize(request, fixed, placeholderHash, it) }
         val idPlaceholder = idTarget?.let { assertionBoxOfSize(IDENTITY_LABEL, it) }
         val sigTarget = claimKey.chainSize + claimKey.maxSignature + COSE_OVERHEAD + if (timestamper != null) TIMESTAMP_RESERVE else 0
         val created0 = fixed + placeholderHash
-        val claim0 = claim(request, label, created0, listOfNotNull(idPlaceholder))
-        val store0 = store(oldManifests, label, created0 + listOfNotNull(idPlaceholder), claim0, ByteArray(sigTarget))
-        val (_, start, length) = embed(base, kind, store0)
+        val store0 = store(oldManifests, label, created0 + listOfNotNull(idPlaceholder), claim(request, label, created0, listOfNotNull(idPlaceholder)), ByteArray(sigTarget))
+        val layout0 = embed(store0)
 
-        // The data hash over the final layout.
-        val hashBox0 = assertionBox("c2pa.hash.data", dataHash(kind, start, length, ByteArray(32), padFor(kind, start, length)))
-        check(hashBox0.size == placeholderHash.size)
-        val laidOut = embed(base, kind, store(oldManifests, label, fixed + hashBox0 + listOfNotNull(idPlaceholder), claim(request, label, fixed + hashBox0, listOfNotNull(idPlaceholder)), ByteArray(sigTarget)))
-        check(laidOut.second == start && laidOut.third == length)
-        val digest = if (kind == Kind.SIDECAR) DocCrypto.digest("SHA-256", base) else hashExcluding(laidOut.first, start, length)
-        val hashBox = assertionBox("c2pa.hash.data", dataHash(kind, start, length, digest, padFor(kind, start, length)))
-        check(hashBox.size == placeholderHash.size)
+        // The binding over the final layout.
+        val hashBox = assertionBox(hashLabel, bindingCbor(layout0, zero = false))
+        if (hashBox.size != placeholderHash.size) throw SigningException(ct("core_c2pa_reserve_exceeded"))
         val created = fixed + hashBox
 
         // The CAWG identity assertion over the hard binding and the other assertions of this manifest.
@@ -167,9 +202,12 @@ object C2paWriter {
         val claimBytes = claim(request, label, created, listOfNotNull(idBox))
         val signatureCbor = coseSign1(claimKey, claimBytes, timestamper, sigTarget)
         val store = store(oldManifests, label, created + listOfNotNull(idBox), claimBytes, signatureCbor)
-        val (out, s2, l2) = embed(base, kind, store)
-        check(s2 == start && l2 == length) { "C2PA layout changed while signing" }
-        return C2paSigned(out, kind == Kind.SIDECAR, label, kind.title)
+        val out = embed(store)
+        check(out.region == layout0.region && out.bytes.size == layout0.bytes.size) { "C2PA layout changed while signing" }
+        if (binding == C2paBinding.DATA && !sidecar) {
+            check(C2paBindings.without(out.bytes, listOf(out.region)).contentEquals(C2paBindings.without(layout0.bytes, listOf(layout0.region)))) { "C2PA layout changed while signing" }
+        }
+        return C2paSigned(out.bytes, sidecar, label, format.title, reason)
     }
 
     // ---------------------------------------------------------------- COSE
@@ -267,11 +305,12 @@ object C2paWriter {
     private const val HASH_PAD = 8
 
     /** Pad of the data hash: the placeholder's 8 bytes plus what the real integers save against 0xFFFFFFFF. */
-    private fun padFor(kind: Kind, start: Long, length: Long): Int =
-        if (kind == Kind.SIDECAR) HASH_PAD else HASH_PAD + 2 * C2paCbor.int(PLACEHOLDER_INT).size - C2paCbor.int(start).size - C2paCbor.int(length).size
+    private fun padFor(sidecar: Boolean, start: Long, length: Long): Int =
+        if (sidecar) HASH_PAD else HASH_PAD + 2 * C2paCbor.int(PLACEHOLDER_INT).size - C2paCbor.int(start).size - C2paCbor.int(length).size
 
-    private fun dataHash(kind: Kind, start: Long, length: Long, hash: ByteArray, pad: Int): ByteArray {
-        val exclusions = if (kind == Kind.SIDECAR) C2paCbor.array(emptyList())
+    private fun dataHash(sidecar: Boolean, start: Long, length: Long, hash: ByteArray, pad: Int): ByteArray {
+        if (!sidecar && (start > PLACEHOLDER_INT || length > PLACEHOLDER_INT)) throw SigningException(ct("core_c2pa_reserve_exceeded"))
+        val exclusions = if (sidecar) C2paCbor.array(emptyList())
             else C2paCbor.array(listOf(C2paCbor.map(listOf("start" to C2paCbor.int(start), "length" to C2paCbor.int(length)))))
         return C2paCbor.map(listOf(
             "exclusions" to exclusions,
@@ -427,198 +466,8 @@ object C2paWriter {
             superbox(SIGNATURE, "c2pa.signature", listOf(box("cbor", signature))),
         )))
 
-    // ---------------------------------------------------------------- containers
-
-    /** The file with [store] embedded, the start of the bytes the data hash excludes and their length. */
-    private fun embed(base: ByteArray, kind: Kind, store: ByteArray): Triple<ByteArray, Long, Long> = when (kind) {
-        Kind.SIDECAR -> Triple(store, 0L, 0L)
-        Kind.JPEG -> {
-            val at = jpegInsertAt(base)
-            val segments = jpegSegments(store, jpegInstance(base))
-            Triple(base.copyOfRange(0, at) + segments + base.copyOfRange(at, base.size), at.toLong(), segments.size.toLong())
-        }
-        Kind.PNG -> {
-            val at = 8 + 12 + u32(base, 8).toInt()
-            val chunk = pngChunk("caBX", store)
-            Triple(base.copyOfRange(0, at) + chunk + base.copyOfRange(at, base.size), at.toLong(), chunk.size.toLong())
-        }
-        Kind.WEBP -> {
-            val extended = webpExtended(base)
-            val chunk = riffChunk("C2PA", store)
-            val body = extended + chunk
-            val riffSize = body.size - 8
-            for (k in 0 until 4) body[4 + k] = (riffSize ushr (8 * k)).toByte()
-            // The exclusion is the chunk header and data without its pad byte, the manifest location c2pa-rs
-            // validators require the exclusion to equal.
-            Triple(body, extended.size.toLong(), (8 + store.size).toLong())
-        }
-    }
-
-    private fun hashExcluding(out: ByteArray, start: Long, length: Long): ByteArray =
-        DocCrypto.digest("SHA-256", out.copyOfRange(0, start.toInt()) + out.copyOfRange((start + length).toInt(), out.size))
-
     /** The asset with any C2PA manifest store it carries removed (the store's manifests are kept by the caller). */
-    fun strip(b: ByteArray, kind: Kind = kindOf(b)): ByteArray = when (kind) {
-        Kind.JPEG -> {
-            val drop = jpegStoreSegments(b)
-            if (drop.isEmpty()) b else {
-                val parts = ArrayList<ByteArray>()
-                var pos = 0
-                for (r in drop) { parts.add(b.copyOfRange(pos, r.first)); pos = r.last + 1 }
-                parts.add(b.copyOfRange(pos, b.size))
-                C2paCbor.concat(parts)
-            }
-        }
-        Kind.PNG -> {
-            val parts = ArrayList<ByteArray>()
-            parts.add(b.copyOfRange(0, 8))
-            var i = 8
-            while (i + 12 <= b.size) {
-                val len = u32(b, i).toInt()
-                if (len < 0 || i + 12 + len > b.size) { parts.add(b.copyOfRange(i, b.size)); i = b.size; break }
-                if (ascii(b, i + 4, 4) != "caBX") parts.add(b.copyOfRange(i, i + 12 + len))
-                i += 12 + len
-            }
-            if (i < b.size) parts.add(b.copyOfRange(i, b.size))
-            C2paCbor.concat(parts)
-        }
-        Kind.WEBP -> {
-            val parts = ArrayList<ByteArray>()
-            parts.add(b.copyOfRange(0, 12))
-            var i = 12
-            while (i + 8 <= b.size) {
-                val len = le32(b, i + 4)
-                val end = minOf(b.size, i + 8 + len + (len and 1))
-                if (ascii(b, i, 4) != "C2PA") parts.add(b.copyOfRange(i, end))
-                i = end
-            }
-            C2paCbor.concat(parts)
-        }
-        Kind.SIDECAR -> b
-    }
-
-    /** Byte ranges of the APP11 segments of the C2PA JUMBF box (all JPEG XT instances whose box is the C2PA store). */
-    private fun jpegStoreSegments(b: ByteArray): List<IntRange> {
-        val byInstance = LinkedHashMap<Int, MutableList<IntRange>>()
-        val isStore = HashMap<Int, Boolean>()
-        var i = 2
-        while (i + 4 <= b.size && b[i] == 0xFF.toByte()) {
-            val marker = b[i + 1].toInt() and 0xFF
-            if (marker == 0xD8 || marker == 0x01 || marker in 0xD0..0xD7) { i += 2; continue }
-            if (marker == 0xDA || marker == 0xD9) break
-            val len = u16(b, i + 2)
-            if (len < 2 || i + 2 + len > b.size) break
-            if (marker == 0xEB && len > 16 && ascii(b, i + 4, 2) == "JP") {
-                val instance = u16(b, i + 6)
-                byInstance.getOrPut(instance) { ArrayList() }.add(i until i + 2 + len)
-                if (instance !in isStore) {
-                    // First segment: LBox, TBox "jumb", then the jumd box with the store UUID.
-                    val body = i + 12
-                    isStore[instance] = ascii(b, body + 4, 4) == "jumb" && body + 32 <= b.size &&
-                        DocCryptoUtil.hex(b.copyOfRange(body + 16, body + 32)) == STORE
-                }
-            }
-            i += 2 + len
-        }
-        return byInstance.filter { isStore[it.key] == true }.values.flatten().sortedBy { it.first }
-    }
-
-    /** After SOI and the leading APP0 (JFIF) and APP1 (Exif, XMP) segments. */
-    private fun jpegInsertAt(b: ByteArray): Int {
-        var i = 2
-        while (i + 4 <= b.size && b[i] == 0xFF.toByte()) {
-            val marker = b[i + 1].toInt() and 0xFF
-            if (marker != 0xE0 && marker != 0xE1) break
-            i += 2 + u16(b, i + 2)
-        }
-        return i
-    }
-
-    /** A JPEG XT box instance number not used by another APP11 box of the file. */
-    private fun jpegInstance(b: ByteArray): Int {
-        val used = HashSet<Int>()
-        var i = 2
-        while (i + 4 <= b.size && b[i] == 0xFF.toByte()) {
-            val marker = b[i + 1].toInt() and 0xFF
-            if (marker == 0xDA || marker == 0xD9) break
-            val len = u16(b, i + 2)
-            if (marker == 0xEB && len > 16 && ascii(b, i + 4, 2) == "JP") used.add(u16(b, i + 6))
-            i += 2 + len
-        }
-        return (1..0xFFFF).first { it !in used }
-    }
-
-    /**
-     * APP11 segments of a JPEG XT box (ISO/IEC 18477-3): CI "JP", the box instance, a sequence number from 1, then the
-     * box; later segments repeat the box's LBox and TBox before the next part of its content.
-     */
-    private fun jpegSegments(box: ByteArray, instance: Int): ByteArray {
-        val parts = ArrayList<ByteArray>()
-        var pos = 0
-        var seq = 1
-        val head = box.copyOfRange(0, 8)
-        while (pos < box.size) {
-            val data = if (seq == 1) {
-                val n = minOf(JPEG_SEGMENT_DATA, box.size)
-                box.copyOfRange(0, n).also { pos = n }
-            } else {
-                val n = minOf(JPEG_SEGMENT_DATA - 8, box.size - pos)
-                (head + box.copyOfRange(pos, pos + n)).also { pos += n }
-            }
-            val lp = 2 + 2 + 2 + 4 + data.size
-            parts.add(byteArrayOf(0xFF.toByte(), 0xEB.toByte(), (lp ushr 8).toByte(), lp.toByte(), 0x4A, 0x50,
-                (instance ushr 8).toByte(), instance.toByte(), (seq ushr 24).toByte(), (seq ushr 16).toByte(), (seq ushr 8).toByte(), seq.toByte()) + data)
-            seq++
-        }
-        return C2paCbor.concat(parts)
-    }
-
-    private fun pngChunk(type: String, data: ByteArray): ByteArray {
-        val t = type.encodeToByteArray()
-        val crc = Crc32.of(t + data)
-        val n = data.size
-        return byteArrayOf((n ushr 24).toByte(), (n ushr 16).toByte(), (n ushr 8).toByte(), n.toByte()) + t + data +
-            byteArrayOf((crc ushr 24).toByte(), (crc ushr 16).toByte(), (crc ushr 8).toByte(), crc.toByte())
-    }
-
-    private fun riffChunk(type: String, data: ByteArray): ByteArray {
-        val n = data.size
-        val head = type.encodeToByteArray() + byteArrayOf(n.toByte(), (n ushr 8).toByte(), (n ushr 16).toByte(), (n ushr 24).toByte())
-        return head + data + if (n and 1 == 1) byteArrayOf(0) else ByteArray(0)
-    }
-
-    /**
-     * The WebP in the extended format (VP8X), which may carry other chunks: a simple lossy (VP8) or lossless (VP8L)
-     * file gets a VP8X chunk with its canvas size (and the alpha flag of VP8L) in front of the image chunk.
-     */
-    private fun webpExtended(b: ByteArray): ByteArray {
-        val first = ascii(b, 12, 4)
-        if (first == "VP8X") return b
-        val (w, h, alpha) = when (first) {
-            "VP8 " -> {
-                val d = 20
-                // Frame tag (3), start code 9d 01 2a, then 14-bit width and height (little-endian).
-                Triple((le16(b, d + 6) and 0x3FFF), (le16(b, d + 8) and 0x3FFF), false)
-            }
-            "VP8L" -> {
-                val d = 20
-                val bits = le32(b, d + 1)
-                Triple((bits and 0x3FFF) + 1, ((bits ushr 14) and 0x3FFF) + 1, (bits ushr 28) and 1 == 1)
-            }
-            else -> throw SigningException(ct("core_c2pa_webp_unsupported"))
-        }
-        val flags = if (alpha) 0x10 else 0
-        val vp8x = byteArrayOf(flags.toByte(), 0, 0, 0) + le24(w - 1) + le24(h - 1)
-        return b.copyOfRange(0, 12) + riffChunk("VP8X", vp8x) + b.copyOfRange(12, b.size)
-    }
-
-    private fun le24(v: Int) = byteArrayOf(v.toByte(), (v ushr 8).toByte(), (v ushr 16).toByte())
-    private fun le16(b: ByteArray, o: Int) = (b[o].toInt() and 0xFF) or ((b[o + 1].toInt() and 0xFF) shl 8)
-    private fun le32(b: ByteArray, o: Int) = le16(b, o) or (le16(b, o + 2) shl 16)
-    private fun u16(b: ByteArray, o: Int) = ((b[o].toInt() and 0xFF) shl 8) or (b[o + 1].toInt() and 0xFF)
-    private fun u32(b: ByteArray, o: Int): Long = (0 until 4).fold(0L) { acc, i -> (acc shl 8) or (b[o + i].toLong() and 0xFF) }
-    private fun ascii(b: ByteArray, off: Int, n: Int): String =
-        if (off + n > b.size) "" else CharArray(n) { (b[off + it].toInt() and 0xFF).toChar() }.concatToString()
+    fun strip(b: ByteArray): ByteArray = C2paContainers.detect(b)?.let { C2paContainers.strip(b, it) } ?: b
 
     private fun uuid(): String {
         val r = PlatformCrypto.randomBytes(16)

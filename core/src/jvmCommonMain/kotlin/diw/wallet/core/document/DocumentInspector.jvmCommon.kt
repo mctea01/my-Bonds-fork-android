@@ -3,6 +3,7 @@ package diw.wallet.core.document
 import diw.wallet.core.i18n.ct
 import diw.wallet.core.i18n.CoreText
 import diw.wallet.core.document.c2pa.AiProvenanceReader
+import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.c2pa.C2paStore
 import diw.wallet.core.document.image.ImageKind
@@ -53,7 +54,8 @@ actual object DocumentInspector {
         val base = DocumentReport(DocumentFormat.OTHER, DocCryptoUtil.hex(DocCrypto.digest("SHA-256", bytes)), bytes.size.toLong(), checkedAt = now.epochSeconds)
         val (data, decodedNote) = unwrapText(bytes)
         return try {
-            val report = when (val format = sniff(data, fileName)) {
+            val format = sniff(data, fileName)
+            val report = when (format) {
                 DocumentFormat.PDF -> pdf(data, base, checks, now)
                 DocumentFormat.CMS_SIGNED -> cms(data, detachedContent, fileName, base, checks, now)
                 DocumentFormat.CMS_ENVELOPED -> enveloped(data, fileName, base)
@@ -67,6 +69,10 @@ actual object DocumentInspector {
                 DocumentFormat.IMAGE -> contentCredentials(data, base.copy(format = DocumentFormat.IMAGE, notes = listOfNotNull(imageNote(data))), pki, checks, trust, now)
                 else -> if (C2paManifests.isSidecar(data)) contentCredentials(data, base.copy(format = format), pki, checks, trust, now, detachedContent)
                     else base.copy(format = format, notes = listOfNotNull(certificateNote(data)))
+            }.let { r ->
+                // Other containers of C2PA (PDF, ZIP and Office files, SVG, audio and video): the store next to the
+                // format's own findings, with the claim signature after the document's signatures.
+                if (r.c2pa == null && format != DocumentFormat.IMAGE && C2paContainers.detect(data) != null) contentCredentials(data, r, pki, checks, trust, now) else r
             }
             if (decodedNote != null) report.copy(notes = listOf(decodedNote) + report.notes) else report
         } catch (e: Exception) {
@@ -187,8 +193,9 @@ actual object DocumentInspector {
     }
 
     /**
-     * Adds the C2PA manifest store of a picture (or a sidecar .c2pa file), when it has one, and what the file declares
-     * about AI generation and watermarks (C2PA actions, soft bindings, XMP), which is read without detecting anything.
+     * Adds the C2PA manifest store of a file (any container of C2paContainers, or a sidecar .c2pa file), when it has
+     * one, and what the file declares about AI generation and watermarks (C2PA actions, soft bindings, XMP), which is
+     * read without detecting anything. A file of another format without a store is returned unchanged.
      */
     private suspend fun contentCredentials(
         b: ByteArray, report: DocumentReport, pki: PkiSupport, checks: CmsChecks, trust: DocumentTrustSource, now: Instant,
@@ -196,9 +203,10 @@ actual object DocumentInspector {
         sidecarAsset: ByteArray? = null,
     ): DocumentReport {
         val store = runCatching { C2paManifests.read(b) }.getOrNull()?.let { s ->
-            if (s.asset == null && sidecarAsset != null) C2paStore(s.container, s.root, s.manifests, sidecarAsset) else s
+            if (s.asset == null && sidecarAsset != null) C2paStore(s.container, s.root, s.manifests, sidecarAsset, C2paContainers.detect(sidecarAsset)) else s
         }
         if (store == null) {
+            if (report.format != DocumentFormat.IMAGE) return report
             val ai = if (report.format == DocumentFormat.IMAGE) runCatching { AiProvenanceReader.read(b, null) }.getOrNull() else null
             return report.copy(aiProvenance = ai)
         }
@@ -206,7 +214,7 @@ actual object DocumentInspector {
         val signed = info.manifests.filter { m -> m.statuses.any { it.code == "claimSignature.validated" } }.map { it.label }.toSet()
         val ai = runCatching { AiProvenanceReader.read(store.asset, store, signed) }.getOrNull()
         val note = ct("core_c2pa_present", info.manifests.size, store.container)
-        return report.copy(c2pa = info, aiProvenance = ai, signatures = listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
+        return report.copy(c2pa = info, aiProvenance = ai, signatures = report.signatures + listOfNotNull(signature), title = report.title ?: info.manifests.firstOrNull()?.title, notes = report.notes + note)
     }
 
     private fun certificateNote(b: ByteArray): String? =

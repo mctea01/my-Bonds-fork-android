@@ -326,7 +326,10 @@ Linux runtime linked by Zig
   identity claims aggregation samples of c2pa 0.92.0 (success.jpg,
   signature_mismatch.jpg, signer_payload_mismatch.jpg,
   adobe_connected_identities.jpg and connected_identities_did.json), in
-  test-servers/src/test/resources/c2pa.
+  test-servers/src/test/resources/c2pa, and from sdk/tests/fixtures at
+  revision adf4d6f (0.93.0-dev): boxhash.jpg, boxhash.json, dashinit.mp4,
+  sample1.avif, basic.pdf, sample1.docx and sample1.odt, in
+  test-servers/src/test/resources/c2pa/containers.
 - c2pa-python (MIT License or Apache License 2.0) was used outside the build:
   0.38 to generate the test files signed.jpg and signed.png, 0.39 to
   cross-check files signed by the wallet.

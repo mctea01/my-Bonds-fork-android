@@ -22,6 +22,7 @@ import diw.wallet.core.document.sign.CscService
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.c2pa.C2paAuthoring
+import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paSignRequest
 import diw.wallet.core.document.c2pa.C2paWriter
 import diw.wallet.core.document.c2pa.SignerPayloadOrder
@@ -1848,7 +1849,8 @@ class FilesModel(private val model: WalletModel) {
         add(SignForm.CADES_DETACHED)
         add(SignForm.CADES_ENVELOPING)
         add(SignForm.ASIC)
-        // Content credentials: embedded in JPEG, PNG and WebP, a sidecar manifest (.c2pa) for any other file.
+        // Content credentials: embedded in every container C2PA defines (pictures, audio, video, PDF, ZIP and Office
+        // files, SVG), a sidecar manifest (.c2pa) for any other file and for files that cannot take one.
         if (f.report?.encrypted != true) add(SignForm.C2PA)
         add(SignForm.OPENPGP_DETACHED)
     }
@@ -1950,14 +1952,18 @@ class FilesModel(private val model: WalletModel) {
                 else tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
             model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
             val lower = form != SignForm.OFD && form != SignForm.C2PA && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
-            model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
+            model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "") +
+                (c2paSidecarReason.takeIf { form == SignForm.C2PA }?.let { tr(Res.string.msg_c2pa_sidecar_reason, it) } ?: "")
             show(Screen.FileDetail(stored.id))
         }
     }
 
+    /** Why the last C2PA signing wrote a sidecar for a file whose format can hold a manifest (an encrypted PDF...). */
+    private var c2paSidecarReason: String? = null
+
     /**
-     * A C2PA manifest for [f]: embedded in a JPEG, PNG or WebP (named "-c2pa"), a sidecar store (.c2pa) for any other
-     * file. The chosen key signs the claim and, with [C2paChoice.identity], the CAWG identity assertion; with
+     * A C2PA manifest for [f]: embedded in its container (named "-c2pa" with the same extension), a sidecar store
+     * (.c2pa) for any other file and for a file of a container that cannot take one ([c2paSidecarReason]). The chosen key signs the claim and, with [C2paChoice.identity], the CAWG identity assertion; with
      * [C2paChoice.walletClaim] the wallet's own key signs the claim as the claim generator instead. A file that
      * already carries content credentials keeps them, and its active manifest becomes the parent ingredient.
      */
@@ -1976,9 +1982,13 @@ class FilesModel(private val model: WalletModel) {
             time = Clock.System.now(),
             previousResults = previous,
         )
-        val out = C2paWriter.sign(data, request, claimSigner, if (c.identity) signer else null, ts, f.report?.let { mediaTypeOf(it, f.name) })
+        // The container's own media type (SVG, audio and video are not told apart by the document format).
+        val type = C2paContainers.detect(data)?.let { C2paContainers.mediaType(data, it) } ?: f.report?.let { mediaTypeOf(it, f.name) }
+        val out = C2paWriter.sign(data, request, claimSigner, if (c.identity) signer else null, ts, type)
+        c2paSidecarReason = out.sidecarReason
         val base = f.name.substringBeforeLast('.')
-        return out.bytes to if (out.sidecar) "$base.c2pa" else "$base-c2pa." + f.name.substringAfterLast('.', "jpg")
+        val ext = f.name.substringAfterLast('.', "")
+        return out.bytes to if (out.sidecar) "$base.c2pa" else if (ext.isEmpty()) "$base-c2pa" else "$base-c2pa.$ext"
     }
 
     /** What the core needs for [seal]: the issued seal file, or the picture of the seal to make (the chosen image or the drawn one). */
