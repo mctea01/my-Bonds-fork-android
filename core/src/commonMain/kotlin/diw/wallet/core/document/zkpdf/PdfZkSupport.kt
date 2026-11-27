@@ -26,7 +26,7 @@ object PdfZkSupport {
     /**
      * Object numbers of the streams that [page] shows besides its fonts, in the order they are found: its content
      * streams, its thumbnail, every XObject of its resources (form XObjects with the XObjects and patterns of their
-     * own resources, images with their masks), tiling patterns, and the appearance streams of its annotations with
+     * own resources, images with their masks), tiling patterns, the soft mask groups of graphics states, and the appearance streams of its annotations with
      * their resources, except those of signature fields (the signature itself stays public). These are the streams whose data a masked file must not keep for a page that is not proven
      * (p4-circuits.md 3.11). Only object structure is read, so it works on the masked file as well.
      */
@@ -55,6 +55,10 @@ object PdfZkSupport {
             val r = pdf.dict(o) ?: return
             pdf.dict(r["XObject"])?.entries?.values?.forEach { x -> stream(x)?.let { xobject(it, depth) } }
             pdf.dict(r["Pattern"])?.entries?.values?.forEach { p -> stream(p)?.let { resources(it.dict["Resources"], depth + 1) } }
+            // A soft mask of a graphics state is a transparency group form, which draws like any other form.
+            pdf.dict(r["ExtGState"])?.entries?.values?.forEach { g ->
+                stream(pdf.dict(pdf.dict(g)?.get("SMask"))?.get("G"))?.let { resources(it.dict["Resources"], depth + 1) }
+            }
         }
         when (val contents = page["Contents"]) {
             is PdfRef -> if (stream(contents) == null) pdf.array(contents)?.forEach { stream(it) }
@@ -110,7 +114,7 @@ object PdfZkSupport {
 
     /**
      * Object numbers of the streams that [page] really draws: the XObjects its content streams name with `Do` and the
-     * patterns they name with `scn`/`SCN`, recursively through the forms and tiling patterns drawn, the masks of the
+     * patterns and graphics states they name with `scn`/`SCN` and `gs` (its soft mask group), recursively through the forms and tiling patterns drawn, the masks of the
      * images drawn, and the appearance streams of its annotations with what they draw. Unlike [drawnStreams] it reads
      * stream data, so it is for the holder, on the file before masking.
      */
@@ -129,6 +133,13 @@ object PdfZkSupport {
             if (category == "XObject" && stream.dict.name("Subtype") != "Form") return
             draw(pdf.decode(stream), pdf.dict(stream.dict["Resources"]) ?: resources, depth + 1)
         }
+        fun graphicsState(resources: PdfDict?, name: String, depth: Int) {
+            val state = pdf.dict(pdf.dict(resources?.get("ExtGState"))?.get(name)) ?: return
+            val group = pdf.dict(state["SMask"])?.get("G") as? PdfRef ?: return
+            val stream = pdf.getObject(group.num) as? PdfStream ?: return
+            if (!out.add(group.num)) return
+            draw(pdf.decode(stream), pdf.dict(stream.dict["Resources"]) ?: resources, depth + 1)
+        }
         draw = fun(data: ByteArray, resources: PdfDict?, depth: Int) {
             require(depth <= 16) { "Resources nested too deeply" }
             val operands = ArrayList<Any>()
@@ -138,6 +149,7 @@ object PdfZkSupport {
                 if (name != null) when (token.word) {
                     "Do" -> named(resources, "XObject", name, depth)
                     "scn", "SCN" -> named(resources, "Pattern", name, depth)
+                    "gs" -> graphicsState(resources, name, depth)
                 }
                 operands.clear()
             }

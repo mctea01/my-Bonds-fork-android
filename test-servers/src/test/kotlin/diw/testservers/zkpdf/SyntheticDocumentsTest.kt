@@ -154,6 +154,20 @@ class SyntheticDocumentsTest {
         assertEquals((PdfZkSupport.drawnStreams(file, pages[1]) + PdfZkSupport.drawnStreams(file, pages[2])).toSet() - form, opaque)
     }
 
+    /** A soft mask group of a graphics state draws like a form, so a hidden page's group is private too. */
+    @Test fun softMaskGroupsOfHiddenPagesArePrivate() = runBlocking<Unit> {
+        val pdf = SyntheticDocuments.multiPage(fonts, material, "soft-mask")
+        val file = PdfFile(pdf)
+        val pages = PdfTextExtractor.pages(file)
+        val state = file.dict(file.dict(file.dict(pages[2]["Resources"])!!["ExtGState"])!!["Gs"])!!
+        val group = (file.dict(state["SMask"])!!["G"] as PdfRef).num
+        assertTrue(group in PdfZkSupport.drawnStreams(file, pages[2]))
+        val profile = ZkPdfProfile("test.multi-page-1/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
+        val plan = ZkPdfPlanner.plan(pdf, profile)
+        assertTrue(group in plan.layout.windows.filter { it.role == "opaque" }.map { it.objectNumber })
+    }
+
     @Test fun everyPdfHasAnIntactSignatureFromTheTestPki() = runBlocking<Unit> {
         val trust = trust()
         for ((name, bytes) in generated.filterKeys { it.endsWith(".pdf") }) {

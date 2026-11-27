@@ -163,7 +163,8 @@ object SyntheticDocuments {
      * Three pages, signed: the student page, the travel page, and a page that draws text through two content
      * streams, a form XObject, a thumbnail and a free-text annotation appearance. Not a committed fixture.
      * [variant] `annotation-text` gives the annotation a text value; `shared-unused` lists the form of page 3 in the
-     * resources of page 1 as well, and `shared-drawn` also draws it on page 1.
+     * resources of page 1 as well, and `shared-drawn` also draws it on page 1; `soft-mask` adds a graphics state on
+     * page 3 whose soft mask group draws text.
      */
     fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
@@ -179,9 +180,11 @@ object SyntheticDocuments {
         shared(out, fonts)
         out.obj(12, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 13 0 R /Resources << $fontResources >> >>")
         out.stream(13, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, true, "normal").toByteArray()))
-        out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >> >> >>")
+        val mask = variant == "soft-mask"
+        val states = if (mask) " /ExtGState << /Gs 21 0 R >>" else ""
+        out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >>$states >> >>")
         out.stream(15, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("BT /FHanzi 14 Tf 1 0 0 1 55 790 Tm <${fonts.encode(HIDDEN_NAME)}> Tj ET\n"))
-        out.stream(16, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("q 1 0 0 1 0 -60 cm /Fm Do Q\n"))
+        out.stream(16, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate((if (mask) "/Gs gs\n" else "") + "q 1 0 0 1 0 -60 cm /Fm Do Q\n"))
         val form = PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
             "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(595), PdfNumber.of(842))))
         out.stream(17, 0, form, flate("BT /FLatin 14 Tf 1 0 0 1 55 700 Tm ($HIDDEN_LATIN) Tj ET\n"))
@@ -192,7 +195,14 @@ object SyntheticDocuments {
         out.stream(20, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
             "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(245), PdfNumber.of(30)))),
             flate("BT /FLatin 12 Tf 2 10 Td ($HIDDEN_LATIN) Tj ET\n"))
-        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(21), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
+        if (mask) {
+            out.obj(21, 0, "<< /Type /ExtGState /SMask << /Type /Mask /S /Luminosity /G 22 0 R >> >>")
+            out.stream(22, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
+                "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(595), PdfNumber.of(842))),
+                "Group" to PdfDict.of("S" to PdfName("Transparency"))),
+                flate("BT /FLatin 14 Tf 1 0 0 1 55 500 Tm ($HIDDEN_LATIN) Tj ET\n"))
+        }
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(if (mask) 23 else 21), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }
 
