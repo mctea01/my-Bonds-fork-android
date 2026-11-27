@@ -15,6 +15,9 @@ pub const NOIR_REVISION: &str = "1.0.0-rc.3+5a7ee9bf5ed8973076df7bb0d2b723024db0
 pub const BB_REVISION: &str = "6.0.0+0219f11d8133970df3974fe5ae65e006bf8c193a";
 /// Zero-knowledge UltraHonk proof size (fields of 32 bytes) for bb 6.0.0 with Poseidon2.
 pub const PROOF_BYTES: usize = 14656;
+/// Windows of one statement: the content window of the proven page and at most 15 opaque windows (private images
+/// of that page and the streams of pages that are not proven, p4-circuits.md 3.11). Every window is its own SHA segment.
+pub const MAX_WINDOWS: usize = 16;
 
 /// Errors expose fixed codes only; upstream diagnostic payloads are discarded.
 #[derive(Clone, Copy, Debug, PartialEq, Eq)]

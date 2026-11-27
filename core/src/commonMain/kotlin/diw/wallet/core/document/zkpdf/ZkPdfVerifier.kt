@@ -70,14 +70,16 @@ object ZkPdfVerifier {
         if (!evidence.binding.contentEquals(runCatching { ZkPdfProofs.binding(cnfJwk) }.getOrNull())) {
             return fail(ct("core_zkv_wrong_key"), profile)
         }
-        // V2, V5, V6: the layout of the masked file under this template, chained with the claimed window states.
+        // V2, V5, V6: the layout of the masked file under this template and these proven pages, chained with the
+        // claimed window states. Version 1 bundles come only from single-page files.
         val layout = try {
-            ZkPdfPlanner.layout(evidence.masked, profile, "", evidence.windows.map { it.midOut })
+            ZkPdfPlanner.layout(evidence.masked, profile, "", evidence.windows.map { it.midOut }, evidence.parts.map { it.page })
         } catch (_: PdfException) {
             return fail(ct("core_zkv_redacted_bad"), profile)
         } catch (_: IllegalArgumentException) {
             return fail(ct("core_zkv_redacted_bad"), profile)
         }
+        if (evidence.version == 1 && layout.pageCount != 1) return fail(ct("core_zkv_redacted_bad"), profile)
         val range = layout.byteRange
         val sameWindows = layout.windows.size == evidence.windows.size && layout.windows.zip(evidence.windows).all { (a, b) ->
             a.role == b.role && a.fileOffset == b.offset && a.length == b.length && a.blocks == b.blocks
@@ -101,58 +103,70 @@ object ZkPdfVerifier {
         if (signature.integrity != Check.PASS || signature.verdict == DocumentVerdict.INVALID) {
             return ZkPdfVerification(Check.FAIL, ct("core_zkv_signature_bad"), profile, signature, emptyList(), emptyList(), emptyList())
         }
-        // V7: anchors decode to the template labels of the fields they bound; predicates name date fields.
-        val anchorTexts = evidence.anchors.map { ZkPdfPlanner.decodeRecord(it.record, layout.decoders) }
-        val slots = evidence.slots
-        val structural = slots.size in 1..ZkPdfProfile.MAX_SLOTS && slots.withIndex().all { (i, s) -> s.slot == i } &&
-            slots.map { it.claim }.toSet().size == slots.size &&
-            evidence.anchors.size <= ZkPdfProfile.MAX_ANCHORS &&
-            evidence.anchors.all { it.ordinal == 1 && it.total == 1 } &&
-            slots.flatMap { listOf(it.beforeAnchor, it.afterAnchor) }.toSet() == evidence.anchors.indices.toSet() &&
-            slots.all { s ->
-                val rule = profile.field(s.claim)
-                rule != null && s.beforeAnchor != s.afterAnchor &&
-                    anchorTexts.getOrNull(s.beforeAnchor) in rule.before && anchorTexts.getOrNull(s.afterAnchor) in rule.after
-            } &&
-            evidence.predicates.size <= 2 &&
-            evidence.predicates.all { p ->
-                profile.field(p.claim)?.normalize == ZkPdfNormalize.DATE && slots.any { it.claim == p.claim } &&
-                    p.cutoff in 10000101..99991231
-            }
-        if (!structural) return fail(ct("core_zkv_anchors"), profile)
-        val predicates = evidence.predicates.map { p -> ZkPdfPredicate(p.kind, p.claim, p.cutoff) to slots.first { it.claim == p.claim }.slot }
-        val statement = ZkPdfProofs.statement(layout, evidence.anchors, slots.map { it.beforeAnchor to it.afterAnchor }, predicates,
-            evidence.composition, evidence.binding)
-        // V8: every segment against the statement built here.
-        val verified = when (val r = engine.verify(statement, evidence.segments)) {
-            is ZkResult.Ok -> r.value ?: return fail(ct("core_zkv_invalid"), profile)
-            is ZkResult.Failed -> return result(Check.NOT_CHECKED, ct("core_zkv_cannot_here", r.reason), profile, signature)
-            ZkResult.Cancelled -> return result(Check.NOT_CHECKED, ct("core_zkv_cancelled"), profile, signature)
+        // V7: on each page, anchors decode to the template labels of the fields they bound; predicates name date fields.
+        val claims = evidence.parts.flatMap { part -> part.slots.map { it.claim } }
+        if (claims.toSet().size != claims.size) return fail(ct("core_zkv_anchors"), profile)
+        val structural = evidence.parts.withIndex().all { (i, part) ->
+            val decoders = layout.pages[i].decoders
+            val anchorTexts = part.anchors.map { ZkPdfPlanner.decodeRecord(it.record, decoders) }
+            val slots = part.slots
+            slots.size in 1..ZkPdfProfile.MAX_SLOTS && slots.withIndex().all { (j, s) -> s.slot == j } &&
+                part.anchors.size <= ZkPdfProfile.MAX_ANCHORS &&
+                part.anchors.all { it.ordinal == 1 && it.total == 1 } &&
+                slots.flatMap { listOf(it.beforeAnchor, it.afterAnchor) }.toSet() == part.anchors.indices.toSet() &&
+                slots.all { s ->
+                    val rule = profile.field(s.claim)
+                    rule != null && rule.page == part.page + 1 && s.beforeAnchor != s.afterAnchor &&
+                        anchorTexts.getOrNull(s.beforeAnchor) in rule.before && anchorTexts.getOrNull(s.afterAnchor) in rule.after
+                } &&
+                part.predicates.size <= ZkPdfPlanner.MAX_PREDICATES &&
+                part.predicates.all { p ->
+                    profile.field(p.claim)?.normalize == ZkPdfNormalize.DATE && slots.any { it.claim == p.claim } &&
+                        p.cutoff in 10000101..99991231
+                }
         }
-        if (verified.midOuts.size != evidence.windows.size ||
-            verified.midOuts.zip(evidence.windows).any { (a, b) -> !a.contentEquals(b.midOut) }) {
-            return fail(ct("core_zkv_hash_mismatch"), profile)
+        if (!structural) return fail(ct("core_zkv_anchors"), profile)
+        // V8: every segment of every page against the statement built here.
+        val digests = HashMap<String, ByteArray>()
+        for ((i, part) in evidence.parts.withIndex()) {
+            val predicates = part.predicates.map { p -> ZkPdfPredicate(p.kind, p.claim, p.cutoff) to part.slots.first { it.claim == p.claim }.slot }
+            val statement = ZkPdfProofs.statement(layout, i, part.anchors, part.slots.map { it.beforeAnchor to it.afterAnchor }, predicates,
+                evidence.composition, evidence.binding)
+            val verified = when (val r = engine.verify(statement, part.segments)) {
+                is ZkResult.Ok -> r.value ?: return fail(ct("core_zkv_invalid"), profile)
+                is ZkResult.Failed -> return result(Check.NOT_CHECKED, ct("core_zkv_cannot_here", r.reason), profile, signature)
+                ZkResult.Cancelled -> return result(Check.NOT_CHECKED, ct("core_zkv_cancelled"), profile, signature)
+            }
+            val windows = layout.pages[i].windows
+            if (verified.midOuts.size != windows.size ||
+                verified.midOuts.zip(windows).any { (a, w) -> !a.contentEquals(evidence.windows[w].midOut) }) {
+                return fail(ct("core_zkv_hash_mismatch"), profile)
+            }
+            part.slots.forEach { s -> verified.claimDigests.getOrNull(s.slot)?.let { digests[s.claim] = it } }
         }
         // V10: each disclosed field against its commitment and the template's normalization.
-        val fields = slots.mapNotNull { s ->
-            val rule = profile.field(s.claim)!!
-            val value = (disclosed[s.claim] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
-            val opening = (disclosed[ZkPdfEvidence.OPEN_PREFIX + s.claim] as? JsonObject)?.let { runCatching { ZkPdfOpening.parse(it) }.getOrNull() }
-                ?: return@mapNotNull ZkPdfFieldResult(s.claim, rule.label, value, Check.NOT_CHECKED, ct("core_zkv_no_opening"))
-            val committed = opening.slot == s.slot && verified.claimDigests.getOrNull(s.slot)?.contentEquals(opening.commitment()) == true
-            val decoded = if (committed) decodeSource(opening.source, layout.decoders)?.let { rule.normalize.apply(it) } else null
-            when {
-                !committed -> ZkPdfFieldResult(s.claim, rule.label, value, Check.FAIL, ct("core_zkv_opening_mismatch"))
-                decoded != value -> ZkPdfFieldResult(s.claim, rule.label, value, Check.FAIL, ct("core_zkv_value_mismatch"))
-                else -> ZkPdfFieldResult(s.claim, rule.label, value, Check.PASS, ct("core_zkv_page_one"))
+        val fields = evidence.parts.withIndex().flatMap { (i, part) ->
+            val decoders = layout.pages[i].decoders
+            part.slots.mapNotNull { s ->
+                val rule = profile.field(s.claim)!!
+                val value = (disclosed[s.claim] as? JsonPrimitive)?.takeIf { it.isString }?.content ?: return@mapNotNull null
+                val opening = (disclosed[ZkPdfEvidence.OPEN_PREFIX + s.claim] as? JsonObject)?.let { runCatching { ZkPdfOpening.parse(it) }.getOrNull() }
+                    ?: return@mapNotNull ZkPdfFieldResult(s.claim, rule.label, value, Check.NOT_CHECKED, ct("core_zkv_no_opening"))
+                val committed = opening.slot == s.slot && digests[s.claim]?.contentEquals(opening.commitment()) == true
+                val decoded = if (committed) decodeSource(opening.source, decoders)?.let { rule.normalize.apply(it) } else null
+                when {
+                    !committed -> ZkPdfFieldResult(s.claim, rule.label, value, Check.FAIL, ct("core_zkv_opening_mismatch"))
+                    decoded != value -> ZkPdfFieldResult(s.claim, rule.label, value, Check.FAIL, ct("core_zkv_value_mismatch"))
+                    else -> ZkPdfFieldResult(s.claim, rule.label, value, Check.PASS, ct("core_zkv_page", part.page + 1))
+                }
             }
         }
-        val predicateResults = evidence.predicates.map { p ->
+        val predicateResults = evidence.parts.flatMap { it.predicates }.map { p ->
             val label = profile.field(p.claim)!!.label
             val date = p.cutoff.toString().let { "${it.substring(0, 4)}-${it.substring(4, 6)}-${it.substring(6, 8)}" }
             ZkPdfPredicateResult(p.claim, ct("core_zkv_predicate", label, if (p.kind == ZkPdfPredicate.DATE_LE) ct("core_zkv_not_after") else ct("core_zkv_not_before"), date))
         }
-        val hidden = slots.filter { s -> fields.none { it.claim == s.claim } }.map { profile.field(it.claim)!!.label }
+        val hidden = evidence.parts.flatMap { it.slots }.filter { s -> fields.none { it.claim == s.claim } }.map { profile.field(it.claim)!!.label }
         val signer = signature.signer?.commonName ?: signature.signerName ?: ct("core_zkv_signer")
         val check = when {
             fields.any { it.check == Check.FAIL } -> Check.FAIL
@@ -165,8 +179,12 @@ object ZkPdfVerifier {
             fields.any { it.check != Check.PASS } -> ct("core_zkv_partial")
             else -> ct("core_zkv_proven", signer, profile.title)
         }
+        // Pages that are not proven reach the verifier only as structure; the summary says how many stay private.
+        val privatePages = layout.pageCount - evidence.parts.size
+        val pagesNote = if (privatePages > 0) ct("core_zkv_private_pages", privatePages) else ""
         // A test template (test environment only) was never reviewed against a real document; the summary says so.
-        return ZkPdfVerification(check, (if (profile.test) ct("core_zkv_test_template") else "") + summary, profile, signature, fields, predicateResults, hidden)
+        return ZkPdfVerification(check, (if (profile.test) ct("core_zkv_test_template") else "") + summary + pagesNote,
+            profile, signature, fields, predicateResults, hidden)
     }
 
     /** Text of a field source (v2 records back to back) with the page fonts, or null when a record cannot be read. */
