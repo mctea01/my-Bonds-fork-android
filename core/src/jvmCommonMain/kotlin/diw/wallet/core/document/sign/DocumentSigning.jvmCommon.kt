@@ -352,6 +352,7 @@ actual object DocumentSigning {
         sign: suspend (ByteArray) -> ByteArray,
         keyType: SignerKeyType,
         validDays: Int,
+        purposes: List<String>,
     ): ByteArray {
         val name = X500Name("CN=" + subjectName.replace(",", " ").replace("=", " ") + ",O=DIW MY WALLET self-issued")
         val now = System.currentTimeMillis()
@@ -367,6 +368,9 @@ actual object DocumentSigning {
         val ext = ExtensionsGenerator()
         ext.addExtension(Extension.basicConstraints, true, BasicConstraints(false))
         ext.addExtension(Extension.keyUsage, true, KeyUsage(KeyUsage.digitalSignature or KeyUsage.nonRepudiation))
+        if (purposes.isNotEmpty()) {
+            ext.addExtension(Extension.extendedKeyUsage, false, DERSequence(purposes.map { org.bouncycastle.asn1.ASN1ObjectIdentifier(it) }.toTypedArray()))
+        }
         // Key identifiers let another wallet import this certificate as its own trust anchor.
         val keyIds = org.bouncycastle.cert.bc.BcX509ExtensionUtils()
         val spki = SubjectPublicKeyInfo.getInstance(publicKeyDer)

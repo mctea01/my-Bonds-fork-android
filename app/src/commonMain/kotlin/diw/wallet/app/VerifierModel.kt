@@ -407,7 +407,7 @@ class VerifierModel(private val model: WalletModel) {
         val chain = readerCertificates[p.id] ?: run {
             val subject = (p.agent()?.name ?: p.partyName).trim().ifEmpty { tr(Res.string.wallet_user) }
             val der = DocumentSigning.selfIssuedCertificate(FilesModel.spki(k.publicKey), subject,
-                { data -> k.signingKey("ES256").sign(data).toDerEncoded() }, SignerKeyType.EC_P256, 365)
+                { data -> k.signingKey("ES256").sign(data).toDerEncoded() }, SignerKeyType.EC_P256, 365, purposes = emptyList())
             X509CertChain(listOf(X509Cert(ByteString(der)))).also { readerCertificates[p.id] = it }
         }
         return AsymmetricKey.X509CertifiedSecureAreaBased(certChain = chain, secureArea = k.secureArea, keyInfo = k.keyInfo, algorithm = k.signingKey("ES256").algorithm)

@@ -106,7 +106,8 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
             role = TrustRole.CONTENT,
         )
         info.trust?.let { t ->
-            statuses += if ("UNKNOWN_ANCHOR" in t.labels || t.tier == "T4") C2paStatus("signingCredential.untrusted", url, false, ct("core_signing_cert_untrusted"))
+            statuses += if ("CERTIFICATE_CONSTRAINT" in t.labels) C2paStatus("signingCredential.invalid", url, false, ct("core_x509_c_c2pa_profile"))
+            else if ("UNKNOWN_ANCHOR" in t.labels || t.tier == "T4") C2paStatus("signingCredential.untrusted", url, false, ct("core_signing_cert_untrusted"))
             else C2paStatus("signingCredential.trusted", url, true, t.anchorName)
         }
         if (info.certificateValidity == Check.FAIL) statuses += C2paStatus("signingCredential.invalid", url, false, info.problems.lastOrNull())

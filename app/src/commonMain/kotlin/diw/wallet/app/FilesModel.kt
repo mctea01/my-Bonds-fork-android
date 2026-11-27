@@ -98,6 +98,7 @@ import diw.wallet.core.document.pdf.PdfSignatureAppearance
 import diw.wallet.core.document.pdf.PdfTextExtractor
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.sign.selfIssuedNeedsRenewal
 import diw.wallet.core.document.sign.MobileMoicaCredentials
 import diw.wallet.core.document.sign.MobileMoicaEnvironment
 import diw.wallet.core.document.sign.MobileMoicaMode
@@ -2366,9 +2367,12 @@ class FilesModel(private val model: WalletModel) {
         val subject = name.trim().ifEmpty { tr(Res.string.wallet_user) }
         val certKey = "wallet-cert:" + key.alias + ":" + subject
         val t = model.storage.getTable(metaTable)
-        val cert = t.get(certKey)?.toByteArray() ?: DocumentSigning.selfIssuedCertificate(
+        // A certificate kept from before self-issued certificates named their extKeyUsage is made again, since C2PA
+        // claim signatures require one (C2PA 14.5.1).
+        val kept = t.get(certKey)?.toByteArray()
+        val cert = kept?.takeIf { !selfIssuedNeedsRenewal(it) } ?: DocumentSigning.selfIssuedCertificate(
             spki(key.publicKey), subject, { data -> key.signingKey("ES256").sign(data).toDerEncoded() }, SignerKeyType.EC_P256, 3650,
-        ).also { t.insert(certKey, ByteString(it)) }
+        ).also { if (kept == null) t.insert(certKey, ByteString(it)) else t.update(certKey, ByteString(it)) }
         return object : DocumentSigner {
             override val certificateChain = listOf(cert)
             override val keyType = SignerKeyType.EC_P256

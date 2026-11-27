@@ -13,6 +13,7 @@ import diw.wallet.core.document.card.OpenPgpKeySlot
 import diw.wallet.core.document.card.OpenPgpPublicMaterial
 import diw.wallet.core.document.sign.DocumentSigner
 import diw.wallet.core.document.sign.DocumentSigning
+import diw.wallet.core.document.sign.selfIssuedNeedsRenewal
 import diw.wallet.core.document.sign.SignerKeyType
 import diw.wallet.core.document.sign.SignerSource
 import diw.wallet.core.document.sign.SigningException
@@ -161,7 +162,7 @@ class OpenPgpTapSigner(
                 keyTypeOf(k)
                 val fpr = k.fingerprint?.let { diw.wallet.core.document.DocCryptoUtil.hex(it).uppercase() }
                 k.certificate?.takeIf { certificateMatches(it, k) }
-                    ?: fpr?.let(cachedCertificate)?.takeIf { certificateMatches(it, k) }
+                    ?: fpr?.let(cachedCertificate)?.takeIf { certificateMatches(it, k) && !selfIssuedNeedsRenewal(it) }
                     ?: run {
                         val name = subject?.trim()?.ifEmpty { null } ?: read.cardholder ?: read.label
                         DocumentSigning.selfIssuedCertificate(OpenPgpCards.spki(k), name, { tbs -> x509Sign(card, k, tbs) }, keyTypeOf(k), 3650)

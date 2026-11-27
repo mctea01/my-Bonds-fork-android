@@ -1,6 +1,7 @@
 package diw.wallet.core.document
 
 import diw.wallet.core.i18n.ct
+import diw.wallet.core.trust.TrustLabel
 import diw.wallet.core.trust.TrustRole
 import org.bouncycastle.asn1.ASN1OctetString
 import org.bouncycastle.asn1.cms.Attribute
@@ -211,7 +212,11 @@ internal class CmsChecks(private val pki: PkiSupport) {
         }
         val at = trustedTime ?: if (validNow) now else claimed?.let { Instant.fromEpochSeconds(it) } ?: now
         val decision = pki.decide(role, chain, at)
-        if (PkiSupport.unknownAnchor(decision)) {
+        // A signer certificate that may not be used for this (keyUsage, extKeyUsage, path constraints) is a problem of
+        // the signature, named by the rule; a weak algorithm is a note.
+        if (TrustLabel.CERTIFICATE_CONSTRAINT in decision.labels) problems.addAll(decision.reasons.map { ct("core_x509_c_signer", it) })
+        else if (TrustLabel.WEAK_ALGORITHM in decision.labels) notes.addAll(decision.reasons.map { ct("core_x509_c_signer", it) })
+        if (TrustLabel.CERTIFICATE_CONSTRAINT !in decision.labels && PkiSupport.unknownAnchor(decision)) {
             val root = chain.last()
             notes.add(if (pki.selfSigned(root)) ct("core_cms_root_untrusted", pki.cn(root.subject) ?: root.subject)
             else ct("core_cms_chain_incomplete", pki.cn(root.issuer) ?: root.issuer))
@@ -290,7 +295,9 @@ internal class CmsChecks(private val pki: PkiSupport) {
         val chain = tsa?.let { pki.buildChain(it, certs) }.orEmpty()
         val decision = if (tsa != null && signatureOk == Check.PASS) pki.decide(TrustRole.TSA, chain, genTime) else null
         val name = tsa?.let { pki.cn(it.subject) } ?: info.tsa?.name?.toString()
-        if (decision != null && PkiSupport.unknownAnchor(decision)) problems.add(ct("core_cms_tsa_untrusted", name ?: ct("core_unknown")))
+        if (decision != null && TrustLabel.CERTIFICATE_CONSTRAINT in decision.labels) problems.addAll(decision.reasons.map { ct("core_x509_c_tsa", it) })
+        else if (decision != null && PkiSupport.unknownAnchor(decision)) problems.add(ct("core_cms_tsa_untrusted", name ?: ct("core_unknown")))
+        if (decision != null && TrustLabel.WEAK_ALGORITHM in decision.labels) problems.addAll(decision.reasons.map { ct("core_x509_c_tsa", it) })
         return TimestampInfo(
             time = genTime.epochSeconds,
             tsa = name,

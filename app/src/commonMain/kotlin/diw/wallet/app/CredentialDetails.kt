@@ -17,6 +17,8 @@ import diw.wallet.core.w3c.W3cVcCredential
 import diw.wallet.core.w3c.bbs.Bbs2023
 import diw.wallet.core.w3c.bbs.BbsBaseProof
 import diw.wallet.core.util.DiwJson
+import diw.wallet.core.x509.X509Details
+import diw.wallet.core.x509.X509Names
 import diw.wallet.core.x509.displaySubject
 import diw.wallet.core.x509.subjectAltNames
 import kotlinx.io.bytestring.ByteString
@@ -501,7 +503,78 @@ object CredentialDetails {
 
     private fun hexPlain(b: ByteArray): String = b.joinToString("") { (it.toInt() and 0xff).toString(16).padStart(2, '0') }
 
+    /**
+     * Every field of [c] as RFC 5280 names it ([X509Details]): subject and issuer attribute by attribute, version,
+     * serial number, validity, both signature algorithm fields, the public key with its size, unique identifiers,
+     * each extension in its own section with its critical flag, decoded fields and DER value (unknown extensions
+     * outlined from their ASN.1), the signature value, fingerprints and how the encoding departs from RFC 5280.
+     */
     fun certificate(c: X509Cert): List<DetailSection> {
+        val d = X509Details.orNull(c) ?: return basicCertificate(c)
+        val now = Clock.System.now()
+        val state = when {
+            now < d.notBefore -> tr(Res.string.cert_not_yet)
+            now > d.notAfter -> tr(Res.string.cert_expired)
+            else -> tr(Res.string.cert_in_validity)
+        }
+        fun nameRows(n: diw.wallet.core.x509.DistinguishedName): List<DetailRow> =
+            listOf(DetailRow(tr(Res.string.cert_dn_text), n.text.ifEmpty { "-" })) + n.attributes.map { DetailRow("${it.name} (${it.oid})", it.value) }
+        val k = d.publicKey
+        return buildList {
+            add(DetailSection(tr(Res.string.cert_subject), nameRows(d.subject)))
+            add(DetailSection(tr(Res.string.cert_issuer), nameRows(d.issuer) +
+                DetailRow(tr(Res.string.cert_self_signed), if (c.selfIssuedRoot) tr(Res.string.answer_yes) else tr(Res.string.answer_no))))
+            add(DetailSection(tr(Res.string.cert_basic), listOfNotNull(
+                DetailRow(tr(Res.string.oa_version), "v${d.version}"),
+                DetailRow(tr(Res.string.cert_serial), d.serialHex),
+                DetailRow(tr(Res.string.cert_not_before), time(d.notBefore)),
+                DetailRow(tr(Res.string.cert_not_after), time(d.notAfter)),
+                DetailRow(tr(Res.string.cert_state), state),
+                DetailRow(tr(Res.string.cd_sig_alg), d.signatureAlgorithm.label),
+                d.signatureAlgorithm.parameters?.let { DetailRow(tr(Res.string.cert_alg_params), it) },
+                d.tbsSignatureAlgorithm.takeIf { it != d.signatureAlgorithm }?.let { DetailRow(tr(Res.string.cert_tbs_alg), it.label + (it.parameters?.let { p -> " $p" } ?: "")) },
+            )))
+            add(DetailSection(tr(Res.string.cert_public_key), listOfNotNull(
+                DetailRow(tr(Res.string.cert_key_alg), k.algorithm.label),
+                k.bits?.let { DetailRow(tr(Res.string.cert_key_bits), tr(Res.string.cert_bits, it)) },
+                k.curveOid?.let { DetailRow(tr(Res.string.cert_alg_curve), X509Names.label(it)) },
+                k.algorithm.parameters?.takeIf { k.curveOid == null && it != "NULL" }?.let { DetailRow(tr(Res.string.cert_alg_params), it) },
+                k.rsaExponent?.let { DetailRow(tr(Res.string.cert_rsa_exponent), it) },
+                DetailRow(tr(Res.string.cert_spki_sha256), k.spkiSha256Hex),
+                DetailRow(tr(Res.string.cert_key_value), k.keyHex),
+            )))
+            if (d.issuerUniqueId != null || d.subjectUniqueId != null) add(DetailSection(tr(Res.string.cert_unique_ids), listOfNotNull(
+                d.issuerUniqueId?.let { DetailRow("issuerUniqueID", it) },
+                d.subjectUniqueId?.let { DetailRow("subjectUniqueID", it) },
+            )))
+            if (d.extensions.isEmpty() && d.version == 3) add(DetailSection(tr(Res.string.cert_extensions), listOf(DetailRow(tr(Res.string.cert_extensions), tr(Res.string.cert_no_extensions)))))
+            d.extensions.forEach { e ->
+                val title = tr(if (e.critical) Res.string.cert_ext_critical else Res.string.cert_ext_noncritical, e.label)
+                val rows = buildList {
+                    when (e.oid) {
+                        X509Names.KEY_USAGE -> d.keyUsage?.sorted()?.forEach { bit ->
+                            val local = X509KeyUsage.entries.firstOrNull { it.bitNumber == bit }?.let { KEY_USAGE_NAMES[it] }
+                            add(DetailRow("KeyUsage", X509Names.KEY_USAGE_BITS[bit] + (local?.let { " ($it)" } ?: "")))
+                        } ?: e.fields.forEach { add(DetailRow(it.label, it.value)) }
+                        X509Names.EXTENDED_KEY_USAGE -> d.extendedKeyUsage?.forEach { oid ->
+                            add(DetailRow("KeyPurposeId", X509Names.label(oid) + (EKU_NAMES[oid]?.let { " ($it)" } ?: "")))
+                        } ?: e.fields.forEach { add(DetailRow(it.label, it.value)) }
+                        else -> e.fields.forEach { add(DetailRow(it.label, it.value)) }
+                    }
+                    if (!e.known) add(DetailRow(tr(Res.string.cert_ext_unknown), tr(Res.string.cert_ext_unknown_text)))
+                    e.error?.let { add(DetailRow(tr(Res.string.cert_ext_error), it)) }
+                    add(DetailRow("extnValue (DER)", e.valueHex))
+                }
+                add(DetailSection(title, rows))
+            }
+            add(DetailSection(tr(Res.string.cert_signature_value), listOf(DetailRow(d.signatureAlgorithm.name ?: d.signatureAlgorithm.oid, d.signatureHex))))
+            add(DetailSection(tr(Res.string.cert_fingerprint), listOf(DetailRow("SHA-256", d.sha256Hex), DetailRow("SHA-1", d.sha1Hex))))
+            if (d.problems.isNotEmpty()) add(DetailSection(tr(Res.string.cert_encoding_problems), d.problems.map { DetailRow(tr(Res.string.cert_problem), it) }))
+        }.filter { it.rows.isNotEmpty() }
+    }
+
+    /** The few fields Multipaz reads, for a certificate whose encoding [X509Details] cannot follow. */
+    private fun basicCertificate(c: X509Cert): List<DetailSection> {
         val now = Clock.System.now()
         val state = when {
             now < c.validityNotBefore -> tr(Res.string.cert_not_yet)

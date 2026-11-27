@@ -124,7 +124,8 @@ data class TimestampInfo(
     val problems: List<String> = emptyList(),
 ) {
     /** A time the wallet can rely on: intact, signed and chained to an enabled TSA anchor. */
-    val trusted: Boolean get() = imprint == Check.PASS && signature == Check.PASS && trust != null && "UNKNOWN_ANCHOR" !in trust.labels
+    val trusted: Boolean get() = imprint == Check.PASS && signature == Check.PASS && trust != null && "UNKNOWN_ANCHOR" !in trust.labels &&
+        trust.tier != "T4" && "WEAK_ALGORITHM" !in trust.labels
 }
 
 /** How a PDF changed after a signature (ISO 32000-1 12.8.2.2, incremental updates). */

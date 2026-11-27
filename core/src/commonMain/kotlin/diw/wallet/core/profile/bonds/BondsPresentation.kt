@@ -533,6 +533,16 @@ class MoicaSignedCredential private constructor(
             if (now < cert.validityNotBefore || now > cert.validityNotAfter) {
                 throw ProtocolException("invalid_certificate_chain", "Citizen certificate is outside its validity period")
             }
+            // The card's signing certificate, not its encryption certificate: keyUsage, extKeyUsage and the path
+            // rules of the MOICA chain (RFC 5280), as for any document signer.
+            // A test CA may be the certificate itself: the path holds each certificate once, and the leaf rules
+            // still apply when the leaf is also the anchor.
+            val path = listOf(cert, org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(moica)), org.multipaz.crypto.X509Cert(kotlinx.io.bytestring.ByteString(grca))).distinct()
+            val purpose = diw.wallet.core.x509.CertificatePurpose.DOCUMENT
+            val report = diw.wallet.core.x509.CertificateConstraints.check(path, purpose, now, anchored = true).findings +
+                (if (path.size == 1) diw.wallet.core.x509.CertificateConstraints.leaf(cert, purpose, now).findings else emptyList())
+            val failed = diw.wallet.core.x509.ConstraintReport(report)
+            if (failed.failed) throw ProtocolException("invalid_certificate_chain", failed.lines(diw.wallet.core.x509.ConstraintSeverity.FAIL).joinToString("; "))
         }
 
         private fun certificateSerial(der: ByteArray): String =
