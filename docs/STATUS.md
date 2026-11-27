@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（Linux 桌面版由 .deb 改為 AppImage（`tools/linux-appimage.sh`，執行階段為本專案的 `tools/appimage-runtime`，不含 LGPL 的 libfuse、不需 FUSE）；Windows 原生桌面版：執行檔加入版本資源與圖示，發佈資料夾附 LICENSE 與 NOTICE，自我檢查與冒煙執行的記錄移出發佈壓縮檔；`tools/windows-sign.ps1` 簽署子資料夾在內的所有 .exe、.dll 並確認沒有遺漏；main 到 PR #176）。
+最後更新：2026-11-27（修正 main 的 Android release 建置：Guava 下限把沒有後綴的 18.0 提成不存在的 33.8.0，`:core:extractReleaseAnnotations` 找不到 lint 工具的相依；Linux 桌面版由 .deb 改為 AppImage（`tools/linux-appimage.sh`，執行階段為本專案的 `tools/appimage-runtime`，不含 LGPL 的 libfuse、不需 FUSE）；Windows 原生桌面版：執行檔加入版本資源與圖示，發佈資料夾附 LICENSE 與 NOTICE，自我檢查與冒煙執行的記錄移出發佈壓縮檔；`tools/windows-sign.ps1` 簽署子資料夾在內的所有 .exe、.dll 並確認沒有遺漏；main 到 PR #176）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -188,7 +188,7 @@ P4 之後合併的工作：
 | Barretenberg、Noir | 6.0.0（另有 5.0.0 選用元件）、1.0.0-rc.3 |
 | TLSNotary | 0.1.0-alpha.15 |
 
-版本以 `gradle/libs.versions.toml`、根目錄 `build.gradle.kts` 與 `native/Cargo.lock` 為準；升級由 Renovate 開 PR。函式庫帶入的 Guava 由根目錄 `build.gradle.kts` 提高到版本目錄的 `guava` 下限（保留 -android／-jre），以避開 GHSA-xxph-c9ww-hj94。
+版本以 `gradle/libs.versions.toml`、根目錄 `build.gradle.kts` 與 `native/Cargo.lock` 為準；升級由 Renovate 開 PR。函式庫帶入的 Guava 由根目錄 `build.gradle.kts` 提高到版本目錄的 `guava` 下限（保留 -android／-jre；22 版以前沒有後綴的版本，例如 Android lint 工具經 jimfs 1.1 要求的 18.0，改用 -jre，由 Gradle 模組中繼資料在 Android 上選 Android 版），以避開 GHSA-xxph-c9ww-hj94。
 
 刻意不升或等上游的相依（2026-11-26 檢查 Dependabot 與 Renovate 儀表板）：
 
