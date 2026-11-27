@@ -91,24 +91,50 @@ object PdfZkSupport {
     private fun isSignatureWidget(pdf: PdfFile, annotation: PdfDict) = annotation.name("Subtype") == "Widget" &&
         (annotation.name("FT") ?: pdf.dict(annotation["Parent"])?.name("FT")) == "Sig"
 
+    /** Annotation keys that only place, style or link an annotation, or hold text that is checked on its own. */
+    private val ANNOTATION_KEYS = setOf(
+        "Type", "Subtype", "Rect", "AP", "AS", "F", "P", "NM", "M", "CreationDate", "Border", "BS", "BE", "C", "IC",
+        "CA", "ca", "BM", "StructParent", "OC", "DA", "DS", "Q", "Popup", "Open", "RD", "IT", "Lang", "Parent",
+        "Contents", "RC", "T", "Subj",
+    )
+
+    /** Further keys of a form field widget: the field type, flags and design, and the value (checked on its own). */
+    private val WIDGET_KEYS = setOf("FT", "Ff", "Kids", "H", "MK", "MaxLen", "DR", "TU", "TM", "Opt", "DV", "V", "RV")
+
+    /** Page keys that only describe its boxes, resources and the objects that [drawnStreams] hides. */
+    private val PAGE_KEYS = setOf(
+        "Type", "Parent", "LastModified", "Resources", "MediaBox", "CropBox", "BleedBox", "TrimBox", "ArtBox",
+        "BoxColorInfo", "Contents", "Rotate", "Group", "Thumb", "Annots", "Metadata", "StructParents", "Tabs",
+        "UserUnit", "Trans", "Dur",
+    )
+
+    private fun present(pdf: PdfFile, o: PdfObject?): Boolean = when (val v = pdf.resolve(o)) {
+        null, PdfNull -> false
+        is PdfString -> v.bytes.isNotEmpty()
+        is PdfName -> v.name != "Off"
+        is PdfArray -> v.isNotEmpty()
+        else -> true
+    }
+
     /**
-     * Whether an annotation of [page] keeps text outside any stream: the text of a note or free-text annotation
-     * (`/Contents`, `/RC`), its author and subject (`/T`, `/Subj`), or the value of a form field (`/V`, on the widget
-     * or a parent field). Masking clears stream data only, so a page that is not proven must not have any; signature
-     * fields are left out as in [drawnStreams]. Only object structure is read, so it works on the masked file as well.
+     * Whether [page] keeps content outside any stream: a page entry other than its boxes, resources and drawn objects
+     * (for example page piece data, actions, article beads or viewports), or an annotation that does. For annotations
+     * that is the text of a note or free-text annotation (`/Contents`, `/RC`), its author and subject (`/T`, `/Subj`),
+     * the value of a form field (`/V`, on the widget or a parent field), or any entry beyond placement, style and
+     * appearance: ink and polygon coordinates, quad points, attached files, sounds, movies, link targets, actions and
+     * replies all keep what a page shows or points to in dictionaries. Masking clears stream data only, so a page
+     * that is not proven must not have any; signature fields are left out as in [drawnStreams]. Only object
+     * structure is read, so it works on the masked file as well.
      */
     fun keepsAnnotationText(pdf: PdfFile, page: PdfDict): Boolean = zkPdfInput {
-        fun present(o: PdfObject?): Boolean = when (val v = pdf.resolve(o)) {
-            null, PdfNull -> false
-            is PdfString -> v.bytes.isNotEmpty()
-            is PdfName -> v.name != "Off"
-            is PdfArray -> v.isNotEmpty()
-            else -> true
-        }
+        fun present(o: PdfObject?) = present(pdf, o)
+        if (page.entries.any { (key, value) -> key !in PAGE_KEYS && present(value) }) return@zkPdfInput true
         pdf.array(page["Annots"])?.any { a ->
             val annotation = pdf.dict(a) ?: return@any false
             if (isSignatureWidget(pdf, annotation)) return@any false
             val widget = annotation.name("Subtype") == "Widget"
+            val allowed = if (widget) ANNOTATION_KEYS + WIDGET_KEYS else ANNOTATION_KEYS
+            if (annotation.entries.any { (key, value) -> key !in allowed && present(value) }) return@any true
             val keys = if (widget) listOf("Contents") else listOf("Contents", "RC", "T", "Subj")
             if (keys.any { present(annotation[it]) }) return@any true
             if (!widget) return@any false
@@ -187,14 +213,14 @@ object PdfZkSupport {
     }
 
     /**
-     * Whether text that masking cannot clear (it is not stream data) would stay in the file: annotation text or page
-     * piece data on one of the [hidden] pages, an outline item that leads to one of them, or alternate or actual text
+     * Whether text that masking cannot clear (it is not stream data) would stay in the file: page or annotation
+     * entries of one of the [hidden] pages that keep content ([keepsAnnotationText]), an outline item that leads to one of them, or alternate or actual text
      * anywhere in the structure tree (it repeats page content, so it would expose proven pages as well). Outline items
      * whose destination is not an explicit page count as leading to a hidden page.
      */
     fun keepsTextOutsideStreams(pdf: PdfFile, hidden: List<Int>): Boolean = zkPdfInput {
         val pages = PdfTextExtractor.pages(pdf)
-        if (hidden.any { keepsAnnotationText(pdf, pages[it]) || pages[it]["PieceInfo"] != null }) return@zkPdfInput true
+        if (hidden.any { keepsAnnotationText(pdf, pages[it]) }) return@zkPdfInput true
         // Marked-content properties and the dictionaries of what a hidden page draws may carry its text as well.
         val textKeys = listOf("ActualText", "Alt", "E")
         for (index in hidden) {
