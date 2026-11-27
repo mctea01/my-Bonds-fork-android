@@ -229,6 +229,7 @@ if ($Mode -eq "Native") {
     $stage = Join-Path $WorkDir "native-stage\$base"
     New-Item -ItemType Directory -Path (Split-Path $stage) | Out-Null
     Move-Item $root $stage
+    $mainBinary = Join-Path $stage $exe.Name
     $signed = Join-Path $output $zipName
     [IO.Compression.ZipFile]::CreateFromDirectory($stage, $signed, [IO.Compression.CompressionLevel]::Optimal, $true)
     $uploads = @($signed)
@@ -345,6 +346,7 @@ if ($Mode -eq "Native") {
     }
 
     Sign-File $signed
+    $mainBinary = $signed
     $uploads = @($signed)
 
     # The Windows release jar carries the same native libraries.
@@ -373,7 +375,10 @@ if (-not $NoNotes) {
     $bodyFile = Join-Path $WorkDir "notes.md"
     $body = (& gh release view $Tag --repo $Repo --json body --jq .body | Out-String)
     if ($LASTEXITCODE -ne 0) { throw "gh release view failed" }
-    if (-not $Signer) { $Signer = (Get-AuthenticodeSignature $signed).SignerCertificate }
+    # Nothing was signed in this run when every file already carried a signature (a rerun of Native): name the signer
+    # of the executable or the MSI.
+    if (-not $Signer) { $Signer = (Get-AuthenticodeSignature $mainBinary).SignerCertificate }
+    if (-not $Signer) { throw "$mainBinary has no signature to name in the release notes" }
     $subject = $Signer.GetNameInfo([Security.Cryptography.X509Certificates.X509NameType]::SimpleName, $false)
     $line = "$what 已以 $subject 的程式碼簽章憑證簽署（Authenticode）。"
 
