@@ -671,7 +671,8 @@ class C2paSigningTest {
         trustRoot()
         // Text in CDATA and a comment, and a manifest element of another namespace that only shares the prefix.
         val shown = "<text><![CDATA[<c2pa:manifest>example</c2pa:manifest>]]></text><!-- <c2pa:manifest>note</c2pa:manifest> -->" +
-            "<metadata><c2pa:manifest xmlns:c2pa=\"urn:other\">inventory</c2pa:manifest></metadata>"
+            "<metadata><c2pa:manifest xmlns:c2pa=\"urn:other\">inventory</c2pa:manifest></metadata>" +
+            "<g xmlns:c2pa=\"urn:other\" data-note=\"xmlns:c2pa='http://c2pa.org/manifest'\"><c2pa:manifest>list</c2pa:manifest></g>"
         val original = svg.decodeToString().replaceFirst("<title>", shown + "<title>").encodeToByteArray()
         assertNull(C2paManifests.read(original), "text that looks like a manifest holds no store")
         assertTrue(C2paContainers.strip(original, C2paFormat.SVG).contentEquals(original), "nothing is removed")

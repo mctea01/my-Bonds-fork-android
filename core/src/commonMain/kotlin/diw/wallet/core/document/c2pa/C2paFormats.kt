@@ -733,7 +733,30 @@ object C2paContainers {
             return out
         }
 
-        private val XMLNS = Regex("xmlns(?::([A-Za-z_][\\w.-]*))?\\s*=\\s*([\"'])(.*?)\\2")
+        /** The namespace declarations among the attributes of a start tag ("" is the default namespace). */
+        private fun declarations(text: String, t: Tag): Map<String, String> {
+            val out = HashMap<String, String>()
+            var k = t.start + 1 + t.name.length
+            val end = t.end - 1
+            while (k < end) {
+                while (k < end && text[k].isWhitespace()) k++
+                val nameStart = k
+                while (k < end && !text[k].isWhitespace() && text[k] != '=' && text[k] != '/' && text[k] != '>') k++
+                val name = text.substring(nameStart, k)
+                while (k < end && text[k].isWhitespace()) k++
+                if (k >= end || text[k] != '=') { if (k == nameStart) k++; continue }
+                k++
+                while (k < end && text[k].isWhitespace()) k++
+                val q = text.getOrNull(k)
+                if (q != '"' && q != '\'') break
+                val close = text.indexOf(q, k + 1)
+                if (close < 0 || close > end) break
+                if (name == "xmlns") out[""] = text.substring(k + 1, close)
+                else if (name.startsWith("xmlns:")) out[name.substring(6)] = text.substring(k + 1, close)
+                k = close + 1
+            }
+            return out
+        }
 
         /**
          * The manifest element: (element start, element end, text start, text end). An element is the manifest when
@@ -748,7 +771,7 @@ object C2paContainers {
             fun resolve(prefix: String): String? = scopes.asReversed().firstNotNullOfOrNull { it[prefix] }
             for ((i, t) in tags.withIndex()) {
                 if (t.closing) { if (scopes.isNotEmpty()) scopes.removeAt(scopes.lastIndex); continue }
-                scopes.add(XMLNS.findAll(text.substring(t.start, t.end)).associate { (it.groups[1]?.value ?: "") to it.groupValues[3] })
+                scopes.add(declarations(text, t))
                 val prefix = t.name.substringBefore(':', "")
                 val uri = resolve(prefix)
                 val manifest = t.name.substringAfter(':') == "manifest" && (uri == NS || (uri == null && prefix == "c2pa"))
