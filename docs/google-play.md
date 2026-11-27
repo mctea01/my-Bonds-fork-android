@@ -81,7 +81,7 @@ Play 一律以「應用程式簽署金鑰」重新簽署給使用者的 APK；CI
 
 ## 4. 自動提交 workflow
 
-檔案：`.github/workflows/google-play.yml`，由使用者手動放進 `.github/workflows/`（最新版本在專案共用資料夾 `diw-wallet/play/2026-11-27/`）；`github-actions-ci.yml` 的 release 建置把 R8 mapping 一起發佈到 nightly（`DIW-MY-WALLET-<版本>-mapping.txt`）。
+檔案：`.github/workflows/google-play.yml`（代理無法推送 workflow，修改時由使用者手動貼上）；`github-actions-ci.yml` 的 release 建置把 R8 mapping 一起發佈到 nightly（`DIW-MY-WALLET-<版本>-mapping.txt`）。
 
 做法：從 GitHub Release（預設 `nightly`，也可以填穩定版標籤如 `v0.5.25`）下載 release AAB 與 mapping，切到該 Release 的 commit，以 `tools/release-notes.py --play-out` 產生各語言的版本資訊（第 5.4 節），再由 `tools/play-store.py publish` 經 Google Play Developer API 在同一個 edit 內上傳並提交。不重新建置，所以上傳的檔案與 GitHub Release 完全相同。`tools/play-store.py` 只用 Python 標準函式庫與 `openssl` 命令簽署服務帳戶的權杖，不依賴第三方 Action。
 
