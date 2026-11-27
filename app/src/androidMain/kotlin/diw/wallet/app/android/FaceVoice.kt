@@ -20,6 +20,7 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
     private var tts: TextToSpeech? = null
     private var ready = false
     private var introDone = false
+    private var closing = false
     private var closed = false
     private var last: String? = null
     private var lastAt = 0L
@@ -71,6 +72,7 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
         if (utteranceId == null || utteranceId != speaking) return
         speaking = null
         lastAt = SystemClock.elapsedRealtime()
+        if (closing) shutdown()
     }
 
     private fun finishIntro() {
@@ -82,7 +84,7 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
     /** The message now on screen; called after every frame, so most calls repeat the last one and say nothing. */
     fun update(message: String?) {
         if (message.isNullOrBlank()) return
-        main.post { say(message) }
+        main.post { if (!closing) say(message) }
     }
 
     private fun say(message: String) {
@@ -101,14 +103,29 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
         if (engine.speak(message, TextToSpeech.QUEUE_FLUSH, null, id) != TextToSpeech.SUCCESS) ended(id)
     }
 
-    /** Stops once the last message had time to be heard. */
+    /**
+     * Takes no further messages and stops once the last one was heard in full, however slow the speech rate; a message
+     * still held behind the intro is spoken first.
+     */
     fun close() {
-        main.postDelayed({
-            closed = true
-            main.removeCallbacksAndMessages(null)
-            tts?.let { runCatching { it.shutdown() } }
-            tts = null
-        }, CLOSE_DELAY_MS)
+        main.post {
+            if (closing) return@post
+            closing = true
+            val held = pending
+            if (held != null && ready && tts != null) {
+                introDone = true
+                say(held)
+            }
+            if (speaking == null) shutdown() else main.postDelayed({ shutdown() }, CLOSE_MAX_MS)
+        }
+    }
+
+    private fun shutdown() {
+        if (closed) return
+        closed = true
+        main.removeCallbacksAndMessages(null)
+        tts?.let { runCatching { it.shutdown() } }
+        tts = null
     }
 
     private companion object {
@@ -116,6 +133,7 @@ internal class FaceVoice(context: Context, languageTag: String, private val intr
         const val FACE = "face"
         const val REPEAT_MS = 5000L
         const val INTRO_MAX_MS = 8000L
-        const val CLOSE_DELAY_MS = 4000L
+        /** An engine that never reports the end of the last message is released after this long. */
+        const val CLOSE_MAX_MS = 30000L
     }
 }
