@@ -34,6 +34,12 @@ object PdfZkSupport {
      */
     fun drawnStreams(pdf: PdfFile, page: PdfDict): List<Int> = zkPdfInput { walkDrawn(pdf, page) {} }
 
+    /** The thumbnail of [page] and every stream it leads to (masks, colour space and lookup streams). */
+    fun thumbnailStreams(pdf: PdfFile, page: PdfDict): List<Int> = zkPdfInput {
+        val thumb = page["Thumb"] as? PdfRef ?: return@zkPdfInput emptyList()
+        walkDrawn(pdf, PdfDict.of("Thumb" to thumb)) {}
+    }
+
     /** Keys that lead away from what a page draws: fonts (public), other pages, structure and navigation. */
     private val NOT_DRAWN = setOf("Font", "Parent", "P", "Pg", "Dest", "A", "AA", "Next", "Prev", "First", "Last", "Popup", "IRT", "StructParent", "StructParents")
 

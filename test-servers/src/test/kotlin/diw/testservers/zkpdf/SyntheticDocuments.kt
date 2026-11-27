@@ -168,7 +168,8 @@ object SyntheticDocuments {
      * a bookmark to page 3; `shading` paints page 3 with a shading and a shading pattern whose stream data carries
      * text, and `marked-content` gives page 3 a marked-content property with actual text; `ink` adds an ink
      * annotation whose coordinates stay in its dictionary, `attachment` a file attachment annotation, and
-     * `field-default` a text field whose default value is text, and `caption` a push button with a caption.
+     * `field-default` a text field whose default value is text, `caption` a push button with a caption, and
+     * `thumbnail-mask` gives page 1 a thumbnail with a soft mask image.
      */
     fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
         val out = PdfOutput()
@@ -183,7 +184,8 @@ object SyntheticDocuments {
         out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R$extra >>")
         out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R 12 0 R 14 0 R] /Count 3 >>")
         val shared = if (variant.startsWith("shared")) " /Fm 17 0 R" else ""
-        out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << $fontResources /XObject << /Qr 10 0 R$shared >> >> >>")
+        val thumbMask = variant == "thumbnail-mask"
+        out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R${if (thumbMask) " /Thumb 21 0 R" else ""} /Resources << $fontResources /XObject << /Qr 10 0 R$shared >> >> >>")
         val first = content(fonts, false, "normal") + if (variant == "shared-drawn") "q 1 0 0 1 0 -400 cm /Fm Do Q\n" else ""
         out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(first.toByteArray()))
         shared(out, fonts)
@@ -235,6 +237,12 @@ object SyntheticDocuments {
             out.stream(23, 0, mesh(), compressed(HIDDEN_LATIN.reversed().toByteArray()))
         }
         if (variant == "ink") out.obj(21, 0, "<< /Type /Annot /Subtype /Ink /Rect [55 400 300 430] /InkList [[60 405 80 425 100 405]] >>")
+        if (thumbMask) {
+            out.stream(21, 0, PdfDict.of("Width" to PdfNumber.of(1), "Height" to PdfNumber.of(1), "ColorSpace" to PdfName("DeviceGray"),
+                "BitsPerComponent" to PdfNumber.of(8), "SMask" to PdfRef(22, 0), "Filter" to PdfName("FlateDecode")), compressed(byteArrayOf(127)))
+            out.stream(22, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Image"), "Width" to PdfNumber.of(10), "Height" to PdfNumber.of(1),
+                "ColorSpace" to PdfName("DeviceGray"), "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(HIDDEN_LATIN.toByteArray()))
+        }
         if (variant == "caption") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Btn /Ff 65536 /T (b) /Rect [55 400 300 430] /MK << /CA ($HIDDEN_LATIN) >> >>")
         if (variant == "field-default") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Tx /T (f) /Rect [55 400 300 430] /DV ($HIDDEN_LATIN) >>")
         if (variant == "attachment") {
@@ -249,7 +257,7 @@ object SyntheticDocuments {
             out.obj(25, 0, "<< /Type /Outlines /First 26 0 R /Last 26 0 R /Count 1 >>")
             out.obj(26, 0, "<< /Title ($HIDDEN_LATIN) /Parent 25 0 R /Dest [14 0 R /Fit] >>")
         }
-        val size = when (variant) { "ink", "field-default", "caption" -> 22; "soft-mask", "attachment" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
+        val size = when (variant) { "ink", "field-default", "caption" -> 22; "soft-mask", "attachment", "thumbnail-mask" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
         out.xrefTable(PdfDict.of("Size" to PdfNumber.of(size), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
     }

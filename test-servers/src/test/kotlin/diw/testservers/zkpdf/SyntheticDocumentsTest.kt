@@ -219,6 +219,20 @@ class SyntheticDocumentsTest {
         assertTrue(direct in opaque && pattern in opaque)
     }
 
+    /** The thumbnail of a proven page is a picture of it: its soft mask is private as well. */
+    @Test fun thumbnailMasksOfProvenPagesArePrivate() = runBlocking<Unit> {
+        val pdf = SyntheticDocuments.multiPage(fonts, material, "thumbnail-mask")
+        val file = PdfFile(pdf)
+        val pages = PdfTextExtractor.pages(file)
+        val thumb = (pages[0]["Thumb"] as PdfRef).num
+        val mask = ((file.getObject(thumb) as PdfStream).dict["SMask"] as PdfRef).num
+        assertEquals(listOf(thumb, mask), PdfZkSupport.thumbnailStreams(file, pages[0]))
+        val profile = ZkPdfProfile("test.multi-page-1/1", "Synthetic", emptyList(),
+            listOf(ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT)), test = true)
+        val opaque = ZkPdfPlanner.plan(pdf, profile).layout.windows.filter { it.role == "opaque" }.map { it.objectNumber }
+        assertTrue(thumb in opaque && mask in opaque)
+    }
+
     @Test fun everyPdfHasAnIntactSignatureFromTheTestPki() = runBlocking<Unit> {
         val trust = trust()
         for ((name, bytes) in generated.filterKeys { it.endsWith(".pdf") }) {

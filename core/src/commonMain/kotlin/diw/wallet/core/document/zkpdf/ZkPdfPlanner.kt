@@ -163,7 +163,8 @@ object ZkPdfPlanner {
         val private = own.flatMap { (content, images) -> listOf(content) + images }.toSet()
         require(private.size == own.sumOf { 1 + it.second.size }) { "Private streams are shared" }
         // What proven pages show stays public as in a single-page proof, except their thumbnails (a picture of the page).
-        val thumbs = provenPages.mapNotNull { (pages[it]["Thumb"] as? PdfRef)?.num?.takeIf { n -> signed.getObject(n) is PdfStream } }
+        // A thumbnail takes its masks, colour space and lookup streams along.
+        val thumbs = provenPages.flatMap { PdfZkSupport.thumbnailStreams(signed, pages[it]) }
         val shown = provenPages.flatMap { PdfZkSupport.drawnStreams(signed, pages[it]) }.toSet() - private - thumbs.toSet()
         val others = pages.indices.filter { it !in provenPages }
         // Masking clears stream data only: text kept in dictionaries (annotations, outlines, structure tree) would stay public.
