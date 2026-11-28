@@ -431,6 +431,8 @@ object C2paBindings {
             val group = rest.take(mm.count)
             rest = rest.drop(mm.count)
             val chunks = C2paBmff.trackChunks(asset, mm.localId) ?: return false
+            // Every chunk of the track is a leaf: a chunk the tree does not count would go unchecked.
+            if (chunks.size != mm.count) return false
             val jca = C2paManifests.jcaHash(mm.alg ?: alg)
             val sorted = group.sortedBy { it.offset }
             if (sorted.withIndex().any { (k, x) -> x.location != k.toLong() }) return false
