@@ -1076,6 +1076,21 @@ class C2paSigningTest {
     }
 
     @Test
+    fun aCompressedManifestInsideACompressedManifestIsNotDecompressed() {
+        val enc = diw.wallet.core.document.c2pa.BrotliEncoder
+        val empty = listOf("c2pa.hash.data" to C2paCbor.map(listOf("alg" to C2paCbor.tstr("sha256"))))
+        val plain = unsignedManifest("urn:c2pa:test", empty)
+        val label = "urn:c2pa:nested"
+        val relabeled = unsignedManifest(label, empty)
+        fun packed(inner: ByteArray) = jumbf("6332636d00110010800000aa00389b71", label, listOf(bmffBox("brob", enc.encode(inner))))
+        fun store(second: ByteArray) = jumbf("6332706100110010800000aa00389b71", "c2pa", listOf(plain, second))
+        // One level is a compressed manifest; a compressed manifest holding another one is reported, not unpacked.
+        assertTrue(C2paManifests.read(store(packed(relabeled)))!!.problems.isEmpty())
+        val nested = C2paManifests.read(store(packed(packed(relabeled))))!!
+        assertEquals(listOf("manifest.compressed.invalid"), nested.problems.map { it.code })
+    }
+
+    @Test
     fun brotliEncoderRoundTrips() {
         val random = java.util.Random(7)
         val samples = listOf(
@@ -1121,6 +1136,32 @@ class C2paSigningTest {
         return jumbf("6332706100110010800000aa00389b71", "c2pa", listOf(manifest))
     }
 
+    /** An unsigned store with one manifest whose claim references the [assertions] (labels to CBOR), in order. */
+    private fun unsignedStore(assertions: List<Pair<String, ByteArray>>): ByteArray =
+        jumbf("6332706100110010800000aa00389b71", "c2pa", listOf(unsignedManifest("urn:c2pa:test", assertions)))
+
+    /** An unsigned standard manifest [label] whose claim references the [assertions] (labels to CBOR), in order. */
+    private fun unsignedManifest(label: String, assertions: List<Pair<String, ByteArray>>): ByteArray {
+        val boxes = assertions.map { (label, cbor) -> label to jumbf("63626f7200110010800000aa00389b71", label, listOf(bmffBox("cbor", cbor))) }
+        val claim = C2paCbor.map(listOf(
+            "instanceID" to C2paCbor.tstr("xmp:iid:test"),
+            "claim_generator_info" to C2paCbor.map(listOf("name" to C2paCbor.tstr("test"))),
+            "signature" to C2paCbor.tstr("self#jumbf=c2pa.signature"),
+            "created_assertions" to C2paCbor.array(boxes.map { (label, box) -> hashedUri(label, box) }),
+            "alg" to C2paCbor.tstr("sha256"),
+        ))
+        return jumbf("63326d6100110010800000aa00389b71", label, listOf(
+            jumbf("6332617300110010800000aa00389b71", "c2pa.assertions", boxes.map { it.second }),
+            jumbf("6332636c00110010800000aa00389b71", "c2pa.claim.v2", listOf(bmffBox("cbor", claim))),
+        ))
+    }
+
+    private fun hashedUri(label: String, box: ByteArray) = C2paCbor.map(listOf(
+        "url" to C2paCbor.tstr("self#jumbf=c2pa.assertions/$label"), "hash" to C2paCbor.bstr(sha(box.copyOfRange(8, box.size))),
+    ))
+
+    private fun assertionOf(label: String, cbor: ByteArray) = jumbf("63626f7200110010800000aa00389b71", label, listOf(bmffBox("cbor", cbor)))
+
     private fun c2paUuid(purpose: String, data: ByteArray): ByteArray =
         bmffBox("uuid", C2paBmff.UUID + ByteArray(4) + purpose.encodeToByteArray() + 0 + data)
 
@@ -1164,6 +1205,54 @@ class C2paSigningTest {
         assertFalse(bad.first().success, bad.toString())
         // Without auxiliary boxes neither reading can check a stored row above the leaves.
         assertFalse(check(timedMp4(aux = false)).first().success)
+    }
+
+    @Test
+    fun aBmffBoxPartCoversItsHeaderAndHashesItsPayload() {
+        // A Motion Photo style MP4: the primary part by byte range, then an mpvd box located by bmffBox whose hash is
+        // over its payload only; together they cover the file including the mpvd header.
+        val ftyp = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0x200) + "isommp41".encodeToByteArray())
+        val mdat = bmffBox("mdat", payload(900))
+        val video = payload(700).reversedArray()
+        val mpvd = bmffBox("mpvd", video)
+        fun dataHash(start: Int, length: Int, hash: ByteArray) = C2paCbor.map(listOf(
+            "exclusions" to C2paCbor.array(if (length > 0) listOf(C2paCbor.map(listOf("start" to C2paCbor.int(start), "length" to C2paCbor.int(length)))) else emptyList()),
+            "alg" to C2paCbor.tstr("sha256"), "hash" to C2paCbor.bstr(hash),
+        ))
+        val hard = C2paCbor.map(listOf(
+            "exclusions" to C2paCbor.array(listOf(C2paCbor.map(listOf("xpath" to C2paCbor.tstr("/uuid"), "data" to C2paCbor.array(listOf(C2paCbor.map(listOf("offset" to C2paCbor.int(8), "value" to C2paCbor.bstr(C2paBmff.UUID))))))))),
+            "alg" to C2paCbor.tstr("sha256"), "hash" to C2paCbor.bstr(ByteArray(32)),
+        ))
+        var uuidSize = 0
+        var file = ByteArray(0)
+        repeat(4) {
+            val part0 = assertionOf("c2pa.hash.data.part", dataHash(ftyp.size, uuidSize, sha(ftyp + mdat)))
+            val part1 = assertionOf("c2pa.hash.data.part__1", dataHash(0, 0, sha(video)))
+            val primary = ftyp.size + uuidSize + mdat.size
+            val multi = C2paCbor.map(listOf("parts" to C2paCbor.array(listOf(
+                C2paCbor.map(listOf("location" to C2paCbor.map(listOf("byteOffset" to C2paCbor.int(0), "length" to C2paCbor.int(primary))),
+                    "hashAssertion" to hashedUri("c2pa.hash.data.part", part0))),
+                C2paCbor.map(listOf("location" to C2paCbor.map(listOf("bmffBox" to C2paCbor.tstr("/mpvd"))),
+                    "hashAssertion" to hashedUri("c2pa.hash.data.part__1", part1), "optional" to byteArrayOf(0xF5.toByte()))),
+            ))))
+            val store = c2paUuid("manifest", ByteArray(8) + unsignedStore(listOf(
+                "c2pa.hash.bmff.v3" to hard,
+                "c2pa.hash.data.part" to dataHash(ftyp.size, uuidSize, sha(ftyp + mdat)),
+                "c2pa.hash.data.part__1" to dataHash(0, 0, sha(video)),
+                C2paBindings.MULTI_ASSET to multi,
+            )))
+            uuidSize = store.size
+            file = ftyp + store + mdat + mpvd
+        }
+        fun check(b: ByteArray) = C2paManifests.read(b)!!.let { C2paBindings.check(it, it.active!!) }
+        val ok = check(file)
+        assertEquals(listOf("assertion.multiAssetHash.match", "assertion.multiAssetHash.match"), ok.map { it.code }, ok.toString())
+        // The optional video removed: the primary part still covers the whole file.
+        val without = check(file.copyOfRange(0, file.size - mpvd.size))
+        assertEquals(listOf("assertion.multiAssetHash.match", "assertion.multiAssetHash.missingPart"), without.map { it.code }, without.toString())
+        // A changed video byte fails its part.
+        val changed = file.copyOf().also { it[it.size - 10] = (it[it.size - 10] + 1).toByte() }
+        assertEquals("assertion.multiAssetHash.mismatch", check(changed).first().code)
     }
 
     @Test

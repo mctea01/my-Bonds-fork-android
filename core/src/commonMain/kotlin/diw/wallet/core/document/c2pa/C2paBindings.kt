@@ -134,7 +134,11 @@ object C2paBindings {
 
     // ---------------------------------------------------------------- multi-asset hash (C2PA 18.9, 15.12.4)
 
-    private class Part(val index: Int, val range: C2paRange, val payload: Boolean, val label: String, val box: JumbfSuperbox, val url: String)
+    /**
+     * A located part: [range] is what its hash covers, [cover] the bytes of the file it takes up. They differ for a
+     * bmffBox part, whose hash is over the box payload (C2PA 18.9.2) while the box header is still part of the file.
+     */
+    private class Part(val index: Int, val range: C2paRange, val cover: C2paRange, val payload: Boolean, val label: String, val box: JumbfSuperbox, val url: String)
 
     private fun multiAsset(store: C2paStore, m: C2paManifest, multi: List<JumbfSuperbox>, adjusted: Boolean): List<C2paStatus> {
         val u = url(m, multi.first().label)
@@ -166,12 +170,14 @@ object C2paBindings {
                 return malformed("core_c2pa_multi_asset_assertion", ref.url)
             }
             val partUrl = C2paManifests.absolute(m, ref.url)
+            var cover: C2paRange? = null
             val range: C2paRange = if (xpath != null) {
                 val box = roots?.let { C2paBmff.select(it, xpath).firstOrNull() }
                 if (box == null) {
                     if (optional) { skipped += C2paStatus("assertion.multiAssetHash.missingPart", partUrl, false, ct("core_c2pa_multi_asset_optional", k), informational = true); continue }
                     return malformed("core_c2pa_multi_asset_box", xpath)
                 }
+                cover = C2paRange(box.start, box.size)
                 C2paRange(box.start + box.header, box.size - box.header)
             } else {
                 val o = (offset as? CborInt)?.asNumber
@@ -184,13 +190,13 @@ object C2paBindings {
                 if (o + n > size) return listOf(C2paStatus("assertion.multiAssetHash.mismatch", partUrl, false, ct("core_c2pa_multi_asset_truncated", k)))
                 C2paRange(o, n)
             }
-            parts += Part(k, range, xpath != null, label, partBox, partUrl)
+            parts += Part(k, range, cover ?: range, xpath != null, label, partBox, partUrl)
         }
-        // The located parts must be in file order, contiguous and cover every byte.
+        // The located parts (a bmffBox part with its box header) must be in file order, contiguous and cover every byte.
         var pos = 0L
         for (p in parts) {
-            if (p.range.start != pos) return malformed("core_c2pa_multi_asset_cover")
-            pos = p.range.end
+            if (p.cover.start != pos) return malformed("core_c2pa_multi_asset_cover")
+            pos = p.cover.end
         }
         if (pos != size) return malformed("core_c2pa_multi_asset_cover")
         val out = ArrayList<C2paStatus>()

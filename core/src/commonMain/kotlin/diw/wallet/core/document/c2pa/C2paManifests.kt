@@ -256,22 +256,26 @@ object C2paManifests {
     internal fun storeChildren(jumbf: ByteArray): List<JumbfSuperbox> = root(jumbf)?.children.orEmpty()
 
     private fun root(jumbf: ByteArray): JumbfSuperbox? =
-        runCatching { superboxes(jumbf, 0, jumbf.size) }.getOrNull()?.firstOrNull { it.label == "c2pa" || it.uuid == STORE_UUID }
+        runCatching { superboxes(jumbf, 0, jumbf.size, Budget(MAX_DECOMPRESSED.toLong())) }.getOrNull()?.firstOrNull { it.label == "c2pa" || it.uuid == STORE_UUID }
 
     /** JUMBF types of the manifest superboxes (C2PA 11.1): standard, update and compressed. */
     const val STANDARD_UUID = "63326d6100110010800000aa00389b71"
     const val UPDATE_UUID = "6332756d00110010800000aa00389b71"
     const val COMPRESSED_UUID = "6332636d00110010800000aa00389b71"
 
-    /** The largest manifest a brob box may decompress to. */
+    /** The most that the brob boxes of one store may decompress to, together. */
     private const val MAX_DECOMPRESSED = 64 * 1024 * 1024
+
+    /** What is left of [MAX_DECOMPRESSED] while one store is read. */
+    private class Budget(var left: Long)
 
     /** True when [bytes] starts like a sidecar manifest store (a JUMBF superbox). */
     fun isSidecar(bytes: ByteArray): Boolean = C2paContainers.isSidecar(bytes)
 
     // ---------------------------------------------------------------- JUMBF (ISO/IEC 19566-5)
 
-    private fun superboxes(s: ByteArray, from: Int, to: Int): List<JumbfSuperbox> {
+    /** The superboxes in [s] from [from] to [to]; compressed manifests are decompressed within [budget] (null: none are). */
+    private fun superboxes(s: ByteArray, from: Int, to: Int, budget: Budget?): List<JumbfSuperbox> {
         val out = ArrayList<JumbfSuperbox>()
         var off = from
         while (off + 8 <= to) {
@@ -281,13 +285,13 @@ object C2paManifests {
             if (len == 0L) len = (to - off).toLong()
             if (len < header || off + len > to) throw IllegalArgumentException("JUMBF box out of range")
             val end = off + len.toInt()
-            if (ascii(s, off + 4, 4) == "jumb") out.add(superbox(s, off, header, end))
+            if (ascii(s, off + 4, 4) == "jumb") out.add(superbox(s, off, header, end, budget))
             off = end
         }
         return out
     }
 
-    private fun superbox(s: ByteArray, start: Int, header: Int, end: Int): JumbfSuperbox {
+    private fun superbox(s: ByteArray, start: Int, header: Int, end: Int, budget: Budget?): JumbfSuperbox {
         val boxes = ArrayList<Triple<String, Int, Int>>()
         var off = start + header
         while (off + 8 <= end) {
@@ -312,22 +316,26 @@ object C2paManifests {
         val children = ArrayList<JumbfSuperbox>()
         for ((k, box) in boxes.withIndex()) {
             if (k == 0) continue
-            if (box.first == "jumb") children.add(superbox(s, box.second, box.third, ends[k]))
+            if (box.first == "jumb") children.add(superbox(s, box.second, box.third, ends[k], budget))
             else contents.add(box.first to s.copyOfRange(box.second + box.third, ends[k]))
         }
         val box = JumbfSuperbox(label, uuid, s, start, header, end, contents, children)
-        return if (uuid == COMPRESSED_UUID) decompressed(box) ?: box else box
+        return if (uuid == COMPRESSED_UUID && budget != null) decompressed(box, budget) ?: box else box
     }
 
     /**
      * A compressed manifest (c2cm, C2PA 11.2.4) as the manifest superbox its brob box holds, with the stored box kept for
      * hashed URIs. Null when the brob box is missing, does not decompress, or is not one standard or update manifest of
-     * the same label: the box is then kept as it is and reported as manifest.compressed.invalid.
+     * the same label: the box is then kept as it is and reported as manifest.compressed.invalid. The decompressed
+     * bytes count against [budget], and what they hold is parsed without decompressing again, so a compressed
+     * manifest inside one is not a manifest.
      */
-    private fun decompressed(outer: JumbfSuperbox): JumbfSuperbox? = runCatching {
+    private fun decompressed(outer: JumbfSuperbox, budget: Budget): JumbfSuperbox? = runCatching {
         val packed = outer.content("brob") ?: return null
-        val raw = C2paBrotli.decode(packed, MAX_DECOMPRESSED)
-        val inner = superboxes(raw, 0, raw.size).singleOrNull() ?: return null
+        if (budget.left <= 0) return null
+        val raw = C2paBrotli.decode(packed, budget.left.toInt())
+        budget.left -= raw.size
+        val inner = superboxes(raw, 0, raw.size, null).singleOrNull() ?: return null
         if (inner.label != outer.label || (inner.uuid != STANDARD_UUID && inner.uuid != UPDATE_UUID)) return null
         inner.storedAs(outer)
     }.getOrNull()
