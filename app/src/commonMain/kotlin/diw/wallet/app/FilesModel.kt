@@ -27,6 +27,13 @@ import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paFormat
 import diw.wallet.core.document.c2pa.C2paSignRequest
 import diw.wallet.core.document.c2pa.C2paWriter
+import diw.wallet.core.document.c2pa.C2paIdentityAggregation
+import diw.wallet.core.document.c2pa.CawgAggregation
+import diw.wallet.core.document.c2pa.CawgVerifiedIdentity
+import diw.wallet.core.document.c2pa.IcaSigner
+import diw.wallet.core.credential.ClaimReader
+import diw.wallet.core.oid4vci.issuanceRecord
+import org.multipaz.revocation.RevocationCheckState
 import diw.wallet.core.document.c2pa.SignerPayloadOrder
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
@@ -411,7 +418,8 @@ class VisibleSignature(val page: Int, val position: PdfSignatureAppearance.Posit
  * made the content; null signs the file as it was with c2pa.opened), a CAWG identity assertion by the chosen key,
  * the named actor's [roles], the AI training and data mining choice, which key signs the claim, the optional
  * c2pa-rs field order of signer_payload (not the standard encoding), an update manifest instead of a standard one
- * for a file that already has content credentials, and Brotli compression of the manifest.
+ * for a file that already has content credentials, Brotli compression of the manifest, and the held credentials
+ * the wallet vouches for as CAWG identity claims aggregator.
  */
 data class C2paChoice(
     val sourceType: String? = null,
@@ -425,6 +433,27 @@ data class C2paChoice(
     val update: Boolean = false,
     /** The manifest is stored Brotli-compressed where the binding allows it (JPEG, PNG and GIF switch to a box hash). */
     val compress: Boolean = false,
+    /**
+     * Held credentials (document id to CAWG verified identity type) the wallet lists in an identity claims
+     * aggregation (cawg.identity_claims_aggregation) it issues with its own did:jwk; empty adds none.
+     */
+    val aggregation: Map<String, String> = emptyMap(),
+    /** The aggregator signs with an Ed25519 software key (EdDSA, the only algorithm c2pa-rs verifies) instead of P-256. */
+    val aggregationEdDsa: Boolean = false,
+)
+
+/**
+ * A held credential the wallet can vouch for as identity claims aggregator: [name] as its highly trusted issuer
+ * ([providerId], [providerName]) stated it, verified when the wallet received it ([verifiedAt]).
+ */
+data class IcaCandidate(
+    val documentId: String,
+    val title: String,
+    val name: String?,
+    val providerId: String,
+    val providerName: String,
+    val verifiedAt: Instant,
+    val tier: TrustTier,
 )
 
 /**
@@ -1981,6 +2010,7 @@ class FilesModel(private val model: WalletModel) {
     private suspend fun signC2pa(f: StoredFile, data: ByteArray, signer: DocumentSigner, c: C2paChoice, ts: Timestamper?): Pair<ByteArray, String> {
         val update = c.update && f.report?.c2pa != null
         val identity = c.identity && !update
+        val aggregation = if (update || c.aggregation.isEmpty()) null else identityAggregation(c)
         val claimSigner = if (c.walletClaim && identity) walletSigner(C2PA_GENERATOR) else signer
         val previous = f.report?.c2pa?.manifests?.firstOrNull { it.active }?.statuses.orEmpty()
         val format = C2paContainers.detect(data)
@@ -1999,6 +2029,7 @@ class FilesModel(private val model: WalletModel) {
             binding = if (c.compress && !update && format in BOX_HASH_FORMATS) C2paBinding.BOXES else null,
             update = update,
             compress = c.compress,
+            aggregation = aggregation,
         )
         // The container's own media type (SVG, audio and video are not told apart by the document format).
         val type = format?.let { C2paContainers.mediaType(data, it) } ?: f.report?.let { mediaTypeOf(it, f.name) }
@@ -2410,6 +2441,55 @@ class FilesModel(private val model: WalletModel) {
             override val source = SignerSource.WALLET
             override suspend fun sign(data: ByteArray): ByteArray = key.signingKey("ES256").sign(data).toDerEncoded()
         }
+    }
+
+    /**
+     * Held credentials of highly trusted issuers (T1, T2) that the wallet did not issue itself and that are not known
+     * to be revoked, with the holder's name where a claim gives it: what an identity claims aggregation may list.
+     */
+    suspend fun icaCandidates(): List<IcaCandidate> = model.documents.value.mapNotNull { doc ->
+        val record = doc.issuanceRecord ?: return@mapNotNull null
+        val tier = runCatching { TrustTier.valueOf(record.tier) }.getOrNull() ?: return@mapNotNull null
+        if (tier != TrustTier.T1 && tier != TrustTier.T2) return@mapNotNull null
+        if (TrustLabel.SELF_ISSUED.name in record.labels || record.profile == PROFILE) return@mapNotNull null
+        if (model.status.statuses.value[doc.identifier]?.status?.state == RevocationCheckState.INVALID) return@mapNotNull null
+        val credential = runCatching { doc.getCertifiedCredentials().firstOrNull() }.getOrNull() ?: return@mapNotNull null
+        val claims = runCatching { ClaimReader.read(credential, model.documentTypes) }.getOrDefault(emptyList())
+        val issuer = record.credentialIssuer
+        IcaCandidate(
+            documentId = doc.identifier,
+            title = doc.displayName ?: record.configurationId,
+            name = holderName(claims.map { Triple(it.path, it.label, it.value) }),
+            providerId = issuer,
+            providerName = record.anchorName?.takeIf { it.isNotBlank() } ?: Regex("^https?://([^/:]+)").find(issuer)?.groupValues?.get(1) ?: issuer,
+            verifiedAt = Instant.fromEpochSeconds(record.issuedAt),
+            tier = tier,
+        )
+    }
+
+    /** The identity claims aggregation of [c]: the chosen held credentials, signed by the wallet's aggregator key. */
+    private suspend fun identityAggregation(c: C2paChoice): C2paIdentityAggregation {
+        val candidates = icaCandidates().associateBy { it.documentId }
+        val identities = c.aggregation.map { (id, type) ->
+            val k = candidates[id] ?: throw SigningException(tr(Res.string.msg_ica_credential_gone))
+            if (type == CawgAggregation.DOCUMENT_VERIFICATION && k.name == null) throw SigningException(tr(Res.string.msg_ica_no_name, k.title))
+            CawgVerifiedIdentity(type = type, name = k.name, verifiedAt = k.verifiedAt, providerId = k.providerId, providerName = k.providerName)
+        }
+        return C2paIdentityAggregation(aggregatorSigner(c.aggregationEdDsa), identities)
+    }
+
+    /**
+     * The wallet's identity claims aggregator key: P-256 in the platform's secure area (ES256), or an Ed25519 key in
+     * the software secure area (EdDSA) for validators built on c2pa-rs, which verify no other algorithm.
+     */
+    private suspend fun aggregatorSigner(edDsa: Boolean): IcaSigner {
+        if (!edDsa) {
+            val key = identity(HolderIdentities.IDENTITY_AGGREGATOR)
+            return IcaSigner.of(key.publicKey) { data -> key.signingKey("ES256").signEc(data).toCoseEncoded() }
+        }
+        val backend = model.backends.firstOrNull { it.ed25519 != null } ?: throw SigningException(tr(Res.string.msg_ica_no_ed25519))
+        val key = model.holderIdentities.getOrCreate(HolderIdentities.IDENTITY_AGGREGATOR_EDDSA, "did:jwk", backend.secureArea, backend.ed25519!!(true))
+        return IcaSigner.of(key.publicKey) { data -> key.signingKey().signEc(data).toCoseEncoded() }
     }
 
     private suspend fun identity(profile: String): HolderKey {
@@ -2998,6 +3078,23 @@ class FilesModel(private val model: WalletModel) {
 
         /** The claim generator named in C2PA manifests, and the subject of the wallet key's certificate that signs them. */
         const val C2PA_GENERATOR = "DIW MY WALLET"
+
+        private val NAME_CLAIMS = setOf("name", "full_name", "fullname", "full_name_national_character", "name_national_character")
+        private val NAME_LABELS = setOf("姓名", "名字", "全名", "name", "full name")
+
+        /**
+         * The holder's name from (path, label, value) claims: a whole-name claim, else family and given name (written
+         * together for names in CJK characters, given name first otherwise); null when none is given.
+         */
+        fun holderName(claims: List<Triple<List<String>, String?, String>>): String? {
+            fun last(t: Triple<List<String>, String?, String>) = t.first.lastOrNull()?.lowercase().orEmpty()
+            claims.firstOrNull { (last(it) in NAME_CLAIMS || it.second?.trim()?.lowercase() in NAME_LABELS) && it.third.isNotBlank() }?.let { return it.third.trim() }
+            val family = claims.firstOrNull { last(it) in setOf("family_name", "familyname", "surname", "last_name") }?.third?.trim()?.takeIf { it.isNotEmpty() }
+            val given = claims.firstOrNull { last(it) in setOf("given_name", "givenname", "first_name") }?.third?.trim()?.takeIf { it.isNotEmpty() }
+            if (family == null || given == null) return family ?: given
+            val cjk = (family + given).any { it.code in 0x3040..0x9FFF || it.code in 0xAC00..0xD7AF }
+            return if (cjk) family + given else "$given $family"
+        }
 
         /** Containers whose default data hash becomes a box hash when the manifest is to be compressed. */
         private val BOX_HASH_FORMATS = setOf(C2paFormat.JPEG, C2paFormat.PNG, C2paFormat.GIF)

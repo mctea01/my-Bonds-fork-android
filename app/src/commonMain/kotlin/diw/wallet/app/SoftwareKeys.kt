@@ -18,16 +18,21 @@ import org.multipaz.storage.Storage
  * Pure software fallback for platforms without hardware key storage (emulator, AOSP without TEE access,
  * Linux phones, PC). Keys that need user authentication are sealed with the App PIN.
  */
-suspend fun softwareBackend(storage: Storage, pinPrompt: suspend (String) -> String?): KeyBackend =
-    KeyBackend(SoftwareSecureArea.create(storage), KeyProtection.SOFTWARE) { _, userAuth ->
+suspend fun softwareBackend(storage: Storage, pinPrompt: suspend (String) -> String?): KeyBackend {
+    suspend fun settings(userAuth: Boolean, algorithm: Algorithm?): SoftwareCreateKeySettings {
         val b = SoftwareCreateKeySettings.Builder()
+        algorithm?.let { b.setAlgorithm(it) }
         if (userAuth) {
             val pin = pinPrompt(tr(Res.string.sk_set_pin))
                 ?: throw KeyLockedException(tr(Res.string.sk_pin_cancelled))
             b.setPassphraseRequired(true, pin, PassphraseConstraints.PIN_SIX_DIGITS_OR_LONGER)
         }
-        b.build()
+        return b.build()
     }
+    return KeyBackend(SoftwareSecureArea.create(storage), KeyProtection.SOFTWARE, ed25519 = { userAuth -> settings(userAuth, Algorithm.ED25519) }) { _, userAuth ->
+        settings(userAuth, null)
+    }
+}
 
 /** Unlocks software keys with the App PIN and hands every other secure area to [platform]. */
 class PinOrPlatformUnlock(

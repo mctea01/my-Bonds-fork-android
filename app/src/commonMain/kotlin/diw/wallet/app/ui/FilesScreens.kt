@@ -62,6 +62,8 @@ import diw.wallet.app.FilePreview
 import diw.wallet.app.VisibleSignature
 import diw.wallet.app.OfdSealChoice
 import diw.wallet.app.C2paChoice
+import diw.wallet.app.IcaCandidate
+import diw.wallet.core.document.c2pa.CawgAggregation
 import diw.wallet.app.SealPicture
 import diw.wallet.core.document.ofd.OfdShading
 import diw.wallet.core.document.c2pa.C2paInfo
@@ -1033,7 +1035,10 @@ fun FileSignScreen(model: WalletModel, screen: Screen.FileSign) {
                 OfdSignOptions(model, timestamp, tsaName) { timestamp = it }
                 OfdSealPicker(model, f, seal) { seal = it }
             }
-            SignForm.C2PA -> C2paSignOptions(f, c2pa, choice, timestamp, tsaName, { c2pa = it }, { timestamp = it })
+            SignForm.C2PA -> {
+                val candidates by produceState(emptyList<IcaCandidate>(), f.id) { value = runCatching { model.files.icaCandidates() }.getOrDefault(emptyList()) }
+                C2paSignOptions(f, c2pa, choice, timestamp, tsaName, candidates, { c2pa = it }, { timestamp = it })
+            }
             else -> {
                 SectionTitle(stringResource(Res.string.sign_step_level))
                 LevelPicker(if (form == SignForm.XADES) "XAdES" else if (form == SignForm.ASIC) "ASiC-E" else "CAdES", level) { level = it }
@@ -1323,6 +1328,7 @@ private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolea
         add(stringResource(Res.string.tech_c2pa_2))
         if (c2pa.update) add(stringResource(Res.string.tech_c2pa_update))
         else if (c2pa.identity) add(stringResource(if (c2pa.c2paRsOrder) Res.string.tech_c2pa_identity_rs else Res.string.tech_c2pa_identity))
+        if (!c2pa.update && c2pa.aggregation.isNotEmpty()) add(stringResource(if (c2pa.aggregationEdDsa) Res.string.tech_c2pa_ica_eddsa else Res.string.tech_c2pa_ica))
         if (!c2pa.update) add(stringResource(Res.string.tech_c2pa_multi))
         if (c2pa.compress) add(stringResource(Res.string.tech_c2pa_compress))
         if (timestamp) add(stringResource(Res.string.tech_c2pa_ts))
@@ -2005,12 +2011,13 @@ private const val SYNTHID_URL = "https://synthid.com/"
  * Options of a C2PA manifest: how the file was made (signed as it was, or created with an IPTC digital source type),
  * the CAWG identity assertion and roles, the AI training choice, which key signs the claim, the time stamp and the
  * non-standard c2pa-rs encoding; for a file with content credentials, an update manifest instead (no hard binding,
- * how-made or identity); Brotli compression for a file that embeds the manifest; with a warning that validators
- * expect C2PA and CAWG certificate profiles.
+ * how-made or identity); Brotli compression for a file that embeds the manifest; the held credentials ([candidates])
+ * the wallet vouches for as identity claims aggregator; with a warning that validators expect C2PA and CAWG
+ * certificate profiles.
  */
 @Composable
 private fun C2paSignOptions(
-    f: StoredFile, value: C2paChoice, choice: SignerChoice?, timestamp: Boolean, tsaName: String,
+    f: StoredFile, value: C2paChoice, choice: SignerChoice?, timestamp: Boolean, tsaName: String, candidates: List<IcaCandidate>,
     onChange: (C2paChoice) -> Unit, onTimestamp: (Boolean) -> Unit,
 ) {
     val sidecar = f.name.substringAfterLast('.', "").lowercase() !in C2PA_EMBEDDABLE
@@ -2027,7 +2034,10 @@ private fun C2paSignOptions(
         }
     }
     val update = value.update && hasManifest
-    if (!update) C2paMadeAndIdentity(value, onChange)
+    if (!update) {
+        C2paMadeAndIdentity(value, onChange)
+        C2paAggregation(value, candidates, onChange)
+    }
     SectionTitle(stringResource(Res.string.c2pa_sign_training))
     Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
         FilterChip(selected = value.allowTraining == null, onClick = { onChange(value.copy(allowTraining = null)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_none)) })
@@ -2095,7 +2105,7 @@ private fun C2paMadeAndIdentity(value: C2paChoice, onChange: (C2paChoice) -> Uni
         Checkbox(checked = value.identity, onCheckedChange = { onChange(value.copy(identity = it)) })
         Text(stringResource(Res.string.c2pa_sign_identity_add))
     }
-    if (value.identity) {
+    if (value.identity || value.aggregation.isNotEmpty()) {
         Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
             CAWG_ROLES.forEach { r ->
                 FilterChip(selected = r in value.roles, onClick = {
@@ -2103,11 +2113,58 @@ private fun C2paMadeAndIdentity(value: C2paChoice, onChange: (C2paChoice) -> Uni
                 }, label = { Text(cawgRole(r)) })
             }
         }
+    }
+    if (value.identity) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Checkbox(checked = value.walletClaim, onCheckedChange = { onChange(value.copy(walletClaim = it)) })
             Column {
                 Text(stringResource(Res.string.c2pa_sign_wallet_claim))
                 Text(stringResource(Res.string.c2pa_sign_wallet_claim_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+}
+
+/**
+ * The identity claims aggregation the wallet issues itself: which held credentials of highly trusted issuers it lists,
+ * as an identity document (cawg.document_verification, which needs the holder's name) or an affiliation, and the
+ * EdDSA key for validators built on c2pa-rs.
+ */
+@Composable
+private fun C2paAggregation(value: C2paChoice, candidates: List<IcaCandidate>, onChange: (C2paChoice) -> Unit) {
+    SectionTitle(stringResource(Res.string.c2pa_sign_ica_title))
+    Text(stringResource(Res.string.c2pa_sign_ica_text), style = MaterialTheme.typography.bodySmall)
+    if (candidates.isEmpty()) {
+        Text(stringResource(Res.string.c2pa_sign_ica_none), style = MaterialTheme.typography.bodySmall)
+        return
+    }
+    candidates.forEach { k ->
+        val type = value.aggregation[k.documentId]
+        fun toggle(on: Boolean) = onChange(value.copy(aggregation = if (on) {
+            value.aggregation + (k.documentId to if (k.name != null) CawgAggregation.DOCUMENT_VERIFICATION else CawgAggregation.AFFILIATION)
+        } else value.aggregation - k.documentId))
+        Row(Modifier.fillMaxWidth().clickable { toggle(type == null) }, verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = type != null, onCheckedChange = { toggle(it) })
+            Column {
+                Text(k.title, style = MaterialTheme.typography.bodyMedium)
+                Text(stringResource(Res.string.c2pa_sign_ica_entry, k.name ?: stringResource(Res.string.c2pa_sign_ica_no_name), k.providerName, k.tier.name), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+        if (type != null) Row(Modifier.horizontalScroll(rememberScrollState()).padding(start = 40.dp), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+            FilterChip(selected = type == CawgAggregation.DOCUMENT_VERIFICATION, enabled = k.name != null,
+                onClick = { onChange(value.copy(aggregation = value.aggregation + (k.documentId to CawgAggregation.DOCUMENT_VERIFICATION))) },
+                label = { Text(stringResource(Res.string.c2pa_sign_ica_document)) })
+            FilterChip(selected = type == CawgAggregation.AFFILIATION,
+                onClick = { onChange(value.copy(aggregation = value.aggregation + (k.documentId to CawgAggregation.AFFILIATION))) },
+                label = { Text(stringResource(Res.string.c2pa_sign_ica_affiliation)) })
+        }
+    }
+    if (value.aggregation.isNotEmpty()) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = value.aggregationEdDsa, onCheckedChange = { onChange(value.copy(aggregationEdDsa = it)) })
+            Column {
+                Text(stringResource(Res.string.c2pa_sign_ica_eddsa))
+                Text(stringResource(Res.string.c2pa_sign_ica_eddsa_text), style = MaterialTheme.typography.bodySmall)
             }
         }
     }

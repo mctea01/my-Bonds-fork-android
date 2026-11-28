@@ -365,6 +365,15 @@
     <string name="c2pa_sign_ai_note">Declaring generative AI tells viewers the content was made by a trained model</string>
     <string name="c2pa_sign_compress">Compress the manifest (Brotli)</string>
     <string name="c2pa_sign_compress_text">Stores the manifest in a brob box (C2PA 2.2 and later); JPEG, PNG and GIF then use a box hash binding. Validators older than C2PA 2.2 cannot read it</string>
+    <string name="c2pa_sign_ica_title">Identity claims aggregation by this wallet</string>
+    <string name="c2pa_sign_ica_text">The wallet issues a credential (cawg.identity_claims_aggregation) with its own DID, stating which of your held credentials it verified. Only credentials of highly trusted issuers (T1, T2) that are not revoked are listed. Validators trust it only if they trust this wallet's DID.</string>
+    <string name="c2pa_sign_ica_none">No held credential of a highly trusted issuer can be listed.</string>
+    <string name="c2pa_sign_ica_entry">%1$s, issued by %2$s (%3$s)</string>
+    <string name="c2pa_sign_ica_no_name">no name in the credential</string>
+    <string name="c2pa_sign_ica_document">Identity document</string>
+    <string name="c2pa_sign_ica_affiliation">Affiliation</string>
+    <string name="c2pa_sign_ica_eddsa">Sign with EdDSA (for c2pa-rs)</string>
+    <string name="c2pa_sign_ica_eddsa_text">Validators built on c2pa-rs, such as contentcredentials.org, verify only EdDSA. This uses an Ed25519 key kept in software and protected by the App PIN, instead of the P-256 key in the device's secure hardware.</string>
     <string name="c2pa_sign_created">I made this content</string>
     <string name="c2pa_sign_created_text">c2pa.created with an IPTC digital source type</string>
     <string name="c2pa_sign_embedded">The manifest is embedded in a copy of the file</string>
@@ -682,6 +691,10 @@
     <string name="core_cawg_v1_timestamp">A v1 time stamp (sigTst) is not accepted for identity assertions and was ignored</string>
     <string name="core_cawg_valid_from_missing">The credential has no validFrom or issuanceDate</string>
     <string name="core_cawg_vc_invalid">The identity claims aggregation credential is not a readable W3C verifiable credential</string>
+    <string name="core_cawg_ica_key_unsupported">An identity claims aggregation is signed with a P-256 or Ed25519 key, not %1$s</string>
+    <string name="core_cawg_ica_no_identities">An identity claims aggregation needs at least one verified identity</string>
+    <string name="core_cawg_ica_identity_invalid">The verified identity %1$s does not meet CAWG 1.3 (%2$s)</string>
+    <string name="core_cawg_ica_valid_until">The credential would expire before it is issued</string>
     <string name="core_fmt_cawg_x509">CAWG identity (X.509)</string>
     <string name="root_review_title">Root certificate review</string>
     <string name="root_field_org">Organization</string>
@@ -2784,6 +2797,9 @@
     <string name="msg_shared_prefix">Shared </string>
     <string name="msg_c2pa_sidecar_reason">; the manifest was saved as a separate .c2pa file (the file cannot hold one: %1$s)</string>
     <string name="msg_c2pa_not_compressed">; the manifest was stored uncompressed, because its hard binding does not allow compression</string>
+    <string name="msg_ica_credential_gone">A credential chosen for the identity claims aggregation is no longer held or no longer qualifies.</string>
+    <string name="msg_ica_no_name">%1$s gives no name, so it can only be listed as an affiliation.</string>
+    <string name="msg_ica_no_ed25519">This device has no secure area that can make an Ed25519 key.</string>
     <string name="msg_signed_saved">Signed and saved: %1$s</string>
     <string name="msg_ta_fetch_failed">Cannot get the Trust Anchor: </string>
     <string name="msg_ta_trusted">Trusted the OpenID Federation Trust Anchor \"%1$s\"</string>
@@ -3871,6 +3887,8 @@
     <string name="tech_c2pa_compress">With compression, the manifest is stored Brotli-compressed in a brob box (C2PA 11.2.4) where the binding allows it: a box hash, a BMFF hash or an update manifest</string>
     <string name="tech_c2pa_identity">A CAWG identity assertion 1.3 (cawg.x509.cose) signs signer_payload in RFC 8949 core deterministic encoding; it references the hard binding and the other assertions</string>
     <string name="tech_c2pa_identity_rs">A CAWG identity assertion 1.3 (cawg.x509.cose) signs signer_payload in the c2pa-rs field order, which is not the standard encoding</string>
+    <string name="tech_c2pa_ica">CAWG identity claims aggregation: a W3C VC 2.0 (IdentityClaimsAggregationCredential) issued by the wallet's did:jwk, secured with COSE_Sign1 ES256 (content type application/vc), its c2paAsset the JSON form of signer_payload</string>
+    <string name="tech_c2pa_ica_eddsa">CAWG identity claims aggregation: a W3C VC 2.0 (IdentityClaimsAggregationCredential) issued by the wallet's did:jwk, secured with COSE_Sign1 EdDSA (Ed25519, content type application/vc), its c2paAsset the JSON form of signer_payload</string>
     <string name="tech_c2pa_multi">A JPEG with more images or a video after its primary image (CIPA MPF, Ultra HDR, Motion Photo) also gets a multi-asset hash with a hash of each part; a Motion Photo video is an optional part</string>
     <string name="tech_c2pa_rsa">RSA keys sign RSASSA-PSS, which C2PA requires; a card or service that signs only PKCS#1 v1.5 cannot sign C2PA</string>
     <string name="tech_c2pa_ts">An RFC 3161 v2 time stamp (sigTst2) over the claim signature; CAWG validators use it as the identity's time of signing</string>

@@ -100,6 +100,10 @@ class HolderIdentities(
         const val DOCUMENT_ISSUER = "document-issuer"
         /** The wallet's own document signing key, certified by a self-issued certificate. */
         const val DOCUMENT_SIGNER = "document-signer"
+        /** The wallet as CAWG identity claims aggregator (did:jwk of a P-256 key in the platform's secure area). */
+        const val IDENTITY_AGGREGATOR = "identity-aggregator"
+        /** The wallet as CAWG identity claims aggregator with an Ed25519 software key (EdDSA, as c2pa-rs verifies). */
+        const val IDENTITY_AGGREGATOR_EDDSA = "identity-aggregator-eddsa"
         /** Self-issued OpenID Provider identity for id_token-only (sign in) requests. */
         const val SIOP = "siop"
 

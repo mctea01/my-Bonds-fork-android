@@ -92,6 +92,12 @@ data class C2paSignRequest(
      * removed. Data after the last MPF image (a Motion Photo video) is marked optional.
      */
     val multiAsset: Boolean = true,
+    /**
+     * An identity assertion of sig_type cawg.identity_claims_aggregation issued by the wallet as identity claims
+     * aggregator ([CawgAggregation]). With [identity] as well, the X.509 assertion is cawg.identity and this one
+     * cawg.identity__1; both reference the same assertions.
+     */
+    val aggregation: C2paIdentityAggregation? = null,
 )
 
 /**
@@ -115,7 +121,8 @@ class C2paSigned(
  * every container of [C2paContainers] (JPEG, PNG, WebP, WAV, AVI, GIF, TIFF, DNG, SVG, MP3, FLAC, JPEG XL, BMFF, PDF,
  * ZIP) or as a sidecar store, with the hard binding of the format: a data hash, a box hash (JPEG XL, or on request
  * JPEG, PNG and GIF), a v3 BMFF hash or a ZIP collection hash. It adds a CAWG identity assertion 1.3
- * (cawg.x509.cose) signed by a person's X.509 key. Space for the identity assertion and the claim signature is
+ * (cawg.x509.cose) signed by a person's X.509 key, and one of the wallet as identity claims aggregator
+ * (cawg.identity_claims_aggregation, [CawgAggregation]). Space for the identity assertion and the claim signature is
  * reserved first and filled with zero padding (pad1/pad2, the COSE pad header), so the binding computed over the
  * final layout stays valid (CAWG 1.3 section 6.3, C2PA 10.4).
  */
@@ -129,6 +136,8 @@ object C2paWriter {
     private const val SIGNATURE = "6332637300110010800000aa00389b71"
     private const val CBOR = "63626f7200110010800000aa00389b71"
     private const val COSE_OVERHEAD = 1024
+    /** Room left in an identity claims aggregation assertion beyond its credential's exact size. */
+    private const val ICA_SLACK = 64
     private const val TIMESTAMP_RESERVE = 12000
     private const val JPEG_SEGMENT_DATA = 65525
     const val IDENTITY_LABEL = "cawg.identity"
@@ -172,6 +181,8 @@ object C2paWriter {
         val label = "urn:c2pa:" + uuid()
         val claimKey = CoseKey(claimSigner)
         val idKey = if (request.identity) CoseKey(identitySigner ?: claimSigner) else null
+        request.aggregation?.let { CawgAggregation.check(it, request.time) }
+        val slots = identitySlots(request, idKey)
         val format0 = mediaType?.takeUnless { it.isBlank() || it == "application/octet-stream" }
             ?: detected?.let { C2paContainers.mediaType(asset, it) } ?: "application/octet-stream"
         // A multi-asset hash for a JPEG with data after its primary image, with a box or data hash.
@@ -233,14 +244,14 @@ object C2paWriter {
         fun multiBox(layout: C2paLayout, parts: List<ByteArray>): List<ByteArray> =
             if (!multi) emptyList() else listOf(assertionBox(C2paBindings.MULTI_ASSET, multiAssetCbor(JpegParts.parts(layout.bytes), parts)))
         var layout0: C2paLayout
-        var idTarget: Int?
+        var idTargets: List<Int>
         var extra0: List<ByteArray> = emptyList()
         var rounds = 0
         while (true) {
             val created0 = fixed + placeholderHash + extra0
-            idTarget = idKey?.let { identityPlaceholderSize(request, fixed + extra0, placeholderHash, it) }
-            val idPlaceholder = idTarget?.let { assertionBoxOfSize(IDENTITY_LABEL, it) }
-            val store0 = store(oldManifests, label, created0 + listOfNotNull(idPlaceholder), claim(request, label, created0, listOfNotNull(idPlaceholder)), ByteArray(sigTarget))
+            idTargets = slots.map { identityPlaceholderSize(request, fixed + extra0, placeholderHash, it) }
+            val idPlaceholders = slots.zip(idTargets).map { (slot, size) -> assertionBoxOfSize(slot.label, size) }
+            val store0 = store(oldManifests, label, created0 + idPlaceholders, claim(request, label, created0, idPlaceholders), ByteArray(sigTarget))
             layout0 = embed(store0)
             if (!multi) break
             val parts0 = partBoxes(layout0, zero = true)
@@ -258,18 +269,17 @@ object C2paWriter {
         if (extra.map { it.size } != extra0.map { it.size }) throw SigningException(ct("core_c2pa_reserve_exceeded"))
         val created = fixed + hashBox + extra
 
-        // The CAWG identity assertion over the hard binding and the other assertions of this manifest.
-        val idBox = if (idKey != null && idTarget != null) {
-            val refs = (listOf(hashBox) + fixed + extra).map { hashedUri(it) }
-            val payload = signerPayload(refs, request.roles, request.payloadOrder)
-            val cose = coseSign1(idKey, payload, timestamper = null, targetSize = null)
-            identityBoxOfSize(payload, cose, idTarget) ?: throw SigningException(ct("core_c2pa_reserve_exceeded"))
-        } else null
+        // The CAWG identity assertions over the hard binding and the other assertions of this manifest.
+        val refs = (listOf(hashBox) + fixed + extra).map { hashedUri(it) }
+        val idBoxes = slots.zip(idTargets).map { (slot, size) ->
+            val payload = signerPayload(refs, request.roles, request.payloadOrder, slot.sigType)
+            identityBoxOfSize(slot.label, payload, slot.sign(payload), size) ?: throw SigningException(ct("core_c2pa_reserve_exceeded"))
+        }
 
         // The claim and its signature.
-        val claimBytes = claim(request, label, created, listOfNotNull(idBox))
+        val claimBytes = claim(request, label, created, idBoxes)
         val signatureCbor = coseSign1(claimKey, claimBytes, timestamper, sigTarget)
-        val assertions = created + listOfNotNull(idBox)
+        val assertions = created + idBoxes
         val store = store(oldManifests, label, assertions, claimBytes, signatureCbor)
         val packed = if (compress) store(oldManifests, label, assertions, claimBytes, signatureCbor, compressed = true) else null
         if (packed != null && packed.size <= store.size) {
@@ -533,10 +543,10 @@ object C2paWriter {
      * order or in the c2pa-rs field order. Hashed URIs carry url and hash only (the claim's algorithm applies), so
      * both orders agree inside them.
      */
-    fun signerPayload(refs: List<Pair<String, ByteArray>>, roles: List<String>, order: SignerPayloadOrder): ByteArray {
+    fun signerPayload(refs: List<Pair<String, ByteArray>>, roles: List<String>, order: SignerPayloadOrder, sigType: String = X509_SIG_TYPE): ByteArray {
         val entries = listOfNotNull(
             "referenced_assertions" to C2paCbor.array(refs.map(::hashedUriCbor)),
-            "sig_type" to C2paCbor.tstr(X509_SIG_TYPE),
+            "sig_type" to C2paCbor.tstr(sigType),
             roles.takeIf { it.isNotEmpty() }?.let { "role" to C2paCbor.array(it.map(C2paCbor::tstr)) },
         )
         return if (order == SignerPayloadOrder.DETERMINISTIC) C2paCbor.deterministicMap(entries) else C2paCbor.map(entries)
@@ -558,12 +568,36 @@ object C2paWriter {
         return box.copyOfRange(from, end).decodeToString()
     }
 
-    /** Size of the identity assertion box reserved for the key's signature (payload of the final references). */
-    private fun identityPlaceholderSize(r: C2paSignRequest, fixed: List<ByteArray>, hashBox: ByteArray, key: CoseKey): Int {
+    /**
+     * One identity assertion to add: its [label], [sigType], the size of its signature for a signer_payload
+     * ([reserve], which may exceed it) and how it is signed.
+     */
+    private class IdentitySlot(
+        val label: String,
+        val sigType: String,
+        val reserve: suspend (ByteArray) -> Int,
+        val sign: suspend (ByteArray) -> ByteArray,
+    )
+
+    /** The X.509 identity of [key] (cawg.identity) and the wallet's identity claims aggregation, in that order. */
+    private fun identitySlots(r: C2paSignRequest, key: CoseKey?): List<IdentitySlot> = buildList {
+        key?.let { k ->
+            add(IdentitySlot(IDENTITY_LABEL, X509_SIG_TYPE, { k.chainSize + k.maxSignature + COSE_OVERHEAD }) { p -> coseSign1(k, p, timestamper = null, targetSize = null) })
+        }
+        r.aggregation?.let { a ->
+            val label = if (isEmpty()) IDENTITY_LABEL else IDENTITY_LABEL + "__" + size
+            // The credential's size is known from the placeholder references (same labels, hashes of the same length).
+            add(IdentitySlot(label, CawgAggregation.SIG_TYPE, { p -> CawgAggregation.cose(a, p, r.time, sign = false).size + ICA_SLACK }) { p ->
+                CawgAggregation.cose(a, p, r.time, sign = true)
+            })
+        }
+    }
+
+    /** Size of the identity assertion box reserved for [slot]'s signature (payload of the final references). */
+    private suspend fun identityPlaceholderSize(r: C2paSignRequest, fixed: List<ByteArray>, hashBox: ByteArray, slot: IdentitySlot): Int {
         val refs = (listOf(hashBox) + fixed).map { hashedUri(it) }
-        val payload = signerPayload(refs, r.roles, r.payloadOrder)
-        val reserve = key.chainSize + key.maxSignature + COSE_OVERHEAD
-        return identityBox(payload, ByteArray(reserve), 0, null).size
+        val payload = signerPayload(refs, r.roles, r.payloadOrder, slot.sigType)
+        return identityBox(slot.label, payload, ByteArray(slot.reserve(payload)), 0, null).size
     }
 
     private fun identityCbor(payload: ByteArray, cose: ByteArray, pad1: Int, pad2: Int?): ByteArray = C2paCbor.map(listOfNotNull(
@@ -573,12 +607,12 @@ object C2paWriter {
         pad2?.let { "pad2" to C2paCbor.bstr(ByteArray(it)) },
     ))
 
-    private fun identityBox(payload: ByteArray, cose: ByteArray, pad1: Int, pad2: Int?) = assertionBox(IDENTITY_LABEL, identityCbor(payload, cose, pad1, pad2))
+    private fun identityBox(label: String, payload: ByteArray, cose: ByteArray, pad1: Int, pad2: Int?) = assertionBox(label, identityCbor(payload, cose, pad1, pad2))
 
     /** The identity assertion padded (pad1, pad2 of zeros) to exactly [size] bytes, or null when it does not fit. */
-    private fun identityBoxOfSize(payload: ByteArray, cose: ByteArray, size: Int): ByteArray? {
-        val pads = fitPads(size) { p1, p2 -> identityBox(payload, cose, p1, p2).size } ?: return null
-        return identityBox(payload, cose, pads.first, pads.second).also { check(it.size == size) }
+    private fun identityBoxOfSize(label: String, payload: ByteArray, cose: ByteArray, size: Int): ByteArray? {
+        val pads = fitPads(size) { p1, p2 -> identityBox(label, payload, cose, p1, p2).size } ?: return null
+        return identityBox(label, payload, cose, pads.first, pads.second).also { check(it.size == size) }
     }
 
     /** A placeholder assertion box of exactly [size] bytes: a CBOR byte string of zeros under the final label. */

@@ -16,6 +16,20 @@ import diw.wallet.core.document.c2pa.C2paCbor
 import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paFormat
 import diw.wallet.core.document.c2pa.C2paIdentity
+import diw.wallet.core.document.c2pa.C2paIdentityAggregation
+import diw.wallet.core.document.c2pa.CawgAggregation
+import diw.wallet.core.document.c2pa.CawgVerifiedIdentity
+import diw.wallet.core.document.c2pa.IcaSigner
+import diw.wallet.core.document.sign.SigningException
+import org.multipaz.cbor.Bstr
+import org.multipaz.cbor.Cbor
+import org.multipaz.cbor.CborInt
+import org.multipaz.cbor.CborMap
+import org.multipaz.cbor.Tstr
+import org.multipaz.crypto.EcCurve
+import org.multipaz.crypto.EcPublicKeyDoubleCoordinate
+import org.multipaz.crypto.EcPublicKeyOkp
+import org.multipaz.crypto.EcSignature
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.c2pa.C2paRange
 import diw.wallet.core.document.c2pa.C2paSignRequest
@@ -456,6 +470,164 @@ class C2paSigningTest {
         val payload = ica("signer_payload_mismatch.jpg")
         assertTrue("cawg.ica.signer_payload.mismatch" in payload.codes(), payload.codes().toString())
         assertEquals(Check.FAIL, payload.signature)
+    }
+
+    // ---- the wallet as identity claims aggregator ----
+
+    /** An aggregator signer of a JCA key: P-256 signs ES256 (r||s), Ed25519 signs EdDSA. */
+    private suspend fun icaSigner(ed25519: Boolean): IcaSigner {
+        if (ed25519) {
+            val kp = KeyPairGenerator.getInstance("Ed25519").generateKeyPair()
+            // The X.509 SubjectPublicKeyInfo of Ed25519 ends with the 32 bytes of the key.
+            val x = kp.public.encoded.takeLast(32).toByteArray()
+            return IcaSigner.of(EcPublicKeyOkp(EcCurve.ED25519, x)) { data ->
+                java.security.Signature.getInstance("Ed25519").run { initSign(kp.private); update(data); sign() }
+            }
+        }
+        val kp = keys(true)
+        val pub = kp.public as java.security.interfaces.ECPublicKey
+        fun fixed(v: BigInteger) = v.toByteArray().let { b -> if (b.size > 32) b.copyOfRange(b.size - 32, b.size) else ByteArray(32 - b.size) + b }
+        return IcaSigner.of(EcPublicKeyDoubleCoordinate(EcCurve.P256, fixed(pub.w.affineX), fixed(pub.w.affineY))) { data ->
+            val der = java.security.Signature.getInstance("SHA256withECDSA").run { initSign(kp.private); update(data); sign() }
+            EcSignature.fromDerEncoded(256, der).toCoseEncoded()
+        }
+    }
+
+    private val verifiedAt = Instant.parse("2026-11-01T08:00:00Z")
+
+    private fun person() = CawgVerifiedIdentity(
+        type = CawgAggregation.DOCUMENT_VERIFICATION, name = "王小明", verifiedAt = verifiedAt,
+        providerId = "https://issuer.example.gov.tw", providerName = "測試發證機關",
+    )
+
+    private fun aggregationRequest(signer: IcaSigner, identity: Boolean, identities: List<CawgVerifiedIdentity> = listOf(person())) =
+        request("彙整.jpg").copy(identity = identity, aggregation = C2paIdentityAggregation(signer, identities))
+
+    /** The credential and protected header of an identity assertion of [bytes]. */
+    private fun icaParts(bytes: ByteArray, label: String): Pair<kotlinx.serialization.json.JsonObject, Map<Long, Any?>> {
+        val store = C2paManifests.read(bytes)!!
+        val box = C2paManifests.identityBoxes(store.active!!).single { it.label == label }
+        val cbor = Cbor.decode(box.content("cbor")!!) as CborMap
+        val sig = (cbor.items.entries.single { (k, _) -> (k as Tstr).value == "signature" }.value as Bstr).value
+        val cose = C2paManifests.cose(sig)
+        val prot = (Cbor.decode(cose.protectedBytes) as CborMap).items.entries.associate { (k, v) ->
+            (k as CborInt).asNumber to when (v) { is Tstr -> v.value; is Bstr -> v.value.decodeToString(); is CborInt -> v.asNumber; else -> null }
+        }
+        return Json.parseToJsonElement(cose.payload!!.decodeToString()).jsonObject to prot
+    }
+
+    @Test
+    fun walletIssuesAnIdentityClaimsAggregation() = runBlocking<Unit> {
+        trustRoot()
+        val signer = icaSigner(ed25519 = false)
+        assertTrue(signer.did.startsWith("did:jwk:"))
+        val signed = sign(picture("jpg"), aggregationRequest(signer, identity = false))
+        save("ica-es256.jpg", signed.bytes)
+
+        trustedIssuers = emptySet()
+        val untrusted = inspect(signed.bytes, "ica.jpg").active().identities.single()
+        assertEquals(CawgAggregation.SIG_TYPE, untrusted.sigType)
+        assertEquals("cawg.identity", untrusted.label)
+        assertTrue("cawg.ica.untrusted_issuer" in untrusted.codes(), untrusted.codes().toString())
+        assertTrue("cawg.identity.well-formed" in untrusted.codes(), untrusted.codes().toString())
+        assertEquals(Check.WARN, untrusted.signature, untrusted.statuses.toString())
+
+        trustedIssuers = setOf(signer.did)
+        val id = inspect(signed.bytes, "ica.jpg").active().identities.single()
+        assertTrue("cawg.ica.credential_valid" in id.codes(), id.codes().toString())
+        assertTrue("cawg.identity.trusted" in id.codes(), id.codes().toString())
+        assertEquals(Check.PASS, id.signature, id.statuses.toString())
+        assertEquals(signer.did, id.issuer)
+        assertEquals(listOf("cawg.creator"), id.roles)
+        assertTrue(id.referenced.any { it.startsWith("c2pa.hash.data") }, id.referenced.toString())
+        val v = id.verifiedIdentities.single()
+        assertEquals(CawgAggregation.DOCUMENT_VERIFICATION, v.type)
+        assertEquals("王小明", v.name)
+        assertEquals("https://issuer.example.gov.tw", v.providerId)
+        assertEquals("測試發證機關", v.providerName)
+        assertEquals("2026-11-01T08:00:00Z", v.verifiedAt)
+
+        // The claim signature, binding and the rest of the manifest are unaffected.
+        val r = inspect(signed.bytes, "ica.jpg")
+        for (c in listOf("claimSignature.validated", "assertion.dataHash.match", "assertion.hashedURI.match")) assertTrue(c in r.codes(), "$c missing in ${r.codes()}")
+    }
+
+    @Test
+    fun aggregationFollowsTheShapeOfTheC2paRsSamples() = runBlocking<Unit> {
+        trustRoot()
+        val signer = icaSigner(ed25519 = true)
+        // c2pa-rs decodes did:jwk with a padded base64url decoder: the value must need no padding.
+        val encoded = signer.did.removePrefix("did:jwk:")
+        assertEquals(0, encoded.length % 4, encoded)
+        val jwk = Json.parseToJsonElement(java.util.Base64.getUrlDecoder().decode(encoded).decodeToString()).jsonObject
+        assertEquals(setOf("alg", "crv", "kty", "x"), jwk.keys)
+        assertEquals("EdDSA", jwk["alg"]!!.jsonPrimitive.content)
+
+        val signed = sign(picture("jpg"), aggregationRequest(signer, identity = true))
+        save("ica-eddsa.jpg", signed.bytes)
+        trustedIssuers = setOf(signer.did)
+        val ids = inspect(signed.bytes, "ica.jpg").active().identities
+        assertEquals(listOf("cawg.identity", "cawg.identity__1"), ids.map { it.label })
+        assertEquals(listOf(C2paWriter.X509_SIG_TYPE, CawgAggregation.SIG_TYPE), ids.map { it.sigType })
+        assertTrue(ids.all { it.signature == Check.PASS }, ids.map { it.statuses }.toString())
+        assertEquals(ids[0].referenced, ids[1].referenced)
+
+        // The same contexts, types, content type and members as the c2pa-rs sample success.jpg.
+        val (vc, prot) = icaParts(signed.bytes, "cawg.identity__1")
+        val sample = javaClass.getResourceAsStream("/c2pa/ica/success.jpg")!!.readBytes()
+        val sampleLabel = C2paManifests.identityBoxes(C2paManifests.read(sample)!!.active!!).single().label!!
+        val (sampleVc, sampleProt) = icaParts(sample, sampleLabel)
+        assertEquals(sampleVc["@context"], vc["@context"])
+        assertEquals(sampleVc["type"], vc["type"])
+        assertEquals(sampleProt[1L], prot[1L])
+        assertEquals("application/vc", prot[3L])
+        assertEquals(sampleProt[3L], prot[3L])
+        assertEquals(signer.keyId, prot[4L])
+        val subject = vc["credentialSubject"]!!.jsonObject
+        val sampleSubject = sampleVc["credentialSubject"]!!.jsonObject
+        assertEquals(sampleSubject.keys, subject.keys)
+        val asset = subject["c2paAsset"]!!.jsonObject
+        assertEquals(CawgAggregation.SIG_TYPE, asset["sig_type"]!!.jsonPrimitive.content)
+        // Standard base64 of the 32-byte hashes, which c2pa-rs decodes too.
+        asset["referenced_assertions"]!!.jsonArray.forEach { assertEquals(32, java.util.Base64.getDecoder().decode(it.jsonObject["hash"]!!.jsonPrimitive.content).size) }
+        val entry = subject["verifiedIdentities"]!!.jsonArray.single().jsonObject
+        assertEquals(setOf("type", "name", "verifiedAt", "provider"), entry.keys)
+        assertEquals(setOf("id", "name"), entry["provider"]!!.jsonObject.keys)
+        assertNotNull(vc["validFrom"])
+        assertEquals(signer.did, vc["issuer"]!!.jsonPrimitive.content)
+    }
+
+    @Test
+    fun aggregationIsCheckedBeforeSigning() = runBlocking<Unit> {
+        val signer = icaSigner(ed25519 = false)
+        val nameless = person().copy(name = null)
+        for (bad in listOf(emptyList(), listOf(nameless), listOf(person().copy(providerId = "not a uri")), listOf(person().copy(type = "cawg.social_media")))) {
+            val e = runCatching { sign(picture("png"), aggregationRequest(signer, identity = false, identities = bad)) }.exceptionOrNull()
+            assertTrue(e is SigningException, "$bad: $e")
+        }
+        // An affiliation needs no name.
+        trustRoot()
+        trustedIssuers = setOf(signer.did)
+        val signed = sign(picture("png"), aggregationRequest(signer, identity = false, identities = listOf(nameless.copy(type = CawgAggregation.AFFILIATION))))
+        val id = inspect(signed.bytes, "ica.png").active().identities.single()
+        assertEquals(Check.PASS, id.signature, id.statuses.toString())
+        assertNull(id.verifiedIdentities.single().name)
+    }
+
+    @Test
+    fun aggregationTamperingIsDetected() = runBlocking<Unit> {
+        trustRoot()
+        val signer = icaSigner(ed25519 = false)
+        trustedIssuers = setOf(signer.did)
+        val signed = sign(picture("jpg"), aggregationRequest(signer, identity = false)).bytes
+        // Another name of the same length inside the credential: the claim's hash of the identity assertion no
+        // longer matches, so the assertion is not taken as part of the signed manifest.
+        val at = indexOf(signed, "王小明".encodeToByteArray())
+        assertTrue(at > 0)
+        val changed = signed.copyOf().also { "王大明".encodeToByteArray().copyInto(it, at) }
+        val r = inspect(changed, "ica.jpg")
+        assertTrue("assertion.hashedURI.mismatch" in r.codes(), r.codes().toString())
+        assertTrue(r.active().identities.none { it.signature == Check.PASS })
     }
 
     // ---------------------------------------------------------------- other containers (C2PA 2.2 Appendix A)

@@ -66,6 +66,19 @@
 - `signer_payload` 依 CAWG 1.3 第 8.2 節以 RFC 8949 核心決定性編碼簽署（預設）。c2pa-rs 0.9x 驗證時改以自己的欄位順序（`referenced_assertions`、`sig_type`、`role`）重新編碼，所以決定性編碼的身分聲明在 c2pa-rs（含 contentcredentials.org 的檢查頁）會顯示 `cawg.x509.signature.mismatch`。簽署選項的「互通」區可改用 c2pa-rs 順序；這不是標準編碼，只為相容而提供。錢包驗證時兩種編碼都接受。
 - 身分憑證須符合 CAWG 的 X.509 信任模型：EKU `id-kp-documentSigning`（1.3.6.1.5.5.7.3.36），或 2027-03-31 前的過渡規則（`id-kp-emailProtection` 加 S/MIME 個人或組織驗證政策 2.23.140.1.5.{2,3,4}.{2,3}）。自然人憑證沒有這些用途，簽出的身分只會是「格式正確」，畫面在簽署前提示。
 
+### 錢包發行的身分彙整（`CawgAggregation`）
+
+錢包可以自己當 CAWG 1.3 第 9.1 節的身分彙整服務（identity claims aggregator），在 manifest 加一個 `sig_type` 為 `cawg.identity_claims_aggregation` 的身分聲明：
+
+- 憑證：W3C VC 2.0，`@context` 為 `https://www.w3.org/ns/credentials/v2` 與 `https://cawg.io/identity/1.1/ica/context/`，`type` 為 `VerifiableCredential`、`IdentityClaimsAggregationCredential`，`issuer` 為錢包的 did:jwk，`validFrom` 為簽署時間（整秒）。`credentialSubject.verifiedIdentities` 列出錢包驗證過的身分，`c2paAsset` 為 `signer_payload` 的 JSON 形式（位元組字串為標準 base64，欄位名稱照規格）。
+- 保護方式：VC-JOSE-COSE 3.3.1，帶標籤 18 的 COSE_Sign1，受保護標頭 `{1: alg, 3: "application/vc", 4: kid}`（kid 為 `<did>#0`），憑證 JSON 直接放在 payload。
+- 發行者 DID：金鑰公開 JWK 加上 `alg` 的 JCS 形式做成 did:jwk。加 `alg` 也讓 Ed25519 的 JSON 剛好 93 位元組，base64url 不需補 `=`；c2pa-rs 以要求補位的解碼器讀 did:jwk，長度不對會無法解析（c2pa-rs 樣本的 DID 同樣帶 `alg`）。
+- 金鑰：預設是裝置安全硬體中的 P-256（ES256，持有者身分 `identity-aggregator`）。c2pa-rs 目前只驗 EdDSA 且只支援 OKP 金鑰，簽署選項可改用軟體安全區的 Ed25519（以 App PIN 保護，身分 `identity-aggregator-eddsa`）；兩者都是規格允許的演算法。
+- 可列入的身分：錢包持有、發行者為 T1 或 T2、不是錢包自己發的、狀態查詢未顯示撤銷的憑證。類型可選 `cawg.document_verification`（身分文件，需有姓名；姓名取整個姓名欄位，否則以姓與名組成，中日韓文字不加空格）或 `cawg.affiliation`（所屬組織）。`provider.id` 是發行者識別（URL 或 DID），`provider.name` 是信任錨點名稱，`verifiedAt` 是錢包收到並驗證該憑證的時間。
+- 與 X.509 身分並存時，X.509 為 `cawg.identity`、身分彙整為 `cawg.identity__1`，兩者引用相同的宣告。身分彙整的大小在簽章前就能算出（簽章固定 64 位元組），先保留空間，簽完再以 `pad1`／`pad2` 補齊。
+- 簽署前檢查第 9.1.2.4 節的欄位規則，不符合就不簽。
+- 自己的 DID 不在任何信任清單，驗證端（包括錢包自己）會顯示 `cawg.ica.untrusted_issuer` 與「格式正確」，信任這個 DID 後才是可信。
+
 ## 2. CAWG 驗證（`CawgIdentities`）
 
 依 CAWG 1.3 第 8 章，狀態代碼照規格原文，`url` 為身分聲明的標籤。
@@ -86,8 +99,8 @@
 
 ## 4. 測試
 
-`test-servers` 的 `C2paSigningTest`：JPEG、PNG、WebP 與外部清單的簽驗往返；GIF、單頁與多頁 TIFF、WAV、AVI、MP3、FLAC、SVG、JPEG XL（裸碼流、容器、方塊雜湊與資料雜湊）、MP4、AVIF、PDF、ZIP、DOCX、ODT 與 JPEG／PNG／GIF 方塊雜湊的簽驗往返、再次簽署、竄改內容與移除 store；BMFF 移動 `mdat` 後 `stco` 仍指向同一份樣本；無法嵌入的 PDF 改為外部清單；c2pa-rs 為 `boxhash.jpg` 算出的方塊雜湊（`boxhash.json`，方塊名稱與雜湊都相同）與分段 MP4 Merkle 樹樣本（`dashinit.mp4`）；設定 `DIW_C2PA_FIXTURES` 指向 c2pa-rs 的 `sdk/tests/fixtures` 時另驗較大的樣本（`video1.mp4`、`legacy.mp4` 的 BMFF v2 雜湊，Adobe Express 簽出的 `express-signed.pdf`、更新 manifest 的 `update_manifest.jpg`，均通過）；MPF 與 Motion Photo 的多部分資產雜湊（移除可選影片仍通過、改動部分失敗）、JPEG／PNG／MP4 的更新 manifest（BMFF 的 `original`／`update` 與合回）與更新後竄改內容、壓縮 manifest 往返與壞掉的 `brob`、Brotli 編碼往返、依規格的 `mdat` Merkle 樹與 c2pa-rs 媒體時間回退；RSA 改用 PS256、c2pa-rs 順序與分開的身分金鑰、沒有 CAWG 用途的憑證、未知根憑證、再次簽署保留舊 manifest、改動像素、AI 宣告、XMP 的 Google AI 宣告、軟綁定清單，以及 c2pa-rs 與 Adobe 的身分彙整樣本。簽出的檔案以 c2pa-python 0.39（c2pa-rs 0.92）交叉檢查：claim 簽章、資料雜湊與 hashed URI 都通過，c2pa-rs 順序的身分聲明通過，決定性編碼的身分聲明如第 1 節所述不通過。
+`test-servers` 的 `C2paSigningTest`：JPEG、PNG、WebP 與外部清單的簽驗往返；GIF、單頁與多頁 TIFF、WAV、AVI、MP3、FLAC、SVG、JPEG XL（裸碼流、容器、方塊雜湊與資料雜湊）、MP4、AVIF、PDF、ZIP、DOCX、ODT 與 JPEG／PNG／GIF 方塊雜湊的簽驗往返、再次簽署、竄改內容與移除 store；BMFF 移動 `mdat` 後 `stco` 仍指向同一份樣本；無法嵌入的 PDF 改為外部清單；c2pa-rs 為 `boxhash.jpg` 算出的方塊雜湊（`boxhash.json`，方塊名稱與雜湊都相同）與分段 MP4 Merkle 樹樣本（`dashinit.mp4`）；設定 `DIW_C2PA_FIXTURES` 指向 c2pa-rs 的 `sdk/tests/fixtures` 時另驗較大的樣本（`video1.mp4`、`legacy.mp4` 的 BMFF v2 雜湊，Adobe Express 簽出的 `express-signed.pdf`、更新 manifest 的 `update_manifest.jpg`，均通過）；MPF 與 Motion Photo 的多部分資產雜湊（移除可選影片仍通過、改動部分失敗）、JPEG／PNG／MP4 的更新 manifest（BMFF 的 `original`／`update` 與合回）與更新後竄改內容、壓縮 manifest 往返與壞掉的 `brob`、Brotli 編碼往返、依規格的 `mdat` Merkle 樹與 c2pa-rs 媒體時間回退；RSA 改用 PS256、c2pa-rs 順序與分開的身分金鑰、沒有 CAWG 用途的憑證、未知根憑證、再次簽署保留舊 manifest、改動像素、AI 宣告、XMP 的 Google AI 宣告、軟綁定清單，以及 c2pa-rs 與 Adobe 的身分彙整樣本；錢包發行的身分彙整：ES256 與 EdDSA 的簽驗往返（信任與未信任 DID）、與 X.509 身分並存、`@context`、`type`、受保護標頭與欄位和 c2pa-rs 的 `success.jpg` 相同、did:jwk 不需補位、簽署前的欄位檢查與竄改偵測。EdDSA 簽出的檔案另以獨立的 Python 程式（`cryptography` 的 Ed25519、以要求補位的 base64url 解碼 DID）驗章並核對 `c2paAsset`，通過；c2pa-rs 本身未能在這個環境執行。簽出的檔案以 c2pa-python 0.39（c2pa-rs 0.92）交叉檢查：claim 簽章、資料雜湊與 hashed URI 都通過，c2pa-rs 順序的身分聲明通過，決定性編碼的身分聲明如第 1 節所述不通過。
 
 ## 5. 未做
 
-錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation`（另開 PR）；SynthID 的像素偵測；字型（C2PA 附錄 A 的 OpenType 方式尚無參考實作）；簽署 BMFF 的 Merkle 樹（只驗證）；更新 manifest 用於 ZIP 集合雜湊與 TIFF／PDF 資料雜湊。新容器、更新 manifest、壓縮 manifest 與多部分資產雜湊簽出的檔案除 c2pa-rs 樣本外尚未以 c2pa-rs 交叉檢查（本次環境無法安裝 c2pa-python），列為實機項目。
+SynthID 的像素偵測；字型（C2PA 附錄 A 的 OpenType 方式尚無參考實作）；簽署 BMFF 的 Merkle 樹（只驗證）；更新 manifest 用於 ZIP 集合雜湊與 TIFF／PDF 資料雜湊。新容器、更新 manifest、壓縮 manifest 與多部分資產雜湊與錢包發行的身分彙整簽出的檔案除 c2pa-rs 樣本外尚未以 c2pa-rs 交叉檢查（本次環境無法安裝 c2pa-python），列為實機項目。
