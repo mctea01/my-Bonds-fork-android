@@ -36,6 +36,8 @@ enum class KeyProtection(val wire: String, private val displayNameRes: StringRes
 class KeyBackend(
     val secureArea: SecureArea,
     val protection: KeyProtection,
+    /** Settings of an Ed25519 key, where this secure area can make one (the software secure area). */
+    val ed25519: (suspend (userAuth: Boolean) -> CreateKeySettings)? = null,
     /** challenge is the issuer nonce (Android attestation challenge); userAuth requests biometric or PIN per use. */
     val settings: suspend (challenge: ByteString, userAuth: Boolean) -> CreateKeySettings,
 )

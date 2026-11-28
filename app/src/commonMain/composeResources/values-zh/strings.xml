@@ -365,6 +365,15 @@
     <string name="c2pa_sign_ai_note">宣告生成式 AI 會讓檢視者知道內容由訓練過的模型產生</string>
     <string name="c2pa_sign_compress">壓縮 manifest（Brotli）</string>
     <string name="c2pa_sign_compress_text">以 brob box 保存 manifest（C2PA 2.2 起）；JPEG、PNG 與 GIF 會改用 box hash 綁定。C2PA 2.2 以前的驗證工具無法讀取</string>
+    <string name="c2pa_sign_ica_title">錢包發行的身分彙整</string>
+    <string name="c2pa_sign_ica_text">錢包以自己的 DID 發行一份憑證（cawg.identity_claims_aggregation），說明它驗證過你持有的哪些憑證。只列出高可信發行者（T1、T2）發的、未被撤銷的憑證。驗證端信任這個錢包的 DID 才會視為可信。</string>
+    <string name="c2pa_sign_ica_none">沒有可列入的高可信發行者憑證。</string>
+    <string name="c2pa_sign_ica_entry">%1$s，由 %2$s 發行（%3$s）</string>
+    <string name="c2pa_sign_ica_no_name">憑證中沒有姓名</string>
+    <string name="c2pa_sign_ica_document">身分文件</string>
+    <string name="c2pa_sign_ica_affiliation">所屬組織</string>
+    <string name="c2pa_sign_ica_eddsa">以 EdDSA 簽署（相容 c2pa-rs）</string>
+    <string name="c2pa_sign_ica_eddsa_text">以 c2pa-rs 建構的驗證工具（例如 contentcredentials.org）只驗證 EdDSA。勾選後改用以 App PIN 保護的 Ed25519 軟體金鑰，而非裝置安全硬體中的 P-256 金鑰。</string>
     <string name="c2pa_sign_created">內容由我製作</string>
     <string name="c2pa_sign_created_text">c2pa.created，附 IPTC 數位來源類型</string>
     <string name="c2pa_sign_embedded">manifest 內嵌在檔案的副本</string>
@@ -682,6 +691,10 @@
     <string name="core_cawg_v1_timestamp">身分宣告不接受 v1 時戳（sigTst），已略過</string>
     <string name="core_cawg_valid_from_missing">憑證沒有 validFrom 或 issuanceDate</string>
     <string name="core_cawg_vc_invalid">身分彙整憑證不是可讀取的 W3C 可驗證憑證</string>
+    <string name="core_cawg_ica_key_unsupported">身分彙整只能以 P-256 或 Ed25519 金鑰簽署，不支援 %1$s</string>
+    <string name="core_cawg_ica_no_identities">身分彙整至少要列入一項已驗證的身分</string>
+    <string name="core_cawg_ica_identity_invalid">已驗證的身分 %1$s 不符合 CAWG 1.3（%2$s）</string>
+    <string name="core_cawg_ica_valid_until">憑證的有效期限早於發行時間</string>
     <string name="core_fmt_cawg_x509">CAWG 身分宣告（X.509）</string>
     <string name="root_review_title">根憑證審閱</string>
     <string name="root_field_org">組織</string>
@@ -2784,6 +2797,9 @@
     <string name="msg_shared_prefix">已分享 </string>
     <string name="msg_c2pa_sidecar_reason">；此檔無法嵌入資訊清單（%1$s），已另存為 .c2pa 檔</string>
     <string name="msg_c2pa_not_compressed">；此檔的硬綁定不允許壓縮，manifest 以未壓縮方式保存</string>
+    <string name="msg_ica_credential_gone">選入身分彙整的憑證已不在錢包中，或已不符合條件。</string>
+    <string name="msg_ica_no_name">「%1$s」沒有姓名，只能列為所屬組織。</string>
+    <string name="msg_ica_no_ed25519">這台裝置沒有能產生 Ed25519 金鑰的安全區。</string>
     <string name="msg_signed_saved">已簽署並保存：%1$s</string>
     <string name="msg_ta_fetch_failed">無法取得 Trust Anchor：</string>
     <string name="msg_ta_trusted">已信任 OpenID Federation Trust Anchor「%1$s」</string>
@@ -3871,6 +3887,8 @@
     <string name="tech_c2pa_compress">壓縮時，manifest 以 Brotli 壓縮存於 brob box（C2PA 11.2.4），僅限 box hash、BMFF hash 或更新 manifest</string>
     <string name="tech_c2pa_identity">CAWG 身分宣告 1.3（cawg.x509.cose）以 RFC 8949 核心確定性編碼簽署 signer_payload，並引用硬綁定與其他宣告</string>
     <string name="tech_c2pa_identity_rs">CAWG 身分宣告 1.3（cawg.x509.cose）以 c2pa-rs 的欄位順序簽署 signer_payload，不是標準編碼</string>
+    <string name="tech_c2pa_ica">CAWG 身分彙整：錢包以自己的 did:jwk 發行 W3C VC 2.0（IdentityClaimsAggregationCredential），以 COSE_Sign1 ES256（內容類型 application/vc）保護，c2paAsset 為 signer_payload 的 JSON 形式</string>
+    <string name="tech_c2pa_ica_eddsa">CAWG 身分彙整：錢包以自己的 did:jwk 發行 W3C VC 2.0（IdentityClaimsAggregationCredential），以 COSE_Sign1 EdDSA（Ed25519，內容類型 application/vc）保護，c2paAsset 為 signer_payload 的 JSON 形式</string>
     <string name="tech_c2pa_multi">主影像後還有其他影像或影片的 JPEG（CIPA MPF、Ultra HDR、Motion Photo）另加多部分資產雜湊，逐部分雜湊；Motion Photo 的影片為可選部分</string>
     <string name="tech_c2pa_rsa">RSA 金鑰以 C2PA 要求的 RSASSA-PSS 簽署；只能產生 PKCS#1 v1.5 的卡片或服務無法簽 C2PA</string>
     <string name="tech_c2pa_ts">對聲明簽章取 RFC 3161 v2 時戳（sigTst2），CAWG 驗證工具以它作為身分宣告的簽署時間</string>
