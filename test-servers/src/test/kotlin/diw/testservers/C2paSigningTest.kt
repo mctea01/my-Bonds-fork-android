@@ -17,6 +17,7 @@ import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paFormat
 import diw.wallet.core.document.c2pa.C2paIdentity
 import diw.wallet.core.document.c2pa.C2paManifests
+import diw.wallet.core.document.c2pa.C2paRange
 import diw.wallet.core.document.c2pa.C2paSignRequest
 import diw.wallet.core.document.c2pa.C2paSigned
 import diw.wallet.core.document.c2pa.C2paWriter
@@ -1253,6 +1254,18 @@ class C2paSigningTest {
         // A changed video byte fails its part.
         val changed = file.copyOf().also { it[it.size - 10] = (it[it.size - 10] + 1).toByte() }
         assertEquals("assertion.multiAssetHash.mismatch", check(changed).first().code)
+    }
+
+    @Test
+    fun sampleTablesThatCannotFitTheFileAreNotExpanded() {
+        // A stsz box of a few bytes stating 0x10000000 samples of 4 bytes: rejected before anything that size is made.
+        fun mp4(stsz: ByteArray) = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0x200)) + bmffBox("moov", bmffBox("trak",
+            fullBox("tkhd", ByteArray(8) + be32(1) + ByteArray(68)) + bmffBox("mdia", bmffBox("minf", bmffBox("stbl",
+                stsz + fullBox("stsc", be32(1) + be32(1) + be32(2) + be32(1)) + fullBox("stco", be32(1) + be32(0)))))))
+        assertEquals(null, C2paBmff.trackChunks(mp4(fullBox("stsz", be32(4) + be32(0x10000000))), 1))
+        // A fixed size that fits: each chunk is one range from its offset.
+        val small = mp4(fullBox("stsz", be32(4) + be32(2)))
+        assertEquals(listOf(C2paRange(0, 8)), C2paBmff.trackChunks(small, 1)!![1])
     }
 
     @Test

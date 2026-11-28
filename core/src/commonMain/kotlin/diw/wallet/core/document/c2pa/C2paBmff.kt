@@ -552,10 +552,17 @@ object C2paBmff {
             x.box.start)
     }
 
+    /** [size] sample sizes, each read by [at] from the sample size box. */
+    private class Samples(val size: Int, val at: (Int) -> Long) {
+        fun isEmpty() = size == 0
+        operator fun get(k: Int) = at(k)
+    }
+
     /**
      * The sample data of each chunk of the track [trackId] (tkhd track_ID), by chunk number from 1, from the sample
      * tables (stsz or stz2, stsc, stco or co64): the leaves of a Merkle tree by media time as c2pa-rs computes them.
-     * Null when the file has no such track or its tables do not fit the file.
+     * Null when the file has no such track or its tables do not fit the file. The samples of a chunk follow each
+     * other from its offset, so each chunk is one range.
      */
     fun trackChunks(b: ByteArray, trackId: Long): Map<Long, List<C2paRange>>? {
         val roots = tree(b)
@@ -567,16 +574,18 @@ object C2paBmff {
         } ?: return null
         val stbl = select(trak.children, "/mdia/minf/stbl").firstOrNull() ?: return null
         fun body(type: String) = stbl.children.firstOrNull { it.type == type }?.let { (it.start + it.header + 4).toInt() to it.end.toInt() }
-        val sizes: LongArray = body("stsz")?.let { (at, end) ->
+        // The sample sizes are read from the box when needed: a count the file states is never expanded into an array,
+        // and samples of one fixed size must all fit in the file.
+        val sizes: Samples = body("stsz")?.let { (at, end) ->
             val fixed = B.u32(b, at)
             val count = B.u32(b, at + 4)
-            if (fixed != 0L) LongArray(count.toInt()) { fixed }
-            else { if (at + 8 + 4 * count > end) return null; LongArray(count.toInt()) { B.u32(b, at + 8 + 4 * it) } }
+            if (fixed != 0L) { if (count > b.size / fixed) return null; Samples(count.toInt()) { fixed } }
+            else { if (at + 8 + 4 * count > end) return null; Samples(count.toInt()) { B.u32(b, at + 8 + 4 * it) } }
         } ?: body("stz2")?.let { (at, end) ->
             val field = B.u8(b, at + 3)
-            val count = B.u32(b, at + 4).toInt()
-            if (field !in setOf(4, 8, 16) || at + 8 + (count.toLong() * field + 7) / 8 > end) return null
-            LongArray(count) { k ->
+            val count = B.u32(b, at + 4)
+            if (field !in setOf(4, 8, 16) || at + 8 + (count * field + 7) / 8 > end) return null
+            Samples(count.toInt()) { k ->
                 when (field) {
                     16 -> B.u16(b, at + 8 + 2 * k).toLong()
                     8 -> B.u8(b, at + 8 + k).toLong()
@@ -603,15 +612,15 @@ object C2paBmff {
             var chunk = first
             while (chunk <= last && sample < sizes.size) {
                 if (chunk > offsets.size) return null
-                var pos = offsets[(chunk - 1).toInt()]
-                val list = ArrayList<C2paRange>()
+                val start = offsets[(chunk - 1).toInt()]
+                var pos = start
                 var i = 0L
                 while (i < perChunk && sample < sizes.size) {
-                    val r = C2paRange(pos, sizes[sample])
-                    if (r.start < 0 || r.end > b.size) return null
-                    list.add(r); pos = r.end; sample++; i++
+                    pos += sizes[sample]
+                    if (start < 0 || pos > b.size) return null
+                    sample++; i++
                 }
-                out[chunk] = list
+                out[chunk] = listOf(C2paRange(start, pos - start))
                 chunk++
             }
         }

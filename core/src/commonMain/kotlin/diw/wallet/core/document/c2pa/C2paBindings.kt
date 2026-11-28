@@ -406,7 +406,9 @@ object C2paBindings {
             val box = mdats.getOrNull(mm.localId.toInt()) ?: return "assertion.bmffHash.mismatch" to "core_c2pa_bmff_merkle_mismatch"
             if (mm.fixedBlockSize != null && mm.variableBlockSizes != null) return "assertion.bmffHash.malformed" to "fixedBlockSize and variableBlockSizes"
             if (mm.variableBlockSizes != null && mm.variableBlockSizes.size != mm.count) return "assertion.bmffHash.malformed" to "variableBlockSizes count"
-            val blocks = runCatching { mdatBlocks(box, mm) }.getOrElse { return "assertion.bmffHash.malformed" to (it.message ?: "blocks") }
+            // Each leaf needs a stored hash or an auxiliary box, so no more blocks than that are worth making.
+            val most = minOf(mm.count, maxOf(mm.hashes.size, auxOf(mm).size))
+            val blocks = runCatching { mdatBlocks(box, mm, most) }.getOrElse { return "assertion.bmffHash.malformed" to (it.message ?: "blocks") }
             if (mm.count < blocks.size) return "assertion.bmffHash.malformed" to "count"
             val leaves = blocks.map { r -> DocCrypto.digest(C2paManifests.jcaHash(mm.alg ?: alg), asset.copyOfRange(r.start.toInt(), r.end.toInt())) }
             if (mm.count > mm.hashes.size && auxOf(mm).isEmpty()) return "assertion.bmffHash.malformed" to "no merkle boxes"
@@ -441,8 +443,11 @@ object C2paBindings {
         true
     }.getOrDefault(false)
 
-    /** The leaf ranges of an mdat box: its payload after 16 bytes, in fixed or variable blocks, or whole. */
-    private fun mdatBlocks(box: C2paBmff.Box, mm: C2paBmff.MerkleMap): List<C2paRange> {
+    /**
+     * The leaf ranges of an mdat box: its payload after 16 bytes, in fixed or variable blocks, or whole. More than
+     * [most] fixed blocks is an error found before they are listed.
+     */
+    private fun mdatBlocks(box: C2paBmff.Box, mm: C2paBmff.MerkleMap, most: Int): List<C2paRange> {
         val start = box.start + 16
         val total = maxOf(0L, box.size - 16)
         val fixed = mm.fixedBlockSize
@@ -450,6 +455,7 @@ object C2paBindings {
         return when {
             fixed != null -> {
                 if (fixed <= 1) throw IllegalArgumentException("fixed block size")
+                if ((total + fixed - 1) / fixed > most) throw IllegalArgumentException("count")
                 val out = ArrayList<C2paRange>()
                 var p = start
                 var left = total
