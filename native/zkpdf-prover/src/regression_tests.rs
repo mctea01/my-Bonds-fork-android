@@ -201,3 +201,47 @@ fn second_occurrence_executes_frozen_acvm() {
         assert!(executed.public_inputs == public::encode(&kind, &witness).unwrap());
     }
 }
+fn opaque(length: usize, head: usize, tail: usize) -> ZkPdfWindowInput {
+    ZkPdfWindowInput {
+        role: "opaque".into(),
+        mid_in: vec![5; 32],
+        head: vec![1; head],
+        private_data: vec![9; length],
+        tail: vec![2; tail],
+        key_stream: None,
+    }
+}
+#[test]
+fn other_pages_stay_private_in_up_to_fifteen_opaque_windows() {
+    let mut input = repeated_record_input();
+    // A stream split into full windows: only the first has a head and only the last a tail.
+    input.windows.push(opaque(8192 - 10, 10, 0));
+    input.windows.push(opaque(8192, 0, 0));
+    input.windows.push(opaque(64 - 7, 0, 7));
+    while input.windows.len() < crate::MAX_WINDOWS {
+        input.windows.push(opaque(64, 0, 0));
+    }
+    // The layout does not depend on the salt.
+    let salt = field::fresh_salt().unwrap();
+    let prepared = prepare::prepare(&input, salt).unwrap();
+    let sha: Vec<_> = prepared
+        .stages
+        .iter()
+        .filter(|(kind, _, _)| kind.starts_with("sha_"))
+        .map(|(kind, index, _)| (kind.clone(), *index))
+        .collect();
+    assert!(sha.len() == crate::MAX_WINDOWS && sha[0] == ("sha_content".into(), 0));
+    assert!(sha[1..]
+        .iter()
+        .enumerate()
+        .all(|(i, (kind, index))| kind == "sha_opaque" && *index == i as u32 + 1));
+    let spec = spec(&input, &[2, 1]);
+    let bundle = bundle(&input, &prepared);
+    assert!(verify::policy(&spec, &bundle).is_ok());
+    let mut more = input.clone();
+    more.windows.push(opaque(64, 0, 0));
+    assert!(prepare::prepare(&more, salt).err() == Some(Error("windows")));
+    let mut wider = spec.clone();
+    wider.windows.push(wider.windows[1].clone());
+    assert!(verify::policy(&wider, &bundle).is_err());
+}

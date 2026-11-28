@@ -1,0 +1,13 @@
+{
+  "id": "cn.nia.entry-exit/1",
+  "title": "出入境記錄查詢結果",
+  "opaqueImages": [],
+  "fields": [
+    { "claim": "name", "label": "姓名", "page": 1, "before": ["查询人姓名:"], "after": ["，性别:"], "normalize": "clause" },
+    { "claim": "gender", "label": "性別", "page": 1, "before": ["，性别:"], "after": ["，出生日期:"], "normalize": "clause" },
+    { "claim": "birthDate", "label": "出生日期", "page": 1, "before": ["，出生日期:"], "after": ["，"], "normalize": "date" },
+    { "claim": "documentNumber", "label": "台灣居民來往大陸通行證號碼", "page": 1, "before": ["台湾居民来往大陆通行证号码:"], "after": ["，通过中华人民共和国出入境管理局出入境记"], "normalize": "compact" },
+    { "claim": "periodFrom", "label": "查詢期間起日", "page": 1, "before": ["录查询系统查询，其本人在"], "after": ["日至"], "normalize": "date" },
+    { "claim": "periodTo", "label": "查詢期間迄日", "page": 1, "before": ["日至"], "after": ["日期间有下列"], "normalize": "date" }
+  ]
+}

@@ -201,7 +201,7 @@ pub(crate) fn prepare_with_boundary<const DEFER_END: bool>(
     require(input.binding.len() == 32, "binding_length")?;
     require(
         !input.windows.is_empty()
-            && input.windows.len() <= 2
+            && input.windows.len() <= crate::MAX_WINDOWS
             && input.windows.iter().filter(|w| w.role == "content").count() == 1,
         "windows",
     )?;
