@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（zkPDF 支援多頁文件：欄位可在任一頁、未證明的頁整頁不公開，證據與遠端請求版本 2，新增移民管理局出入境記錄版型；Google Play 商店資訊納入翻譯管理：各語言的標題、說明、版本資訊範本與截圖在 `distribution/play/listing`（zh-TW、en-US、zh-CN），Play 版本資訊由 `tools/release-notes.py --play-out` 產生、與 GitHub Release 的變更清單相同；上傳改用 `tools/play-store.py`，同一版本重跑只更新版本資訊，可選擇一併寫入商店資訊；README 加入 Google Play 測試資訊；main 到 PR #185）。
+最後更新：2026-11-27（關於頁的第三方元件清單改由建置產生：Maven 相依、原生程式庫的 Rust crate 與 `third-party/components.json` 的精選項目，附授權全文與元件自帶的授權檔，App 內顯示建置當下的 NOTICE 與 LICENSE；Google Play 商店資訊納入翻譯管理：各語言的標題、說明、版本資訊範本與截圖在 `distribution/play/listing`（zh-TW、en-US、zh-CN），Play 版本資訊由 `tools/release-notes.py --play-out` 產生、與 GitHub Release 的變更清單相同；上傳改用 `tools/play-store.py`，同一版本重跑只更新版本資訊，可選擇一併寫入商店資訊；README 加入 Google Play 測試資訊；main 到 PR #185）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -49,6 +49,7 @@ P4 之後合併的工作：
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
 | 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，附在 nightly 與穩定版的「實驗版」；macOS 不支援。JVM 版仍是正式發行。2026-11-27 Windows 執行檔加入版本資源（檔案描述、產品名稱、版本、著作權與 Apache License 2.0）與 App 圖示，CI 以 Windows 讀回檢查；發佈資料夾附 `LICENSE`、`NOTICE`，`self-check.txt`、`smoke-stderr.txt` 改放 `native-check-<os>` Artifact | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 關於頁的第三方元件清單 | 完成：「設定 > 關於 > 第三方元件與授權」依平台列出這個版本實際包含的元件（Android 與桌面版各自的 Maven 相依、每個打包的原生程式庫所連結的 Rust crate、C/C++ 程式庫、執行階段、模型、電路、內建資料、使用時下載的資產、安裝檔附帶的執行環境），可搜尋與分組，每項附授權全文與元件自帶的授權或聲明檔；清單由建置產生（`app/third-party.gradle.kts`、`native/third_party.py`），授權不在 `third-party/components.json` 的相依會讓建置失敗；`NOTICE` 與 `LICENSE` 改在 App 內顯示建置當下的版本。桌面版以測試與截圖確認，Android 版只經 CI 建置，未在實機檢視 | [third-party/README.md](../third-party/README.md) |
 | 一般使用者的使用教程 | 完成：[user-guide.md](guides/user-guide.md) 涵蓋安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版與常見問題，附測試資料繪製的畫面；App 在設定清單第一列、關於頁與首次啟動完成頁以瀏覽器開啟它。教程只有繁體中文 | [user-guide.md](guides/user-guide.md) |
 
 ## 3. 功能狀態
@@ -133,7 +134,6 @@ P4 之後合併的工作：
 | C2PA 其他容器 | BMFF、PDF 內嵌、`c2pa.hash.boxes` 的讀取與寫入；錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation` | 排程 |
 | CAWG 身分聲明的預設編碼 | 規格要求決定性編碼，c2pa-rs 0.92 以自己的欄位順序驗證；預設照規格，互通選項可改 | c2pa-rs 修正或使用者決定 |
 | France Identité 互通 | 協定已具備，缺合作夥伴登錄 | 使用者決定是否申請 |
-| 關於頁的第三方元件清單 | 只列主要元件，完整清單在 [NOTICE](../NOTICE) | 視需要補 |
 | 台灣 G2C | 尚無公開標準，只留接口 | 外部 |
 | AGP 10 前的模組調整 | AGP 9 以 `android.builtInKotlin=false`、`android.newDsl=false` 保留 KMP 模組直接套用 Android 外掛的結構；AGP 10 移除這兩個選項，屆時 `core` 改用 `com.android.kotlin.multiplatform.library`，`app` 的 Android 進入點拆成獨立模組 | AGP 10 發佈前排程 |
 | Code scanning 剩餘告警 | 依規格必須使用的演算法（電子護照 BAC 的 3DES、安全通訊的 AES-ECB、RFC 3394 金鑰包裝、OpenPGP v4 指紋的 SHA-1；CodeQL 不認得的 RSASSA-PSS、SM3withSM2）、取件入口網頁必須的 JavaScript 與下載介面、zkPassport 證明器的憑證釘選，屬設計需要或誤報 | 使用者在 Code scanning 以 won't fix／false positive 關閉 |

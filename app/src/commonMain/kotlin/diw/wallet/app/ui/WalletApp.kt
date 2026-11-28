@@ -222,6 +222,10 @@ private fun WalletAppContent(
                                 is Screen.OfficialBundle -> OfficialBundleScreen(model, s)
                                 is Screen.LegalText -> LegalTextScreen(model, s)
                                 is Screen.IntegrationStatement -> IntegrationStatementScreen(model, s)
+                                Screen.ThirdPartyList -> ThirdPartyListScreen(model)
+                                is Screen.ThirdPartyEntry -> ThirdPartyEntryScreen(model, s)
+                                is Screen.ThirdPartyLicenseText -> ThirdPartyLicenseScreen(model, s)
+                                is Screen.ThirdPartyDocument -> ThirdPartyDocumentScreen(model, s)
                             }
                         }
                     }
@@ -286,6 +290,7 @@ private fun titleFor(s: Screen, tab: HomeTab) = when (s) {
     is Screen.OfficialBundle -> stringResource(Res.string.screen_official_bundle)
     is Screen.LegalText -> diw.wallet.app.legal.LegalTexts.byId(s.documentId)?.title ?: diw.wallet.app.legal.LegalStrings.SETTINGS_SECTION
     is Screen.IntegrationStatement -> diw.wallet.app.legal.LegalStrings.STATEMENTS_TITLE
+    Screen.ThirdPartyList, is Screen.ThirdPartyEntry, is Screen.ThirdPartyLicenseText, is Screen.ThirdPartyDocument -> thirdPartyTitle(s)
 }
 
 /** The one-time reminder before the first request of an integration; reading the statement leaves the request undone. */

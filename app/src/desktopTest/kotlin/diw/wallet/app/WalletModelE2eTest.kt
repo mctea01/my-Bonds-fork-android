@@ -405,6 +405,37 @@ class WalletModelE2eTest {
         assertTrue(path.rootReached && path.decision?.labels?.contains(diw.wallet.core.trust.TrustLabel.UNKNOWN_ANCHOR) == true)
     }
 
+    /** The About page and the third-party list, an entry and a license. DIW_SCREENSHOTS names the output folder. */
+    @Test
+    fun thirdPartyScreenshots() = runBlocking<Unit> {
+        val dir = System.getenv("DIW_SCREENSHOTS")
+        org.junit.jupiter.api.Assumptions.assumeTrue(!dir.isNullOrBlank())
+        val out = java.io.File(dir!!).apply { mkdirs() }
+        start()
+        val (m, _) = newWallet()
+        fun shot(name: String, s: Screen, height: Int) {
+            m.screen.value = s
+            val scene = androidx.compose.ui.ImageComposeScene(412 * 2, height * 2, androidx.compose.ui.unit.Density(2f)) {
+                diw.wallet.app.ui.WalletApp(m, scanQr = { null }, scanQrStream = {})
+            }
+            try {
+                var image = scene.render(0)
+                for (i in 1..15) {
+                    Thread.sleep(150)
+                    image = scene.render(i * 100_000_000L)
+                }
+                java.io.File(out, "$name.png").writeBytes(image.encodeToData(org.jetbrains.skia.EncodedImageFormat.PNG)!!.bytes)
+            } finally {
+                scene.close()
+            }
+        }
+        shot("third-party-01-about", Screen.SettingsPage(SettingsSection.ABOUT), 1600)
+        shot("third-party-02-list", Screen.ThirdPartyList, 1400)
+        shot("third-party-03-entry", Screen.ThirdPartyEntry("maven:org.bouncycastle:bcprov-jdk18on"), 1400)
+        shot("third-party-04-license", Screen.ThirdPartyLicenseText("MIT"), 1400)
+        shot("third-party-05-notice", Screen.ThirdPartyDocument("NOTICE"), 1400)
+    }
+
     /**
      * Renders the main screens to PNG files for review without a device: DIW_SCREENSHOTS names the output folder.
      * The wallet holds a PID and an mDL from the test issuer and has presented once.
