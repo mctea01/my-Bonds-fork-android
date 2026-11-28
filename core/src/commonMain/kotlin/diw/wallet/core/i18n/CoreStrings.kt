@@ -161,6 +161,7 @@ object CoreStrings {
         "core_c2pa_update_moved" to "這個 %1\$s 檔案的 manifest 儲存區位置會改變，會使資料雜湊失效；請改簽標準 manifest",
         "core_c2pa_update_needs_manifest" to "更新 manifest 需要已內嵌內容憑證的檔案",
         "core_c2pa_update_no_parent" to "更新 manifest %1\$s 沒有可循線找到硬綁定的唯一 parentOf 成分",
+        "core_c2pa_update_open_box" to "最後一個 box（%1\$s）的長度為 0，延伸到檔尾，附加更新 store 會改動硬綁定涵蓋的位元組；請改簽標準 manifest",
         "core_c2pa_update_parent_hash" to "parentOf 成分的 manifest（%1\$s）雜湊不符",
         "core_c2pa_update_parent_missing" to "parentOf 成分的 manifest（%1\$s）不在 manifest 儲存區中",
         "core_c2pa_update_parents" to "更新 manifest 必須正好有一個 parentOf 成分，並指明所更新的 manifest 與聲明簽章",

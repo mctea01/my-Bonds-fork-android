@@ -1023,6 +1023,12 @@ class C2paSigningTest {
         // A file without content credentials cannot take an update manifest.
         val e = runCatching { sign(picture("jpg"), request("x.jpg", C2paAuthoring.Opened).copy(update = true)) }.exceptionOrNull()
         assertNotNull(e)
+        // An MP4 whose last box has size 0 runs to the end: no update store is appended inside it.
+        val open = mp4().also { java.nio.ByteBuffer.wrap(it, it.size - 4096 - 8, 4).putInt(0) }
+        val signedOpen = sign(open, request("開放.mp4"))
+        assertSignedAndTrusted(inspect(signedOpen.bytes, "open.mp4"), "mp4 with size 0 mdat", "assertion.bmffHash.match", "c2pa.hash.bmff")
+        val refused = runCatching { sign(signedOpen.bytes, request("更新.mp4", C2paAuthoring.Opened).copy(update = true, identity = false)) }.exceptionOrNull()
+        assertTrue(refused is diw.wallet.core.document.sign.SigningException && "mdat" in refused.message.orEmpty(), refused.toString())
     }
 
     @Test

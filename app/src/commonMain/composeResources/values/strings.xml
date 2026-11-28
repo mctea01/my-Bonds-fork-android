@@ -862,6 +862,7 @@
     <string name="core_c2pa_written_unreadable">The signed file could not be read back</string>
     <string name="core_c2pa_written_binding">The signed file does not pass its own hard binding (%1$s)</string>
     <string name="core_c2pa_update_needs_manifest">An update manifest needs a file that already has embedded content credentials</string>
+    <string name="core_c2pa_update_open_box">the last box (%1$s) runs to the end of the file (size 0), so an update store cannot be appended without changing bytes the hard binding covers; sign a standard manifest instead</string>
     <string name="core_c2pa_update_created">An update manifest cannot record that the content was created; it only adds assertions to the file as it is</string>
     <string name="core_c2pa_update_moved">The manifest store of this %1$s file would move, which breaks its data hash; sign a standard manifest instead</string>
     <string name="core_c2pa_update_binding">An update manifest would break the hard binding of this %1$s file (%2$s); sign a standard manifest instead</string>

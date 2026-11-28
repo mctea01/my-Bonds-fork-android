@@ -2,6 +2,7 @@ package diw.wallet.core.document.c2pa
 
 import diw.wallet.core.document.DocCrypto
 import diw.wallet.core.document.DocCryptoUtil
+import diw.wallet.core.i18n.ct
 import diw.wallet.core.document.c2pa.C2paBytes as B
 import org.multipaz.cbor.Bstr
 import org.multipaz.cbor.Cbor
@@ -206,6 +207,10 @@ object C2paBmff {
         if (old.size > 1) C2paContainers.fail("more than one update store box")
         val top = topLevel(b)
         old.firstOrNull()?.let { if (it.box.end != b.size.toLong() || top.last().start != it.box.start) C2paContainers.fail("update store box not at the end of the file") }
+        // A last box of size 0 runs to the end of the file, so an appended box would be inside it; writing its real
+        // size would change bytes the hard binding covers.
+        val last = top.lastOrNull { o -> old.none { it.box.start == o.start } }
+        if (last != null && B.u32(b, last.start.toInt()) == 0L) C2paContainers.fail(ct("core_c2pa_update_open_box", last.type))
         val out = (old.firstOrNull()?.let { b.copyOfRange(0, it.box.start.toInt()) } ?: b).copyOf()
         if (main.purpose == "manifest") {
             val at = (main.box.start + main.box.header + 4).toInt()

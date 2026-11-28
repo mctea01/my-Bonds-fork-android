@@ -862,6 +862,7 @@
     <string name="core_c2pa_written_unreadable">簽署後的檔案無法讀回</string>
     <string name="core_c2pa_written_binding">簽署後的檔案未通過自身的硬綁定（%1$s）</string>
     <string name="core_c2pa_update_needs_manifest">更新 manifest 需要已內嵌內容憑證的檔案</string>
+    <string name="core_c2pa_update_open_box">最後一個 box（%1$s）的長度為 0，延伸到檔尾，附加更新 store 會改動硬綁定涵蓋的位元組；請改簽標準 manifest</string>
     <string name="core_c2pa_update_created">更新 manifest 不能記錄內容的建立，只能為現有檔案加入宣告</string>
     <string name="core_c2pa_update_moved">這個 %1$s 檔案的 manifest 儲存區位置會改變，會使資料雜湊失效；請改簽標準 manifest</string>
     <string name="core_c2pa_update_binding">更新 manifest 會使這個 %1$s 檔案的硬綁定失效（%2$s）；請改簽標準 manifest</string>
