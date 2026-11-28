@@ -19,7 +19,7 @@ class ZkPdfPlannerTest {
     private fun JsonObject.list(key: String) = getValue(key).jsonArray.map { it.jsonObject }
 
     private val student = ZkPdfProfile(
-        "test.student-status/1", "Synthetic student status", listOf("Qr"),
+        "test.student-status/1", "Synthetic student status", listOf(ZkPdfImageRef(1, "Qr")),
         listOf(
             ZkPdfFieldRule("name", "Name", listOf("姓名"), listOf("學號"), ZkPdfNormalize.TEXT),
             ZkPdfFieldRule("birthDate", "Birth date", listOf("出生日期"), listOf("科系"), ZkPdfNormalize.DATE),
@@ -170,5 +170,28 @@ class ZkPdfPlannerTest {
         assertFailsWith<IllegalArgumentException> { ZkPdfPredicate(ZkPdfPredicate.DATE_LE, "x", 2005) }
         val json = student.toJson()
         assertEquals(json, ZkPdfProfile.parse(json).toJson())
+    }
+
+    /** Fields name their page, page 1 by default; private images are a name on page 1 or a page and a name. */
+    @Test fun templatesNameTheirPages() {
+        val json = Json.parseToJsonElement("""
+            {"id":"test.pages/1","title":"Pages","opaqueImages":["Qr",{"page":3,"name":"Im1"}],"fields":[
+              {"claim":"name","label":"Name","before":["A"],"after":["B"],"normalize":"text"},
+              {"claim":"number","label":"Number","before":["C"],"after":["D"],"normalize":"compact","page":3}
+            ],"test":true}
+        """).jsonObject
+        val profile = ZkPdfProfile.parse(json)
+        assertEquals(listOf(1, 3), profile.pages)
+        assertEquals(listOf(ZkPdfImageRef(1, "Qr"), ZkPdfImageRef(3, "Im1")), profile.opaqueImages)
+        assertEquals(listOf(1, 3), profile.fields.map { it.page })
+        assertEquals(json, profile.toJson())
+        assertFalse("page" in profile.toJson().getValue("fields").jsonArray[0].jsonObject)
+        fun rejected(text: String) = assertFailsWith<IllegalArgumentException> { ZkPdfProfile.parse(Json.parseToJsonElement(text).jsonObject) }
+        // An image on a page without fields, a page out of range, or more pages than one bundle proves.
+        rejected("""{"id":"a/1","title":"t","opaqueImages":[{"page":2,"name":"X"}],"fields":[{"claim":"a","label":"a","before":["x"],"after":["y"],"normalize":"text"}]}""")
+        rejected("""{"id":"a/1","title":"t","fields":[{"claim":"a","label":"a","before":["x"],"after":["y"],"normalize":"text","page":0}]}""")
+        rejected("""{"id":"a/1","title":"t","fields":[{"claim":"a","label":"a","before":["x"],"after":["y"],"normalize":"text","page":"2"}]}""")
+        val five = (1..5).joinToString(",") { """{"claim":"f$it","label":"f","before":["x"],"after":["y"],"normalize":"text","page":$it}""" }
+        rejected("""{"id":"a/1","title":"t","fields":[$five]}""")
     }
 }

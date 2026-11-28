@@ -195,3 +195,7 @@ tasks.withType<Test>().configureEach {
 tasks.matching { (it.name.startsWith("process") || it.name.startsWith("compress")) && it.name.endsWith("JavaRes") }.configureEach {
     dependsOn(zkAssetResources)
 }
+
+// The crate lists that native/build.sh writes next to each library are read by the app's third-party list
+// (app/third-party.gradle.kts), not packaged with the libraries.
+tasks.named<ProcessResources>("jvmProcessResources") { exclude("zk/native/*/*.third-party.json") }

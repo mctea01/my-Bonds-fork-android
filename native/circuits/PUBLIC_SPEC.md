@@ -288,9 +288,13 @@ one, pi/r to derived values and slot to the first enabled slot (or C).
    nonoverlapping in-range ByteRange intervals and exclude signature Contents.
    Stream ranges must be contained in signed intervals. Aligned windows must not
    overlap **each other at block granularity** or contain any SHA padding block.
-   Alignment is in the concatenated ByteRange message, not absolute file offsets. Require exactly one content and at most one opaque.
-3. Parse the signed revision's xrefs, catalog, first page, Contents and resources
-   from public structure (V5). Require a single supported FlateDecode content
+   Alignment is in the concatenated ByteRange message, not absolute file offsets. Require exactly one content and at most 15 opaque
+   windows per statement (16 in all). Until 2026-11-27 this was at most one opaque window; the circuits are unchanged, only this
+   count, so that streams of pages that are not proven stay private (p4-circuits.md 3.13). A stream may be split into adjacent
+   opaque windows: only the first has a head and only the last a tail.
+3. Parse the signed revision's xrefs, catalog, the proven page, Contents and resources
+   from public structure (V5). A multi-page document has one statement per proven page; the opaque windows
+   of all statements together must be exactly the private images and the streams drawn by the other pages. Require a single supported FlateDecode content
    stream with exact object/generation, start and Length. Each opaque window must
    equal a full permitted object stream payload. Reject alternate object or font
    substitution. Bytes outside stream payloads remain unchanged in redaction.

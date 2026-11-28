@@ -127,6 +127,13 @@ object SyntheticDocuments {
         val image = if (travel) "" else "/XObject << /Qr 10 0 R >>"
         out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R /Resources << /Font << /FLatin 5 0 R /FHanzi 6 0 R >> $image >> >>")
         out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, travel, variant).toByteArray()))
+        shared(out, fonts)
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(12), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
+        return out.bytes()
+    }
+
+    /** The Latin and CID fonts, their ToUnicode map and font file, and the QR image: objects 5 to 11. */
+    private fun shared(out: PdfOutput, fonts: Fonts) {
         // Helvetica is the PDF standard-14 font: no third-party font bytes are distributed for this resource.
         out.obj(5, 0, "<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica /Encoding /WinAnsiEncoding >>")
         out.obj(6, 0, "<< /Type /Font /Subtype /Type0 /BaseFont /ZKPDFX+NotoSansCJKsc-Regular /Encoding /Identity-H /DescendantFonts [7 0 R] /ToUnicode 8 0 R >>")
@@ -146,8 +153,154 @@ object SyntheticDocuments {
         }
         out.stream(10, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Image"), "Width" to PdfNumber.of(size), "Height" to PdfNumber.of(size), "ColorSpace" to PdfName("DeviceGray"), "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(pixels))
         out.obj(11, 0, "<< /Type /FontDescriptor /FontName /ZKPDFX+NotoSansCJKsc-Regular /Flags 4 /FontBBox [-1000 -1000 3000 3000] /ItalicAngle 0 /Ascent 1160 /Descent -288 /CapHeight 733 /StemV 80 /FontFile3 9 0 R >>")
-        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(12), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
+    }
+
+    /** Text that only page 3 of [multiPage] draws, so a test can show that it never reaches the verifier. */
+    const val HIDDEN_NAME = "林測試"
+    const val HIDDEN_LATIN = "SYN0000001"
+
+    /**
+     * Three pages, signed: the student page, the travel page, and a page that draws text through two content
+     * streams, a form XObject, a thumbnail and a free-text annotation appearance. Not a committed fixture.
+     * [variant] `annotation-text` gives the annotation a text value; `shared-unused` lists the form of page 3 in the
+     * resources of page 1 as well, and `shared-drawn` also draws it on page 1; `soft-mask` adds a graphics state on
+     * page 3 whose soft mask group draws text; `structure` adds a structure element with actual text, and `outline`
+     * a bookmark to page 3; `shading` paints page 3 with a shading and a shading pattern whose stream data carries
+     * text, and `marked-content` gives page 3 a marked-content property with actual text; `ink` adds an ink
+     * annotation whose coordinates stay in its dictionary, `attachment` a file attachment annotation, and
+     * `field-default` a text field whose default value is text, `caption` a push button with a caption, and
+     * `thumbnail-mask` gives page 1 a thumbnail with a soft mask image.
+     */
+    fun unsignedMultiPage(fonts: Fonts, variant: String = "normal"): ByteArray {
+        val out = PdfOutput()
+        val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
+        fun flate(text: String) = compressed(text.toByteArray())
+        out.append("%PDF-1.7\n")
+        val extra = when (variant) {
+            "structure" -> " /StructTreeRoot 23 0 R /MarkInfo << /Marked true >>"
+            "outline" -> " /Outlines 25 0 R"
+            else -> ""
+        }
+        out.obj(1, 0, "<< /Type /Catalog /Pages 2 0 R$extra >>")
+        out.obj(2, 0, "<< /Type /Pages /Kids [3 0 R 12 0 R 14 0 R] /Count 3 >>")
+        val shared = if (variant.startsWith("shared")) " /Fm 17 0 R" else ""
+        val thumbMask = variant == "thumbnail-mask"
+        out.obj(3, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 4 0 R${if (thumbMask) " /Thumb 21 0 R" else ""} /Resources << $fontResources /XObject << /Qr 10 0 R$shared >> >> >>")
+        val first = content(fonts, false, "normal") + if (variant == "shared-drawn") "q 1 0 0 1 0 -400 cm /Fm Do Q\n" else ""
+        out.stream(4, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(first.toByteArray()))
+        shared(out, fonts)
+        out.obj(12, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents 13 0 R /Resources << $fontResources >> >>")
+        out.stream(13, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), compressed(content(fonts, true, "normal").toByteArray()))
+        val mask = variant == "soft-mask"
+        val shading = variant == "shading"
+        val marked = variant == "marked-content"
+        val states = when {
+            mask -> " /ExtGState << /Gs 21 0 R >>"
+            shading -> " /Shading << /Sh 21 0 R >> /Pattern << /Pt 22 0 R >>"
+            marked -> " /Properties << /Mc << /ActualText ($HIDDEN_LATIN) >> >>"
+            else -> ""
+        }
+        val annotation = if (variant in setOf("ink", "attachment", "field-default", "caption")) " 21 0 R" else ""
+        out.obj(14, 0, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [15 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R$annotation] /Resources << $fontResources /XObject << /Fm 17 0 R >>$states >> >>")
+        out.stream(15, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate("BT /FHanzi 14 Tf 1 0 0 1 55 790 Tm <${fonts.encode(HIDDEN_NAME)}> Tj ET\n"))
+        val painted = when {
+            mask -> "/Gs gs\n"
+            shading -> "q /Sh sh Q\nq /Pattern cs /Pt scn 0 0 595 100 re f Q\n"
+            marked -> "/Span /Mc BDC EMC\n"
+            else -> ""
+        }
+        out.stream(16, 0, PdfDict.of("Filter" to PdfName("FlateDecode")), flate(painted + "q 1 0 0 1 0 -60 cm /Fm Do Q\n"))
+        val form = PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
+            "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(595), PdfNumber.of(842))))
+        out.stream(17, 0, form, flate("BT /FLatin 14 Tf 1 0 0 1 55 700 Tm ($HIDDEN_LATIN) Tj ET\n"))
+        out.stream(18, 0, PdfDict.of("Width" to PdfNumber.of(1), "Height" to PdfNumber.of(1), "ColorSpace" to PdfName("DeviceGray"),
+            "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(byteArrayOf(127)))
+        val note = if (variant == "annotation-text") HIDDEN_LATIN else ""
+        out.obj(19, 0, "<< /Type /Annot /Subtype /FreeText /Rect [55 600 300 630] /Contents ($note) /DA (/FLatin 12 Tf 0 g) /AP << /N 20 0 R >> >>")
+        out.stream(20, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
+            "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(245), PdfNumber.of(30)))),
+            flate("BT /FLatin 12 Tf 2 10 Td ($HIDDEN_LATIN) Tj ET\n"))
+        if (mask) {
+            out.obj(21, 0, "<< /Type /ExtGState /SMask << /Type /Mask /S /Luminosity /G 22 0 R >> >>")
+            out.stream(22, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Form"), "Filter" to PdfName("FlateDecode"),
+                "BBox" to PdfArray(listOf(PdfNumber.of(0), PdfNumber.of(0), PdfNumber.of(595), PdfNumber.of(842))),
+                "Group" to PdfDict.of("S" to PdfName("Transparency"))),
+                flate("BT /FLatin 14 Tf 1 0 0 1 55 500 Tm ($HIDDEN_LATIN) Tj ET\n"))
+        }
+        if (shading) {
+            // Free-form shadings whose vertex data spells the hidden text: stream data like any other.
+            fun mesh() = PdfDict.of("ShadingType" to PdfNumber.of(4), "ColorSpace" to PdfName("DeviceGray"),
+                "BitsPerCoordinate" to PdfNumber.of(8), "BitsPerComponent" to PdfNumber.of(8), "BitsPerFlag" to PdfNumber.of(8),
+                "Decode" to PdfArray(listOf(0, 595, 0, 842, 0, 1).map { PdfNumber.of(it) }), "Filter" to PdfName("FlateDecode"))
+            out.stream(21, 0, mesh(), compressed(HIDDEN_LATIN.toByteArray()))
+            out.obj(22, 0, "<< /Type /Pattern /PatternType 2 /Shading 23 0 R >>")
+            out.stream(23, 0, mesh(), compressed(HIDDEN_LATIN.reversed().toByteArray()))
+        }
+        if (variant == "ink") out.obj(21, 0, "<< /Type /Annot /Subtype /Ink /Rect [55 400 300 430] /InkList [[60 405 80 425 100 405]] >>")
+        if (thumbMask) {
+            out.stream(21, 0, PdfDict.of("Width" to PdfNumber.of(1), "Height" to PdfNumber.of(1), "ColorSpace" to PdfName("DeviceGray"),
+                "BitsPerComponent" to PdfNumber.of(8), "SMask" to PdfRef(22, 0), "Filter" to PdfName("FlateDecode")), compressed(byteArrayOf(127)))
+            out.stream(22, 0, PdfDict.of("Type" to PdfName("XObject"), "Subtype" to PdfName("Image"), "Width" to PdfNumber.of(10), "Height" to PdfNumber.of(1),
+                "ColorSpace" to PdfName("DeviceGray"), "BitsPerComponent" to PdfNumber.of(8), "Filter" to PdfName("FlateDecode")), compressed(HIDDEN_LATIN.toByteArray()))
+        }
+        if (variant == "caption") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Btn /Ff 65536 /T (b) /Rect [55 400 300 430] /MK << /CA ($HIDDEN_LATIN) >> >>")
+        if (variant == "field-default") out.obj(21, 0, "<< /Type /Annot /Subtype /Widget /FT /Tx /T (f) /Rect [55 400 300 430] /DV ($HIDDEN_LATIN) >>")
+        if (variant == "attachment") {
+            out.obj(21, 0, "<< /Type /Annot /Subtype /FileAttachment /Rect [55 400 70 415] /FS << /Type /Filespec /F (a.txt) /EF << /F 22 0 R >> >> >>")
+            out.stream(22, 0, PdfDict.of("Type" to PdfName("EmbeddedFile"), "Filter" to PdfName("FlateDecode")), compressed(HIDDEN_LATIN.toByteArray()))
+        }
+        if (variant == "structure") {
+            out.obj(23, 0, "<< /Type /StructTreeRoot /K 24 0 R >>")
+            out.obj(24, 0, "<< /Type /StructElem /S /P /P 23 0 R /Pg 14 0 R /ActualText ($HIDDEN_LATIN) /K 0 >>")
+        }
+        if (variant == "outline") {
+            out.obj(25, 0, "<< /Type /Outlines /First 26 0 R /Last 26 0 R /Count 1 >>")
+            out.obj(26, 0, "<< /Title ($HIDDEN_LATIN) /Parent 25 0 R /Dest [14 0 R /Fit] >>")
+        }
+        val size = when (variant) { "ink", "field-default", "caption" -> 22; "soft-mask", "attachment", "thumbnail-mask" -> 23; "shading" -> 24; "structure" -> 25; "outline" -> 27; else -> 21 }
+        out.xrefTable(PdfDict.of("Size" to PdfNumber.of(size), "Root" to PdfRef(1, 0), "ID" to PdfArray(List(2) { PdfString(hash("diw-zkpdf-synthetic-id-v1".toByteArray()).copyOf(16), true) })), true)
         return out.bytes()
+    }
+
+    suspend fun multiPage(fonts: Fonts, material: Material, variant: String = "normal"): ByteArray =
+        signWithContainer(unsignedMultiPage(fonts, variant), material.signer)
+
+    /**
+     * The three pages with an update before signing that changes page 3: `rewritten` writes its first content stream
+     * again under the same object number, `replaced` gives the page a new content stream and leaves the old one
+     * unreferenced. Either way the earlier text stays in the signed bytes. `cleared` starts from an annotation with
+     * text on page 3 and writes it again without, which keeps the text in the earlier version as well; `catalog`
+     * writes the catalog again with one more entry, which keeps nothing that the newest version lacks.
+     */
+    suspend fun updatedBeforeSigning(fonts: Fonts, material: Material, variant: String): ByteArray {
+        val base = unsignedMultiPage(fonts, if (variant == "cleared") "annotation-text" else "normal")
+        val latin = String(CharArray(base.size) { (base[it].toInt() and 255).toChar() })
+        val previous = Regex("startxref\\s+(\\d+)").findAll(latin).last().groupValues[1]
+        val id = Regex("/ID\\s*(\\[[^\\]]*\\])").findAll(latin).last().groupValues[1]
+        val out = ByteArrayOutputStream().apply { write(base) }
+        val offsets = sortedMapOf<Int, Int>()
+        fun obj(num: Int, body: ByteArray) {
+            offsets[num] = out.size()
+            out.write("$num 0 obj\n".toByteArray()); out.write(body); out.write("\nendobj\n".toByteArray())
+        }
+        val data = compressed("BT /FLatin 14 Tf 1 0 0 1 55 790 Tm (Updated) Tj ET\n".toByteArray())
+        val stream = "<< /Length ${data.size} /Filter /FlateDecode >>\nstream\n".toByteArray() + data + "\nendstream".toByteArray()
+        val fontResources = "/Font << /FLatin 5 0 R /FHanzi 6 0 R >>"
+        when (variant) {
+            "rewritten" -> obj(15, stream)
+            "cleared" -> obj(19, "<< /Type /Annot /Subtype /FreeText /Rect [55 600 300 630] /Contents () /DA (/FLatin 12 Tf 0 g) /AP << /N 20 0 R >> >>".toByteArray())
+            "catalog" -> obj(1, "<< /Type /Catalog /Pages 2 0 R /PageMode /UseNone >>".toByteArray())
+            else -> {
+            obj(21, stream)
+            obj(14, "<< /Type /Page /Parent 2 0 R /MediaBox [0 0 595 842] /Contents [21 0 R 16 0 R] /Thumb 18 0 R /Annots [19 0 R] /Resources << $fontResources /XObject << /Fm 17 0 R >> >> >>".toByteArray())
+            }
+        }
+        val xref = out.size()
+        out.write("xref\n0 1\n0000000000 65535 f \n".toByteArray())
+        for ((num, offset) in offsets) out.write("$num 1\n${"%010d".format(offset)} 00000 n \n".toByteArray())
+        val size = if (variant == "replaced") 22 else 21
+        out.write("trailer\n<< /Size $size /Root 1 0 R /Prev $previous /ID $id >>\nstartxref\n$xref\n%%EOF\n".toByteArray())
+        return signWithContainer(out.toByteArray(), material.signer)
     }
 
     private fun encrypt(bytes: ByteArray): ByteArray = Loader.loadPDF(bytes).use { document ->
@@ -174,7 +327,7 @@ object SyntheticDocuments {
         output.toByteArray()
     }
 
-    /** The student document with a blank second page, signed; not a committed fixture (zkPDF v1 refuses it). */
+    /** The student document with a blank second page, signed; not a committed fixture. */
     suspend fun twoPages(fonts: Fonts, material: Material): ByteArray {
         val unsigned = Loader.loadPDF(unsigned(fonts, false)).use { document ->
             document.documentId = FIXED_MILLIS

@@ -6,11 +6,11 @@
   目前有：`cn.chsi.xjbg.json`（學信網學籍在線驗證報告，新版中文報告）與 `cn.chsi.xjbg-en.json`（同一報告的英文版，
   需先在學信網申請英文版；另揭露線上驗證到期日），都只輸入在線驗證碼；`tw.gov.immigration.entryexit.json`（移民署入出國日期證明書驗證，
   輸入證號、序號與圖形驗證碼；揭露發證日期、姓名、國籍、性別、出生日期與最近一次出入境日期，不揭露證號與序號）。
-- `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式見下方「zkPDF 文件版型」與 `docs/design/p4-circuits.md` 第 3.11 節）。目前有：`cn.fzu.student-status.json`（福州大學學籍（在學）證明）與 `cn.nia.permit-link.json`（國家移民管理局通行證與居住證關聯查詢結果），都在 2026-11-05 以真實文件實際證明並查驗。
+- `zkpdf/`：zkPDF 文件版型，一個檔案一個版型（格式見下方「zkPDF 文件版型」與 `docs/design/p4-circuits.md` 第 3.11 節）。目前有：`cn.fzu.student-status.json`（福州大學學籍（在學）證明）與 `cn.nia.permit-link.json`（國家移民管理局通行證與居住證關聯查詢結果），都在 2026-11-05 以真實文件實際證明並查驗；`cn.nia.entry-exit.json`（國家移民管理局出入境記錄查詢結果，2 頁，欄位在第 1 頁，2026-11-27 以真實文件實際證明並查驗）。
 
 ## zkPDF 文件版型
 
-一個 JSON 物件描述一種 PDF 文件第 1 頁的版面：
+一個 JSON 物件描述一種 PDF 文件的版面，欄位可以在任何一頁：
 
 ```json
 {
@@ -19,18 +19,19 @@
   "opaqueImages": ["Im1"],
   "fields": [
     { "claim": "name", "label": "姓名", "before": ["姓名："], "after": ["學號："], "normalize": "text" },
-    { "claim": "birthDate", "label": "出生日期", "before": ["出生日期："], "after": ["科系："], "normalize": "date" }
+    { "claim": "birthDate", "label": "出生日期", "before": ["出生日期："], "after": ["科系："], "normalize": "date" },
+    { "claim": "issueDate", "label": "列印日期", "before": ["列印日期："], "after": ["備註："], "normalize": "date", "page": 2 }
   ]
 }
 ```
 
 - `id`：小寫英數、`.`、`-` 與 `/版本`（例如 `/1`）；版面改變時加新版本，舊版本保留到已發出的憑證不再需要。
-- `opaqueImages`：第 1 頁要保持私密的圖片資源名稱（例如含個資的 QR Code），最多一個。
-- `fields`：1 到 12 個欄位。`before`、`after` 是欄位前後的公開標籤文字（解碼後整段比對，可列多個寫法），
-  全部欄位合計最多 16 個不同標籤；標籤在頁面上必須只出現一次，欄位依頁面順序排列且不可重疊。
+- `opaqueImages`：要保持私密的圖片（例如含個資的 QR Code），最多 4 個。字串是第 1 頁的資源名稱，其他頁寫成 `{ "page": 2, "name": "Im1" }`；圖片必須在有欄位的頁面上。
+- `fields`：欄位。`page` 是欄位所在頁（從 1 起算，省略為第 1 頁），最多 4 頁有欄位，每頁 1 到 12 個欄位。`before`、`after` 是欄位前後的公開標籤文字（解碼後整段比對，可列多個寫法），
+  每頁的欄位合計最多 16 個不同標籤；標籤在那一頁必須只出現一次，欄位依頁面順序排列且不可重疊。每頁另做一串證明，頁數越多產生越久。
 - `normalize`：`text`（去頭尾空白並合併連續空白）、`compact`（去掉所有空白）、`clause`（同 `text`，再去掉兩端的逗號、冒號、分號、頓號與句號，
   用於段落中被標點夾住的值）、`month`（轉成 `年-月`）、`date`（轉成 `年-月-日`，可在產生時加「不晚於／不早於」條件）。
-- 只支援單頁文件：查驗方收到的遮蔽檔只清空第 1 頁內容串流與 `opaqueImages`，其他頁、其他圖片與表單（Form XObject）都會公開。
+- 多頁文件：沒有欄位的頁面整頁不公開（內容串流、縮圖、圖片、表單、圖樣與註解外觀都清空，簽章欄位的外觀除外），查驗方只看得到頁數與物件大小。有欄位的頁面上，`opaqueImages` 以外的圖片與表單（Form XObject）會公開。私密資料太多（一頁的陳述最多 16 個視窗）、兩個私密串流太接近、其他頁有註解文字或表單值（字典裡的文字無法清空），或證明頁的資源列出其他頁的圖片卻沒有畫它時無法產生。
 - `claim` 是衍生憑證中的欄位名稱，`label` 是畫面上的名稱。
 - `test` 只用於測試版型，打包工具會拒絕；正式版型不可設定。
 
@@ -38,9 +39,9 @@
 新版型須以真實文件在本機核對，真實文件與欄位值不進 repo。核對工具只印出文字的形狀（漢字印成「中」、數字印成 9），不印內容：
 
 ```bash
-# 列出第 1 頁的文字運算子與公開的圖片、表單；--reveal 的候選標籤相符時才印出原文（命令列無法傳中文時改用 @檔案，一行一個）
-./gradlew :test-servers:checkZkPdf -Pfile=文件.pdf -Preveal=姓名：,學號：
-# 核對版型：列出可證明與無法證明的欄位；-Pprove 以原生電路實際證明並查驗（需 -Pdiw.zkNative=require 與電路檔）
+# 列出一頁（-Ppage，預設 1）的文字運算子與公開的圖片、表單；--reveal 的候選標籤相符時才印出原文（命令列無法傳中文時改用 @檔案，一行一個）
+./gradlew :test-servers:checkZkPdf -Pfile=文件.pdf [-Ppage=2] -Preveal=姓名：,學號：
+# 核對版型：列出證明的頁、可證明與無法證明的欄位、其他頁的私密視窗與遮蔽後仍可讀的文字；-Pprove 以原生電路實際證明並查驗（需 -Pdiw.zkNative=require 與電路檔）
 ./gradlew :test-servers:checkZkPdf -Pfile=文件.pdf -Ptemplate=templates/zkpdf/版型.json [-Pprove=電路檔目錄] [-Proot=根憑證.cer]
 ```
 
