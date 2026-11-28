@@ -183,11 +183,36 @@ object C2paBmff {
         return m.payload to C2paRange(m.box.start, m.box.size)
     }
 
-    /** The uuid box of a manifest store (box_purpose manifest, no Merkle proof boxes). */
-    fun storeBox(store: ByteArray): ByteArray {
-        val purpose = "manifest".encodeToByteArray() + 0
-        val size = 8 + 16 + 4 + purpose.size + 8 + store.size
-        return B.be32(size.toLong()) + "uuid".encodeToByteArray() + UUID + byteArrayOf(0, 0, 0, 0) + purpose + ByteArray(8) + store
+    /** The update manifest store (box_purpose update), or null when the file has none. */
+    fun updateStore(b: ByteArray): ByteArray? = c2paBoxes(b).firstOrNull { it.purpose == "update" }?.payload
+
+    /** The uuid box of a manifest store (box_purpose manifest, original or update; no Merkle proof boxes). */
+    fun storeBox(store: ByteArray, purpose: String = "manifest"): ByteArray {
+        val p = purpose.encodeToByteArray() + 0
+        val size = 8L + 16 + 4 + p.size + 8 + store.size
+        if (size > 0xFFFFFFFFL) C2paContainers.fail("C2PA store too large for a BMFF box")
+        return B.be32(size) + "uuid".encodeToByteArray() + UUID + byteArrayOf(0, 0, 0, 0) + p + ByteArray(8) + store
+    }
+
+    /**
+     * [b] (with a store of box_purpose manifest, or original with an update store) with [update] as its update manifest
+     * store (C2PA 9.2.3 and A.5.3): the manifest box becomes original, which changes no hashed byte, and the update store
+     * goes in a uuid box at the end of the file, replacing an earlier update box, so no offset moves.
+     */
+    fun withUpdate(b: ByteArray, update: ByteArray): C2paLayout {
+        val boxes = c2paBoxes(b)
+        val main = boxes.firstOrNull { it.purpose == "manifest" || it.purpose == "original" } ?: C2paContainers.fail("no C2PA manifest store box")
+        val old = boxes.filter { it.purpose == "update" }
+        if (old.size > 1) C2paContainers.fail("more than one update store box")
+        val top = topLevel(b)
+        old.firstOrNull()?.let { if (it.box.end != b.size.toLong() || top.last().start != it.box.start) C2paContainers.fail("update store box not at the end of the file") }
+        val out = (old.firstOrNull()?.let { b.copyOfRange(0, it.box.start.toInt()) } ?: b).copyOf()
+        if (main.purpose == "manifest") {
+            val at = (main.box.start + main.box.header + 4).toInt()
+            "original".encodeToByteArray().copyInto(out, at)
+        }
+        val box = storeBox(update, "update")
+        return C2paLayout(out + box, C2paRange(out.size.toLong(), box.size.toLong()))
     }
 
     fun strip(b: ByteArray): ByteArray {
@@ -478,6 +503,119 @@ object C2paBmff {
             if (layer.size == 1 && size != 1) return null
         }
         return layer.takeIf { it.size == size }
+    }
+
+    /** Layer sizes of a Merkle tree over [leaves] leaves, from the leaves to the root (an odd last node goes up). */
+    fun merkleLayout(leaves: Int): List<Int> {
+        val out = arrayListOf(leaves)
+        var n = leaves
+        while (n > 1) { n = (n + 1) / 2; out.add(n) }
+        return out
+    }
+
+    /**
+     * Whether [leaf], the leaf at [location], leads to the node of [mm]'s stored row with the proof hashes of an
+     * auxiliary merkle box ([proof], from the leaf's peer upwards; nodes without a peer take none).
+     */
+    fun checkMerkleTree(mm: MerkleMap, alg: String, leaf: ByteArray, location: Long, proof: List<ByteArray>?): Boolean {
+        if (location < 0 || location >= mm.count) return false
+        var index = location
+        var hash = leaf
+        var used = 0
+        val jca = C2paManifests.jcaHash(alg)
+        for (layer in merkleLayout(mm.count)) {
+            if (layer == mm.hashes.size) break
+            if (proof != null) {
+                val right = index % 2 == 1L
+                if (right || index + 1 < layer) {
+                    val p = proof.getOrNull(used++) ?: return false
+                    hash = DocCrypto.digest(jca, if (right) p + hash else hash + p)
+                }
+            }
+            index /= 2
+        }
+        if (proof != null && used != proof.size) return false
+        return mm.hashes.getOrNull(index.toInt())?.contentEquals(hash) == true
+    }
+
+    /** An auxiliary merkle box (C2PA A.5.4.1.4): which tree and leaf it is for, its proof, and where it is. */
+    class AuxMerkle(val uniqueId: Long, val localId: Long, val location: Long, val hashes: List<ByteArray>?, val offset: Long)
+
+    /** The auxiliary merkle boxes of [b] in file order; their CBOR may be followed by zero padding. */
+    fun auxMerkle(b: ByteArray): List<AuxMerkle> = c2paBoxes(b).filter { it.purpose == "merkle" }.map { x ->
+        val n = C2paCbor.itemLength(x.payload, 0)
+        if (x.payload.copyOfRange(n, x.payload.size).any { it != 0.toByte() }) throw IllegalArgumentException("merkle box padding")
+        val d = Cbor.decode(x.payload.copyOfRange(0, n))
+        fun long(k: String) = (d.getOrNullAny(k) as? CborInt)?.asNumber ?: throw IllegalArgumentException("merkle box $k")
+        AuxMerkle(long("uniqueId"), long("localId"), long("location"),
+            (d.getOrNullAny("hashes") as? CborArray)?.items?.map { (it as? Bstr)?.value ?: throw IllegalArgumentException("merkle box hashes") },
+            x.box.start)
+    }
+
+    /**
+     * The sample data of each chunk of the track [trackId] (tkhd track_ID), by chunk number from 1, from the sample
+     * tables (stsz or stz2, stsc, stco or co64): the leaves of a Merkle tree by media time as c2pa-rs computes them.
+     * Null when the file has no such track or its tables do not fit the file.
+     */
+    fun trackChunks(b: ByteArray, trackId: Long): Map<Long, List<C2paRange>>? {
+        val roots = tree(b)
+        val trak = select(roots, "/moov/trak").firstOrNull { t ->
+            val tkhd = t.children.firstOrNull { it.type == "tkhd" } ?: return@firstOrNull false
+            val at = (tkhd.start + tkhd.header + 4).toInt()
+            val id = if (tkhd.version == 1) B.u32(b, at + 16) else B.u32(b, at + 8)
+            id == trackId
+        } ?: return null
+        val stbl = select(trak.children, "/mdia/minf/stbl").firstOrNull() ?: return null
+        fun body(type: String) = stbl.children.firstOrNull { it.type == type }?.let { (it.start + it.header + 4).toInt() to it.end.toInt() }
+        val sizes: LongArray = body("stsz")?.let { (at, end) ->
+            val fixed = B.u32(b, at)
+            val count = B.u32(b, at + 4)
+            if (fixed != 0L) LongArray(count.toInt()) { fixed }
+            else { if (at + 8 + 4 * count > end) return null; LongArray(count.toInt()) { B.u32(b, at + 8 + 4 * it) } }
+        } ?: body("stz2")?.let { (at, end) ->
+            val field = B.u8(b, at + 3)
+            val count = B.u32(b, at + 4).toInt()
+            if (field !in setOf(4, 8, 16) || at + 8 + (count.toLong() * field + 7) / 8 > end) return null
+            LongArray(count) { k ->
+                when (field) {
+                    16 -> B.u16(b, at + 8 + 2 * k).toLong()
+                    8 -> B.u8(b, at + 8 + k).toLong()
+                    else -> ((B.u8(b, at + 8 + k / 2) shr (if (k % 2 == 0) 4 else 0)) and 0x0F).toLong()
+                }
+            }
+        } ?: return null
+        val offsets: LongArray = body("stco")?.let { (at, end) ->
+            val n = B.u32(b, at); if (at + 4 + 4 * n > end) return null; LongArray(n.toInt()) { B.u32(b, at + 4 + 4 * it) }
+        } ?: body("co64")?.let { (at, end) ->
+            val n = B.u32(b, at); if (at + 4 + 8 * n > end) return null; LongArray(n.toInt()) { B.u64(b, at + 4 + 8 * it) }
+        } ?: return null
+        val runs = body("stsc")?.let { (at, end) ->
+            val n = B.u32(b, at); if (at + 4 + 12 * n > end) return null
+            (0 until n.toInt()).map { B.u32(b, at + 4 + 12 * it) to B.u32(b, at + 8 + 12 * it) }
+        } ?: return null
+        if (sizes.isEmpty() || runs.isEmpty()) return null
+        val out = LinkedHashMap<Long, List<C2paRange>>()
+        var sample = 0
+        for ((k, run) in runs.withIndex()) {
+            val (first, perChunk) = run
+            if (perChunk == 0L || first < 1 || (k > 0 && first <= runs[k - 1].first)) return null
+            val last = if (k + 1 < runs.size) runs[k + 1].first - 1 else offsets.size.toLong()
+            var chunk = first
+            while (chunk <= last && sample < sizes.size) {
+                if (chunk > offsets.size) return null
+                var pos = offsets[(chunk - 1).toInt()]
+                val list = ArrayList<C2paRange>()
+                var i = 0L
+                while (i < perChunk && sample < sizes.size) {
+                    val r = C2paRange(pos, sizes[sample])
+                    if (r.start < 0 || r.end > b.size) return null
+                    list.add(r); pos = r.end; sample++; i++
+                }
+                out[chunk] = list
+                chunk++
+            }
+        }
+        return out
     }
 
     /** Fragments of a fragmented file: from each top-level moof to the box before the next moof. */

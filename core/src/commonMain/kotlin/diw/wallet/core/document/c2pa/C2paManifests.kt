@@ -138,12 +138,21 @@ class JumbfSuperbox internal constructor(
     private val end: Int,
     val contents: List<Pair<String, ByteArray>>,
     val children: List<JumbfSuperbox>,
+    /** For a compressed manifest (c2cm) read through its brob box: the superbox as stored, which hashed URIs name. */
+    private val stored: JumbfSuperbox? = null,
 ) {
     /** The bytes C2PA hashes for a hashed URI: the description box and the content boxes, not the superbox header. */
-    val hashedBytes: ByteArray get() = store.copyOfRange(start + header, end)
+    val hashedBytes: ByteArray get() = stored?.hashedBytes ?: store.copyOfRange(start + header, end)
 
     /** The whole superbox as stored, header included: a manifest copied unchanged into a new store keeps its hashes. */
-    val rawBytes: ByteArray get() = store.copyOfRange(start, end)
+    val rawBytes: ByteArray get() = stored?.rawBytes ?: store.copyOfRange(start, end)
+
+    /** True for a manifest stored compressed (C2PA 11.2.4): [label], [uuid] and the boxes are those it decompresses to. */
+    val compressed: Boolean get() = stored != null
+
+    internal fun withChildren(list: List<JumbfSuperbox>) = JumbfSuperbox(label, uuid, store, start, header, end, contents, list, stored)
+
+    internal fun storedAs(outer: JumbfSuperbox) = JumbfSuperbox(label, uuid, store, start, header, end, contents, children, outer)
 
     fun child(label: String): JumbfSuperbox? = children.firstOrNull { it.label == label }
     fun content(type: String): ByteArray? = contents.firstOrNull { it.first == type }?.second
@@ -175,6 +184,8 @@ class C2paManifest(
     val assertionRefs: List<C2paHashedUri>,
     val algorithm: String?,
     val cose: C2paCose?,
+    /** An update manifest (C2PA 11.2.3, JUMBF type c2um): no hard binding, the content is that of its parentOf chain. */
+    val update: Boolean = false,
 )
 
 /**
@@ -188,6 +199,8 @@ class C2paStore(
     val asset: ByteArray?,
     val format: C2paFormat? = null,
     val region: C2paRange? = null,
+    /** Failures of the store itself, such as a compressed manifest that does not decompress (manifest.compressed.invalid). */
+    val problems: List<C2paStatus> = emptyList(),
 ) {
     /** The active manifest: the last one in the store (C2PA 2.x, 11.1). */
     val active: C2paManifest? get() = manifests.lastOrNull()
@@ -222,13 +235,36 @@ object C2paManifests {
     /** The manifest store of [bytes], or null when there is none (or the file is not a supported container). */
     fun read(bytes: ByteArray): C2paStore? {
         val located = C2paContainers.locate(bytes) ?: return null
-        val jumbf = located.jumbf
-        val root = runCatching { superboxes(jumbf, 0, jumbf.size) }.getOrNull()?.firstOrNull { it.label == "c2pa" || it.uuid == STORE_UUID } ?: return null
+        val first = root(located.jumbf)
+        // BMFF with an update manifest store (C2PA A.5.3): the original store and the update store appended at the end
+        // of the file are one logical store, the update manifests after the original ones.
+        val update = located.update?.let(::root)
+        val root = when {
+            first != null && update != null -> first.withChildren(first.children + update.children)
+            else -> first ?: update ?: return null
+        }
         val manifests = root.children.mapNotNull { m -> runCatching { manifest(m) }.getOrNull() }
         if (manifests.isEmpty()) return null
+        val problems = root.children.filter { it.uuid == COMPRESSED_UUID }.map { m ->
+            C2paStatus("manifest.compressed.invalid", "self#jumbf=/c2pa/${m.label}", false, ct("core_c2pa_compressed_invalid", m.label))
+        }
         val sidecar = located.format == C2paFormat.SIDECAR
-        return C2paStore(located.format.title, root, manifests, if (sidecar) null else bytes, if (sidecar) null else located.format, located.region)
+        return C2paStore(located.format.title, root, manifests, if (sidecar) null else bytes, if (sidecar) null else located.format, located.region, problems)
     }
+
+    /** The manifest superboxes of a store's JUMBF bytes, as stored (an empty list when it is not a store). */
+    internal fun storeChildren(jumbf: ByteArray): List<JumbfSuperbox> = root(jumbf)?.children.orEmpty()
+
+    private fun root(jumbf: ByteArray): JumbfSuperbox? =
+        runCatching { superboxes(jumbf, 0, jumbf.size) }.getOrNull()?.firstOrNull { it.label == "c2pa" || it.uuid == STORE_UUID }
+
+    /** JUMBF types of the manifest superboxes (C2PA 11.1): standard, update and compressed. */
+    const val STANDARD_UUID = "63326d6100110010800000aa00389b71"
+    const val UPDATE_UUID = "6332756d00110010800000aa00389b71"
+    const val COMPRESSED_UUID = "6332636d00110010800000aa00389b71"
+
+    /** The largest manifest a brob box may decompress to. */
+    private const val MAX_DECOMPRESSED = 64 * 1024 * 1024
 
     /** True when [bytes] starts like a sidecar manifest store (a JUMBF superbox). */
     fun isSidecar(bytes: ByteArray): Boolean = C2paContainers.isSidecar(bytes)
@@ -279,8 +315,22 @@ object C2paManifests {
             if (box.first == "jumb") children.add(superbox(s, box.second, box.third, ends[k]))
             else contents.add(box.first to s.copyOfRange(box.second + box.third, ends[k]))
         }
-        return JumbfSuperbox(label, uuid, s, start, header, end, contents, children)
+        val box = JumbfSuperbox(label, uuid, s, start, header, end, contents, children)
+        return if (uuid == COMPRESSED_UUID) decompressed(box) ?: box else box
     }
+
+    /**
+     * A compressed manifest (c2cm, C2PA 11.2.4) as the manifest superbox its brob box holds, with the stored box kept for
+     * hashed URIs. Null when the brob box is missing, does not decompress, or is not one standard or update manifest of
+     * the same label: the box is then kept as it is and reported as manifest.compressed.invalid.
+     */
+    private fun decompressed(outer: JumbfSuperbox): JumbfSuperbox? = runCatching {
+        val packed = outer.content("brob") ?: return null
+        val raw = C2paBrotli.decode(packed, MAX_DECOMPRESSED)
+        val inner = superboxes(raw, 0, raw.size).singleOrNull() ?: return null
+        if (inner.label != outer.label || (inner.uuid != STANDARD_UUID && inner.uuid != UPDATE_UUID)) return null
+        inner.storedAs(outer)
+    }.getOrNull()
 
     // ---------------------------------------------------------------- claims and signatures
 
@@ -295,7 +345,7 @@ object C2paManifests {
             (item.getOrNullAny(key) as? CborArray)?.items.orEmpty().mapNotNull(::hashedUri)
         }
         val cose = m.child("c2pa.signature")?.content("cbor")?.let { runCatching { cose(it) }.getOrNull() }
-        return C2paManifest(label, m, version, claimBytes, claim, refs, claim.str("alg"), cose)
+        return C2paManifest(label, m, version, claimBytes, claim, refs, claim.str("alg"), cose, update = m.uuid == UPDATE_UUID)
     }
 
     internal fun hashedUri(d: DataItem): C2paHashedUri? {

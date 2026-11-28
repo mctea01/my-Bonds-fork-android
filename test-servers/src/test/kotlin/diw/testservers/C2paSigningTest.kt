@@ -10,7 +10,9 @@ import diw.wallet.core.document.DocumentVerdict
 import diw.wallet.core.document.c2pa.C2paAuthoring
 import diw.wallet.core.document.c2pa.C2paBinding
 import diw.wallet.core.document.c2pa.C2paBmff
+import diw.wallet.core.document.c2pa.C2paBindings
 import diw.wallet.core.document.c2pa.C2paBoxHash
+import diw.wallet.core.document.c2pa.C2paCbor
 import diw.wallet.core.document.c2pa.C2paContainers
 import diw.wallet.core.document.c2pa.C2paFormat
 import diw.wallet.core.document.c2pa.C2paIdentity
@@ -880,14 +882,303 @@ class C2paSigningTest {
     @Test
     fun c2paRsLargeSamples() = runBlocking<Unit> {
         val dir = System.getenv("DIW_C2PA_FIXTURES")?.let(::File)?.takeIf { it.isDirectory } ?: return@runBlocking
-        for (name in listOf("video1.mp4", "legacy.mp4", "express-signed.pdf", "C.jpg", "CA.jpg", "exp-test1.png")) {
+        for (name in listOf("video1.mp4", "legacy.mp4", "express-signed.pdf", "C.jpg", "CA.jpg", "exp-test1.png", "update_manifest.jpg")) {
             val f = dir.resolve(name).takeIf { it.isFile } ?: continue
             val r = inspect(f.readBytes(), name)
             val codes = r.codes()
             println("$name: ${r.c2pa?.container} $codes")
             assertTrue(codes.none { it.endsWith(".mismatch") || it.endsWith(".malformed") || it == "assertion.missing" }, "$name: $codes")
             assertTrue(codes.any { it.endsWith("Hash.match") }, "$name: $codes")
+            // The c2pa-rs update manifest sample: the binding is that of the standard manifest it updates.
+            if (name == "update_manifest.jpg") assertTrue(C2paManifests.read(f.readBytes())!!.active!!.update, name)
         }
     }
-}
 
+    // ---------------------------------------------------------------- multi-asset hash, update and compressed manifests
+
+    /** A baseline JPEG with an MPF index (APP2) after APP0 whose second entry points at [second], appended. */
+    private fun mpfJpeg(second: ByteArray): ByteArray {
+        val primary = picture("jpg")
+        val at = 4 + ((primary[4].toInt() and 0xFF) shl 8 or (primary[5].toInt() and 0xFF))
+        fun app2(size: Int, offset: Int): ByteArray {
+            val ifd = byteArrayOf(0, 1) + byteArrayOf(0xB0.toByte(), 0x02, 0, 7) + be32(32) + be32(8 + 2 + 12 + 4) + be32(0)
+            val entries = be32(0x20030000) + be32(size) + be32(0) + ByteArray(4) + be32(0) + be32(second.size) + be32(offset) + ByteArray(4)
+            val body = "MPF".encodeToByteArray() + 0 + "MM".encodeToByteArray() + byteArrayOf(0, 0x2A) + be32(8) + ifd + entries
+            return byteArrayOf(0xFF.toByte(), 0xE2.toByte(), ((body.size + 2) ushr 8).toByte(), (body.size + 2).toByte()) + body
+        }
+        val len = app2(0, 0).size
+        val size = primary.size + len
+        val seg = app2(size, size - (at + 8))
+        return primary.copyOfRange(0, at) + seg + primary.copyOfRange(at, primary.size) + second
+    }
+
+    /** A JPEG whose XMP declares a Motion Photo, with [video] after it. */
+    private fun motionPhoto(video: ByteArray): ByteArray {
+        val primary = picture("jpg")
+        val at = 4 + ((primary[4].toInt() and 0xFF) shl 8 or (primary[5].toInt() and 0xFF))
+        val xmp = "http://ns.adobe.com/xap/1.0/".encodeToByteArray() + 0 +
+            "<x:xmpmeta xmlns:x=\"adobe:ns:meta/\"><rdf:RDF xmlns:rdf=\"http://www.w3.org/1999/02/22-rdf-syntax-ns#\"><rdf:Description xmlns:GCamera=\"http://ns.google.com/photos/1.0/camera/\" GCamera:MotionPhoto=\"1\"/></rdf:RDF></x:xmpmeta>".encodeToByteArray()
+        val app1 = byteArrayOf(0xFF.toByte(), 0xE1.toByte(), ((xmp.size + 2) ushr 8).toByte(), (xmp.size + 2).toByte()) + xmp
+        return primary.copyOfRange(0, at) + app1 + primary.copyOfRange(at, primary.size) + video
+    }
+
+    @Test
+    fun jpegWithAnMpfImageGetsAMultiAssetHashOfEachPart() = runBlocking<Unit> {
+        trustRoot()
+        val gainMap = picture("jpg")
+        for (binding in listOf(C2paBinding.DATA, C2paBinding.BOXES)) {
+            val signed = sign(mpfJpeg(gainMap), request("mpf.jpg", binding = binding))
+            assertEquals(2, signed.parts, "$binding")
+            val r = inspect(signed.bytes, "mpf.jpg")
+            assertSignedAndTrusted(r, "mpf $binding", if (binding == C2paBinding.DATA) "assertion.dataHash.match" else "assertion.boxesHash.match",
+                if (binding == C2paBinding.DATA) "c2pa.hash.data" else "c2pa.hash.boxes")
+            assertTrue(C2paBindings.MULTI_ASSET in r.active().assertions, r.active().assertions.toString())
+            // The secondary image starts where the MPF index says, also after the store was inserted.
+            val store = C2paManifests.read(signed.bytes)!!
+            val parts = C2paManifests.assertion(store.active!!, C2paBindings.MULTI_ASSET).single().second.jsonObject["parts"]!!.jsonArray
+            val second = parts[1].jsonObject["location"]!!.jsonObject
+            val start = second["byteOffset"]!!.jsonPrimitive.int
+            assertTrue(signed.bytes.copyOfRange(start, signed.bytes.size).contentEquals(gainMap), "$binding: second part offset")
+            // A changed gain map breaks the whole-file binding; the multi-asset hash names the part.
+            val changed = signed.bytes.copyOf().also { it[it.size - 40] = (it[it.size - 40] + 1).toByte() }
+            val bad = inspect(changed, "mpf.jpg")
+            assertTrue("assertion.multiAssetHash.mismatch" in bad.codes(), "$binding: ${bad.codes()}")
+            assertFalse(bad.codes().any { it == "assertion.dataHash.mismatch" || it == "assertion.boxesHash.mismatch" }, bad.codes().toString())
+            assertEquals(Check.FAIL, bad.signatures.last().integrity)
+        }
+    }
+
+    @Test
+    fun motionPhotoVideoIsAnOptionalPartThatMayBeRemoved() = runBlocking<Unit> {
+        trustRoot()
+        val video = mp4()
+        val signed = sign(motionPhoto(video), request("motion.jpg"))
+        assertEquals(2, signed.parts)
+        assertSignedAndTrusted(inspect(signed.bytes, "motion.jpg"), "motion photo")
+        // Without the video the data hash over the whole file fails, and the primary image still matches its part.
+        val still = signed.bytes.copyOfRange(0, signed.bytes.size - video.size)
+        val r = inspect(still, "motion.jpg")
+        val codes = r.codes()
+        assertTrue("assertion.multiAssetHash.match" in codes, codes.toString())
+        assertTrue("assertion.multiAssetHash.missingPart" in codes, codes.toString())
+        assertFalse("assertion.dataHash.mismatch" in codes, codes.toString())
+        assertEquals(Check.PASS, r.signatures.last().integrity, r.signatures.last().problems.toString())
+        // A request without multi-asset hashes writes the plain data hash only.
+        val plain = sign(motionPhoto(video), request("motion.jpg").copy(multiAsset = false))
+        assertEquals(0, plain.parts)
+    }
+
+    @Test
+    fun updateManifestKeepsTheBindingOfItsParent() = runBlocking<Unit> {
+        trustRoot()
+        val samples = listOf("jpg" to picture("jpg"), "png" to picture("png"), "mp4" to mp4())
+        for ((ext, bytes) in samples) {
+            val first = sign(bytes, request("原始.$ext"))
+            val upd = request("更新.$ext", C2paAuthoring.Opened).copy(update = true, identity = false, allowTraining = true)
+            val second = sign(first.bytes, upd)
+            assertTrue(second.update, ext)
+            val third = sign(second.bytes, upd.copy(title = "再次更新.$ext"))
+            for ((n, out) in listOf(2 to second, 3 to third)) {
+                val r = inspect(out.bytes, "updated.$ext")
+                val m = r.active()
+                assertEquals(out.manifestLabel, m.label, ext)
+                assertEquals(n, r.c2pa!!.manifests.size, ext)
+                val codes = r.codes()
+                val match = if (ext == "mp4") "assertion.bmffHash.match" else "assertion.dataHash.match"
+                for (c in listOf("claimSignature.validated", match, "signingCredential.trusted", "timeStamp.validated")) assertTrue(c in codes, "$ext $n: $c missing in $codes")
+                assertFalse(codes.any { it.startsWith("manifest.update") || it == "claim.hardBindings.missing" }, "$ext $n: $codes")
+                assertEquals(listOf("c2pa.opened"), m.actions.map { it.action }, ext)
+                assertEquals(Check.PASS, r.signatures.last().integrity, "$ext $n: ${r.signatures.last().problems}")
+            }
+            if (ext == "mp4") {
+                // The standard store becomes original; one update store at the end holds both update manifests.
+                assertEquals(listOf("original", "update"), C2paBmff.c2paBoxes(third.bytes).map { it.purpose })
+                assertTrue(C2paBmff.c2paBoxes(third.bytes).last().box.end == third.bytes.size.toLong())
+                assertEquals(stcoTarget(first.bytes), stcoTarget(third.bytes))
+                // A standard manifest folds the update store back into one store of purpose manifest.
+                val fourth = sign(third.bytes, request("標準.$ext", C2paAuthoring.Opened))
+                assertEquals(listOf("manifest"), C2paBmff.c2paBoxes(fourth.bytes).map { it.purpose })
+                val r = inspect(fourth.bytes, "standard.mp4")
+                assertEquals(4, r.c2pa!!.manifests.size)
+                assertSignedAndTrusted(r, "mp4 after update", "assertion.bmffHash.match", "c2pa.hash.bmff")
+            }
+        }
+        // A file without content credentials cannot take an update manifest.
+        val e = runCatching { sign(picture("jpg"), request("x.jpg", C2paAuthoring.Opened).copy(update = true)) }.exceptionOrNull()
+        assertNotNull(e)
+    }
+
+    @Test
+    fun changedContentUnderAnUpdateManifestStillFails() = runBlocking<Unit> {
+        trustRoot()
+        val first = sign(picture("png"), request("a.png"))
+        val second = sign(first.bytes, request("b.png", C2paAuthoring.Opened).copy(update = true, identity = false))
+        val chunk = indexOf(second.bytes, "IDAT".encodeToByteArray())
+        val changed = second.bytes.copyOf().also { it[chunk + 6] = (it[chunk + 6] + 1).toByte() }
+        val r = inspect(changed, "b.png")
+        assertTrue("assertion.dataHash.mismatch" in r.codes(), r.codes().toString())
+        assertEquals(Check.FAIL, r.signatures.last().integrity)
+    }
+
+    @Test
+    fun compressedManifestsDecompressAndKeepTheirBinding() = runBlocking<Unit> {
+        trustRoot()
+        val cases = listOf(Triple("jpg", picture("jpg"), C2paBinding.BOXES), Triple("png", picture("png"), C2paBinding.BOXES), Triple("mp4", mp4(), null))
+        for ((ext, bytes, binding) in cases) {
+            val signed = sign(bytes, request("壓縮.$ext", binding = binding).copy(compress = true))
+            assertTrue(signed.compressed, ext)
+            val store = C2paManifests.read(signed.bytes)!!
+            assertTrue(store.active!!.box.compressed, ext)
+            assertTrue(store.problems.isEmpty(), ext)
+            val r = inspect(signed.bytes, "compressed.$ext")
+            if (ext == "mp4") assertSignedAndTrusted(r, ext, "assertion.bmffHash.match", "c2pa.hash.bmff")
+            else assertSignedAndTrusted(r, ext, "assertion.boxesHash.match", "c2pa.hash.boxes")
+            // The next manifest names the compressed one as stored.
+            val next = sign(signed.bytes, request("下一個.$ext", C2paAuthoring.Opened, binding = binding))
+            val r2 = inspect(next.bytes, "next.$ext")
+            assertTrue(r2.c2pa!!.manifests.size == 2, ext)
+            assertFalse(r2.codes().any { it.endsWith(".mismatch") || it.startsWith("manifest.") }, "$ext: ${r2.codes()}")
+        }
+        // A data hash is never written with a compressed manifest.
+        assertFalse(sign(picture("jpg"), request("data.jpg").copy(compress = true)).compressed)
+        // An update manifest can be compressed in any container.
+        val first = sign(picture("jpg"), request("c.jpg"))
+        val upd = sign(first.bytes, request("c2.jpg", C2paAuthoring.Opened).copy(update = true, identity = false, compress = true))
+        assertTrue(C2paManifests.read(upd.bytes)!!.active!!.box.compressed)
+        assertTrue("assertion.dataHash.match" in inspect(upd.bytes, "c2.jpg").codes())
+    }
+
+    @Test
+    fun brokenBrobIsReportedAsAnInvalidCompressedManifest() = runBlocking<Unit> {
+        trustRoot()
+        val first = sign(picture("jpg"), request("first.jpg", binding = C2paBinding.BOXES))
+        val signed = sign(first.bytes, request("broken.jpg", C2paAuthoring.Opened, binding = C2paBinding.BOXES).copy(compress = true))
+        val at = indexOf(signed.bytes, "brob".encodeToByteArray())
+        val broken = signed.bytes.copyOf().also { for (k in 8 until 40) it[at + k] = 0x55 }
+        val store = C2paManifests.read(broken)
+        assertEquals("manifest.compressed.invalid", store?.problems?.single()?.code)
+    }
+
+    @Test
+    fun brotliEncoderRoundTrips() {
+        val random = java.util.Random(7)
+        val samples = listOf(
+            ByteArray(0), byteArrayOf(42), ByteArray(70000) { 0 }, ByteArray(5000) { random.nextInt().toByte() },
+            "C2PA manifest ".repeat(3000).encodeToByteArray(), ByteArray(200_000) { (it / 97 % 13 + random.nextInt(3)).toByte() },
+            picture("png"), mp4(),
+        )
+        for (b in samples) {
+            val packed = diw.wallet.core.document.c2pa.BrotliEncoder.encode(b)
+            val back = org.brotli.dec.BrotliInputStream(ByteArrayInputStream(packed)).readBytes()
+            assertTrue(back.contentEquals(b), "size ${b.size}")
+        }
+        assertTrue(diw.wallet.core.document.c2pa.BrotliEncoder.encode("C2PA manifest ".repeat(3000).encodeToByteArray()).size < 1000)
+    }
+
+    // ---------------------------------------------------------------- BMFF Merkle trees
+
+    private fun jumbf(uuid: String, label: String, contents: List<ByteArray>): ByteArray {
+        val desc = bmffBox("jumd", hex(uuid) + byteArrayOf(3) + label.encodeToByteArray() + 0)
+        return bmffBox("jumb", desc + contents.fold(ByteArray(0)) { a, x -> a + x })
+    }
+
+    private fun hex(s: String) = ByteArray(s.length / 2) { s.substring(it * 2, it * 2 + 2).toInt(16).toByte() }
+    private fun sha(b: ByteArray) = java.security.MessageDigest.getInstance("SHA-256").digest(b)
+
+    /** An unsigned store with one manifest whose claim references a BMFF hash assertion of [cbor]. */
+    private fun bmffStore(cbor: ByteArray): ByteArray {
+        val assertion = jumbf("63626f7200110010800000aa00389b71", "c2pa.hash.bmff.v3", listOf(bmffBox("cbor", cbor)))
+        val claim = C2paCbor.map(listOf(
+            "instanceID" to C2paCbor.tstr("xmp:iid:test"),
+            "claim_generator_info" to C2paCbor.map(listOf("name" to C2paCbor.tstr("test"))),
+            "signature" to C2paCbor.tstr("self#jumbf=c2pa.signature"),
+            "created_assertions" to C2paCbor.array(listOf(C2paCbor.map(listOf(
+                "url" to C2paCbor.tstr("self#jumbf=c2pa.assertions/c2pa.hash.bmff.v3"),
+                "hash" to C2paCbor.bstr(sha(assertion.copyOfRange(8, assertion.size))),
+            )))),
+            "alg" to C2paCbor.tstr("sha256"),
+        ))
+        val manifest = jumbf("63326d6100110010800000aa00389b71", "urn:c2pa:test", listOf(
+            jumbf("6332617300110010800000aa00389b71", "c2pa.assertions", listOf(assertion)),
+            jumbf("6332636c00110010800000aa00389b71", "c2pa.claim.v2", listOf(bmffBox("cbor", claim))),
+        ))
+        return jumbf("6332706100110010800000aa00389b71", "c2pa", listOf(manifest))
+    }
+
+    private fun c2paUuid(purpose: String, data: ByteArray): ByteArray =
+        bmffBox("uuid", C2paBmff.UUID + ByteArray(4) + purpose.encodeToByteArray() + 0 + data)
+
+    private fun fullBox(type: String, body: ByteArray) = bmffBox(type, ByteArray(4) + body)
+
+    /** A track (id 1) of four samples in two chunks inside mdat, with c2pa-rs style Merkle data over the chunks. */
+    private fun timedMp4(tamper: Boolean = false, aux: Boolean = true): ByteArray {
+        val samples = listOf(payload(300), payload(500).reversedArray(), payload(200), payload(700).reversedArray())
+        val ftyp = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0x200) + "isommp41".encodeToByteArray())
+        fun moov(c1: Int, c2: Int) = bmffBox("moov", bmffBox("trak",
+            fullBox("tkhd", ByteArray(8) + be32(1) + ByteArray(68)) + bmffBox("mdia", bmffBox("minf", bmffBox("stbl",
+                fullBox("stsz", be32(0) + be32(4) + samples.fold(ByteArray(0)) { a, x -> a + be32(x.size) }) +
+                fullBox("stsc", be32(1) + be32(1) + be32(2) + be32(1)) +
+                fullBox("stco", be32(2) + be32(c1) + be32(c2)))))))
+        val leaf1 = sha(samples[0] + samples[1])
+        val leaf2 = sha(samples[2] + samples[3])
+        val root = sha(leaf1 + leaf2)
+        val mm = C2paCbor.map(listOf("uniqueId" to C2paCbor.int(1), "localId" to C2paCbor.int(1), "count" to C2paCbor.int(2), "hashes" to C2paCbor.array(listOf(C2paCbor.bstr(root)))))
+        val exclusions = C2paCbor.array(listOf(
+            C2paCbor.map(listOf("xpath" to C2paCbor.tstr("/uuid"), "data" to C2paCbor.array(listOf(C2paCbor.map(listOf("offset" to C2paCbor.int(8), "value" to C2paCbor.bstr(C2paBmff.UUID))))))),
+            C2paCbor.map(listOf("xpath" to C2paCbor.tstr("/ftyp"))),
+            C2paCbor.map(listOf("xpath" to C2paCbor.tstr("/mfra"))),
+        ))
+        val store = c2paUuid("manifest", ByteArray(8) + bmffStore(C2paCbor.map(listOf("exclusions" to exclusions, "alg" to C2paCbor.tstr("sha256"), "merkle" to C2paCbor.array(listOf(mm))))))
+        val head = ftyp.size + store.size + moov(0, 0).size + 8
+        val data = samples.fold(ByteArray(0)) { a, x -> a + x }.also { if (tamper) it[350] = (it[350] + 1).toByte() }
+        fun auxBox(loc: Int, peer: ByteArray) = c2paUuid("merkle", C2paCbor.map(listOf(
+            "uniqueId" to C2paCbor.int(1), "localId" to C2paCbor.int(1), "location" to C2paCbor.int(loc), "hashes" to C2paCbor.array(listOf(C2paCbor.bstr(peer))),
+        )) + ByteArray(6))
+        return ftyp + store + moov(head, head + 800) + bmffBox("mdat", data) + if (aux) auxBox(0, leaf2) + auxBox(1, leaf1) else ByteArray(0)
+    }
+
+    @Test
+    fun merkleTreeByMediaTimeIsCheckedAsTheC2paRsFallback() {
+        fun check(b: ByteArray) = C2paManifests.read(b)!!.let { C2paBindings.check(it, it.active!!) }
+        val ok = check(timedMp4())
+        assertEquals("assertion.bmffHash.match", ok.first().code, ok.toString())
+        // The match says it came from the c2pa-rs reading.
+        assertNotNull(ok.first().explanation, ok.toString())
+        val bad = check(timedMp4(tamper = true))
+        assertFalse(bad.first().success, bad.toString())
+        // Without auxiliary boxes neither reading can check a stored row above the leaves.
+        assertFalse(check(timedMp4(aux = false)).first().success)
+    }
+
+    @Test
+    fun merkleTreeOverTheMdatPayloadFollowsTheSpecification() {
+        // One tree for the only mdat (localId 0), fixed blocks of 256 bytes after the first 16 bytes of the box, the
+        // stored row is the root and each block's auxiliary box carries its proof.
+        val ftyp = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0x200) + "isommp41".encodeToByteArray())
+        val mdatBody = payload(1000)
+        val blocks = mdatBody.copyOfRange(8, mdatBody.size).toList().chunked(256).map { it.toByteArray() }
+        val leaves = blocks.map(::sha)
+        val l1 = listOf(sha(leaves[0] + leaves[1]), sha(leaves[2] + leaves[3]))
+        val root = sha(l1[0] + l1[1])
+        val mm = C2paCbor.map(listOf("uniqueId" to C2paCbor.int(0), "localId" to C2paCbor.int(0), "count" to C2paCbor.int(leaves.size),
+            "hashes" to C2paCbor.array(listOf(C2paCbor.bstr(root))), "fixedBlockSize" to C2paCbor.int(256)))
+        val exclusions = C2paCbor.array(listOf(
+            C2paCbor.map(listOf("xpath" to C2paCbor.tstr("/uuid"), "data" to C2paCbor.array(listOf(C2paCbor.map(listOf("offset" to C2paCbor.int(8), "value" to C2paCbor.bstr(C2paBmff.UUID))))))),
+            C2paCbor.map(listOf("xpath" to C2paCbor.tstr("/ftyp"))),
+        ))
+        val store = c2paUuid("manifest", ByteArray(8) + bmffStore(C2paCbor.map(listOf("exclusions" to exclusions, "alg" to C2paCbor.tstr("sha256"), "merkle" to C2paCbor.array(listOf(mm))))))
+        fun proof(k: Int) = listOf(leaves[k xor 1], l1[(k / 2) xor 1])
+        fun aux(k: Int) = c2paUuid("merkle", C2paCbor.map(listOf("uniqueId" to C2paCbor.int(0), "localId" to C2paCbor.int(0), "location" to C2paCbor.int(k),
+            "hashes" to C2paCbor.array(proof(k).map { C2paCbor.bstr(it) }))))
+        val file = ftyp + store + bmffBox("mdat", mdatBody) + (0 until 4).fold(ByteArray(0)) { a, k -> a + aux(k) }
+        fun check(b: ByteArray) = C2paManifests.read(b)!!.let { C2paBindings.check(it, it.active!!) }
+        val ok = check(file)
+        assertEquals(listOf("assertion.bmffHash.match"), ok.map { it.code }, ok.toString())
+        // Swapping two auxiliary boxes breaks the order of the locations.
+        val a0 = aux(0); val a1 = aux(1)
+        val swapped = ftyp + store + bmffBox("mdat", mdatBody) + a1 + a0 + aux(2) + aux(3)
+        assertFalse(check(swapped).first().success)
+        val changed = file.copyOf().also { it[ftyp.size + store.size + 600] = (it[ftyp.size + store.size + 600] + 1).toByte() }
+        assertEquals("assertion.bmffHash.mismatch", check(changed).first().code)
+    }
+}

@@ -42,6 +42,7 @@ libraries and third-party/components.json (see third-party/README.md).
 - Google Tink (com.google.crypto.tink) - Apache License 2.0
 - Guava, failureaccess and listenablefuture; Gson - Apache License 2.0
 - SLF4J API (org.slf4j:slf4j-api) - MIT License
+- Brotli decoder (org.brotli:dec, compressed C2PA manifests) - MIT License
 - Annotation-only artifacts: JSpecify, Error Prone annotations, JSR-305,
   J2ObjC annotations, AutoValue annotations, JetBrains annotations, SKIE
   configuration annotations - Apache License 2.0

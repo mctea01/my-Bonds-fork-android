@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-28（C2PA 其他容器：GIF、TIFF／DNG、SVG、WAV、AVI、MP3、FLAC、JPEG XL、BMFF（MP4、MOV、HEIF、HEIC、AVIF）、PDF 與 ZIP／Office 的讀取與簽署，`c2pa.hash.boxes`、`c2pa.hash.bmff` 與 `c2pa.hash.collection.data` 的驗證與寫入；加密的 request object：`request_uri_method=post` 時錢包以 `wallet_metadata.jwks` 登錄每次新產生的解密金鑰，並解開先簽後加密的 Nested JWT；關於頁第三方元件清單由建置產生；zkPDF 支援多頁文件；Google Play 商店資訊納入翻譯管理；main 到 PR #188）。
+最後更新：2026-11-28（C2PA 其他容器：GIF、TIFF／DNG、SVG、WAV、AVI、MP3、FLAC、JPEG XL、BMFF（MP4、MOV、HEIF、HEIC、AVIF）、PDF 與 ZIP／Office 的讀取與簽署，`c2pa.hash.boxes`、`c2pa.hash.bmff` 與 `c2pa.hash.collection.data` 的驗證與寫入，更新 manifest（含 BMFF update store）、`brob` 壓縮 manifest、多部分資產雜湊與 BMFF Merkle 樹（依規格以 `mdat` 建樹，c2pa-rs 的媒體時間解讀為回退）；加密的 request object：`request_uri_method=post` 時錢包以 `wallet_metadata.jwks` 登錄每次新產生的解密金鑰，並解開先簽後加密的 Nested JWT；關於頁第三方元件清單由建置產生；zkPDF 支援多頁文件；Google Play 商店資訊納入翻譯管理；main 到 PR #188）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -84,8 +84,8 @@ P4 之後合併的工作：
 
 | 功能 | 狀態 | 備註 |
 |---|---|---|
-| 檢查：PAdES、CAdES、XAdES、ASiC、.si、OFD 與 SES、RFC 3161、OpenCerts、SM2、OpenPGP、C2PA | 可用 | C2PA 讀取 C2PA 2.2 附錄 A 的各容器（字型除外）與資料、方塊、BMFF、集合雜湊；以媒體時間劃分的 BMFF Merkle 樹與多部分資產雜湊列為未檢查；CAWG 1.3 身分（X.509 與身分彙整憑證）依規格驗證 |
-| C2PA 內容憑證簽署與 CAWG 身分聲明 | 可用 | JPEG、PNG、WebP、GIF、TIFF、DNG、SVG、WAV、AVI、MP3、FLAC、JPEG XL、BMFF、PDF（增量更新）、ZIP 與 Office 內嵌，其他檔案與無法嵌入的檔案（加密或認證 PDF、ZIP64 等）為外部清單；新容器尚未以 c2pa-rs 交叉檢查；RSA 金鑰改用 PS256。身分聲明預設以標準的決定性編碼簽署，c2pa-rs（含 contentcredentials.org）目前只接受它自己的欄位順序，可在簽署選項改用；見 [c2pa-cawg.md](design/c2pa-cawg.md) |
+| 檢查：PAdES、CAdES、XAdES、ASiC、.si、OFD 與 SES、RFC 3161、OpenCerts、SM2、OpenPGP、C2PA | 可用 | C2PA 讀取 C2PA 2.2 附錄 A 的各容器（字型除外）與資料、方塊、BMFF（含 Merkle 樹：規格優先，c2pa-rs 的媒體時間解讀為回退）、集合、多部分資產雜湊，更新 manifest 與 `brob` 壓縮 manifest；CAWG 1.3 身分（X.509 與身分彙整憑證）依規格驗證 |
+| C2PA 內容憑證簽署與 CAWG 身分聲明 | 可用 | JPEG、PNG、WebP、GIF、TIFF、DNG、SVG、WAV、AVI、MP3、FLAC、JPEG XL、BMFF、PDF（增量更新）、ZIP 與 Office 內嵌，其他檔案與無法嵌入的檔案（加密或認證 PDF、ZIP64 等）為外部清單；可只加更新 manifest（ZIP、TIFF、PDF 除外）、壓縮 manifest，MPF 與 Motion Photo 的 JPEG 自動加多部分資產雜湊；新容器尚未以 c2pa-rs 交叉檢查；RSA 金鑰改用 PS256。身分聲明預設以標準的決定性編碼簽署，c2pa-rs（含 contentcredentials.org）目前只接受它自己的欄位順序，可在簽署選項改用；見 [c2pa-cawg.md](design/c2pa-cawg.md) |
 | AI 生成與浮水印宣告（IPTC 來源類型、軟綁定、SynthID） | 可用 | 只讀宣告、不偵測浮水印；SynthID 沒有公開偵測器，提供 Google 官方查驗頁連結（需登入、有每日次數） |
 | 簽署：自然人憑證卡、PIV、OpenPGP 卡、PKCS#11、PKCS#12、系統金鑰、錢包金鑰、CSC、行動自然人憑證 | 可用 | CSC 的 `authorization_details`（RFC 9396）未做；RSA-PSS 供 C2PA 使用（卡片以原始 RSA 加錢包端 PSS 編碼） |
 | 保證層級 B-B 到 B-LTA、PDF 認證簽章、可見簽章、延長保存 | 可用 | |
@@ -150,7 +150,7 @@ P4 之後合併的工作：
 | 發證與出示 | 公開發證端（EUDI）以錢包證明或公開用戶端領卡、mdoc transaction_data、付款交易、VICAL 與 RICAL、外部查驗方加密的 request object（`request_uri_method=post`） |
 | TWDIW | 新版夥伴卡領卡、平台改版後的出示重測 |
 | 簽章 | 自然人憑證卡與 CSC 的 B-LTA、延長保存、PDF 可見簽章（以 Acrobat 檢查）、PIV、OpenPGP 卡（YubiKey NFC 與 USB） |
-| 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔（含 GIF、TIFF、SVG、音訊、JPEG XL、BMFF、PDF、ZIP 等新容器）在 c2pa-rs、contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |
+| 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔（含 GIF、TIFF、SVG、音訊、JPEG XL、BMFF、PDF、ZIP 等新容器，與更新 manifest、壓縮 manifest、多部分資產雜湊）在 c2pa-rs、contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |
 | 查驗方（P5） | 兩機線上查驗（服務端轉送與區網直連）、近距離 QR + 藍牙查驗與聲明、X.509 與 OpenPGP 卡證據、Bonds 藍牙加密與對原版 Bonds 的未加密傳輸 |
 | 零知識 | 兩機年齡證明（藍牙、區網、動態 QR）、zkTLS 手機查驗方（區網與中繼）、Longfellow 近距離、release APK 的原生函式庫載入、zkPDF 手機完整時間 |
 | 失敗、取消與返回 | 文件簽署與文件庫的操作可按「取消」停止，返回會停止在該畫面進行中的簽署（等卡片、行動自然人憑證或 CSC 授權時）且不儲存；已簽好的結果一定保存；離開畫面後才完成的操作不再把畫面拉回去。卡片、生物辨識、PIN 對話框被關閉時顯示「已取消」。憑證領取與 Verified ID 返回後，舊流程不覆蓋新流程，晚到的憑證照樣保存並提示；TWDIW 取件與條碼在離開後停止，不再跳頁或保持螢幕常亮 |

@@ -47,6 +47,39 @@ object C2paCbor {
         return null
     }
 
+    /** The encoded length of the CBOR item at [off] of [b] (definite lengths only). */
+    fun itemLength(b: ByteArray, off: Int, depth: Int = 0): Int {
+        if (depth > 64 || off >= b.size) throw IllegalArgumentException("CBOR item")
+        val ib = b[off].toInt() and 0xFF
+        val major = ib ushr 5
+        val info = ib and 0x1F
+        var p = off + 1
+        val n: Long = when {
+            info < 24 -> info.toLong()
+            info in 24..27 -> {
+                val w = 1 shl (info - 24)
+                if (p + w > b.size) throw IllegalArgumentException("CBOR item")
+                var v = 0L
+                repeat(w) { v = (v shl 8) or (b[p++].toLong() and 0xFF) }
+                v
+            }
+            else -> throw IllegalArgumentException("CBOR indefinite or reserved length")
+        }
+        return when (major) {
+            0, 1 -> p - off
+            2, 3 -> { if (n < 0 || p + n > b.size) throw IllegalArgumentException("CBOR item"); (p + n - off).toInt() }
+            4, 5 -> {
+                var q = p
+                val items = if (major == 5) n * 2 else n
+                if (items < 0 || items > b.size) throw IllegalArgumentException("CBOR item")
+                repeat(items.toInt()) { q += itemLength(b, q, depth + 1) }
+                q - off
+            }
+            6 -> p - off + itemLength(b, p, depth + 1)
+            else -> p - off
+        }
+    }
+
     fun compareBytes(a: ByteArray, b: ByteArray): Int {
         for (i in 0 until minOf(a.size, b.size)) {
             val d = (a[i].toInt() and 0xFF) - (b[i].toInt() and 0xFF)

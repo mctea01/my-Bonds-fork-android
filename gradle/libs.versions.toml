@@ -55,6 +55,8 @@ androidx-camera-core = { module = "androidx.camera:camera-core", version = "1.7.
 litert = { module = "com.google.ai.edge.litert:litert", version = "1.4.2" }
 tesseract4android = { module = "cz.adaptech.tesseract4android:tesseract4android", version = "4.9.0" }
 xml-apis = { module = "xml-apis:xml-apis", version = "1.4.01" }
+# Brotli decoder (MIT) for compressed C2PA manifests (the brob box); the wallet writes Brotli with its own encoder.
+brotli-dec = { module = "org.brotli:dec", version = "0.1.2" }
 # JSON-LD 1.1 for the RDFC Data Integrity cryptosuites (bbs-2023, ecdsa-rdfc-2019). Its OkHttp loader is excluded:
 # contexts come from core's own loader. The Glassfish jar carries the Jakarta JSON API Titanium declares as provided.
 titanium-jsonld = { module = "com.apicatalog:titanium-json-ld-jre8", version = "1.7.0" }

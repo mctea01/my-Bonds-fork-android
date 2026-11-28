@@ -38,7 +38,14 @@ enum class C2paFormat(val title: String, val mediaType: String, val binding: C2p
  * base64 text of SVG, the GEOB data of ID3, the jumb box of JPEG XL, the PDF stream content, the uuid box of BMFF
  * or the ZIP entry. Null for a sidecar.
  */
-class C2paLocated(val format: C2paFormat, val jumbf: ByteArray, val region: C2paRange?, val mediaType: String)
+class C2paLocated(
+    val format: C2paFormat,
+    val jumbf: ByteArray,
+    val region: C2paRange?,
+    val mediaType: String,
+    /** BMFF only: the update manifest store appended at the end of the file (box_purpose update, C2PA A.5.3). */
+    val update: ByteArray? = null,
+)
 
 /** A file with a store embedded and the store's [region] (as in [C2paLocated]). */
 class C2paLayout(val bytes: ByteArray, val region: C2paRange)
@@ -105,7 +112,8 @@ object C2paContainers {
                 C2paFormat.SIDECAR -> null
             }
         }.getOrNull() ?: return null
-        return C2paLocated(f, found.first, found.second, mediaType(b, f))
+        val update = if (f == C2paFormat.BMFF) runCatching { C2paBmff.updateStore(b) }.getOrNull() else null
+        return C2paLocated(f, found.first, found.second, mediaType(b, f), update)
     }
 
     /** [b] without its manifest store (a PDF keeps it: a new store replaces it by incremental update). */

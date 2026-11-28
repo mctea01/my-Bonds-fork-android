@@ -31,6 +31,8 @@ dependencies {
     testImplementation(libs.ktor.client.okhttp)
     // Encrypts test PDFs with the standard security handler (RC4 and AES revisions).
     testImplementation("org.apache.pdfbox:pdfbox:3.0.8")
+    // Decodes the compressed manifests (brob) the wallet's Brotli encoder writes.
+    testImplementation(libs.brotli.dec)
 }
 
 configurations.all {
