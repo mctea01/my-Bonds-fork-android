@@ -853,6 +853,22 @@ class C2paSigningTest {
     }
 
     @Test
+    fun pdfManifestStreamIsFoundPastAStreamWordInItsDictionary() = runBlocking<Unit> {
+        trustRoot()
+        val signed = sign(fixture("basic.pdf"), request("註解.pdf", C2paAuthoring.Opened)).bytes
+        val text = String(signed, Charsets.ISO_8859_1)
+        val type = "/Type /EmbeddedFile"
+        val at = text.lastIndexOf(type)
+        assertTrue(at > 0, "no embedded file dictionary")
+        // A comment of the same length that holds the word "stream" before the real keyword: offsets stay valid.
+        val comment = "%stream x".padEnd(type.length - 1, ' ') + "\n"
+        val changed = (text.substring(0, at) + comment + text.substring(at + type.length)).toByteArray(Charsets.ISO_8859_1)
+        val located = C2paContainers.locate(changed)
+        assertNotNull(located, "manifest not found")
+        assertEquals(C2paContainers.locate(signed)!!.region!!.start, located.region!!.start)
+    }
+
+    @Test
     fun c2paRsSamplesOfOtherBindings() = runBlocking<Unit> {
         // The box hash c2pa-rs computed for boxhash.jpg (boxhash.json): the same box names and the same hashes.
         val jpeg = fixture("boxhash.jpg")

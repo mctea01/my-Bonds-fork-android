@@ -9,6 +9,7 @@ import diw.wallet.core.document.pdf.PdfName
 import diw.wallet.core.document.pdf.PdfNumber
 import diw.wallet.core.document.pdf.PdfObject
 import diw.wallet.core.document.pdf.PdfOutput
+import diw.wallet.core.document.pdf.PdfParser
 import diw.wallet.core.document.pdf.PdfRef
 import diw.wallet.core.document.pdf.PdfStream
 import diw.wallet.core.document.pdf.PdfString
@@ -43,22 +44,23 @@ object C2paPdf {
         val stream = pdf.getObject(ref.num) as? PdfStream ?: return null
         val jumbf = if (stream.dict["Filter"] == null) stream.data else pdf.decode(stream)
         val offset = pdf.offsetOf(ref.num) ?: return null
-        val start = contentStart(b, offset) ?: return null
-        val length = if (pdf.encrypted) (pdf.resolve(stream.dict["Length"]) as? PdfNumber)?.int ?: return null else stream.data.size
+        val extent = rawExtent(pdf, ref.num, offset) ?: return null
+        val start = extent.first
+        val length = if (pdf.encrypted) (pdf.resolve(stream.dict["Length"]) as? PdfNumber)?.int ?: return null else extent.count()
         if (length < 0 || start + length > b.size) return null
         if (!pdf.encrypted && !b.copyOfRange(start, start + length).contentEquals(stream.data)) return null
         return jumbf to C2paRange(start.toLong(), length.toLong())
     }
 
-    /** After the stream keyword that follows the object at [offset] and its end of line (CRLF or LF). */
-    private fun contentStart(b: ByteArray, offset: Int): Int? {
-        val at = C2paBytes.indexOf(b, "stream".encodeToByteArray(), offset)
-        if (at < 0) return null
-        var p = at + 6
-        if (p < b.size && b[p] == '\r'.code.toByte()) p++
-        if (p < b.size && b[p] == '\n'.code.toByte()) p++
-        return p
-    }
+    /**
+     * The raw content of stream object [num] stored at [offset], as the PDF parser finds it: comments and strings in
+     * the stream dictionary that contain the word "stream" are skipped, unlike a byte search.
+     */
+    private fun rawExtent(pdf: PdfFile, num: Int, offset: Int): IntRange? = runCatching {
+        val parser = PdfParser(pdf.bytes, offset) { (pdf.resolve(it["Length"]) as? PdfNumber)?.int }
+        val (actual, _, value) = parser.parseIndirect()
+        if (actual != num || value !is PdfStream) null else parser.lastStreamExtent
+    }.getOrNull()
 
     fun cannotEmbed(b: ByteArray): String? = runCatching {
         val pdf = PdfFile(b)
