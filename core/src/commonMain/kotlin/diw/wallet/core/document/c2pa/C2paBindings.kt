@@ -122,8 +122,7 @@ object C2paBindings {
             if (s.zipWithNext().any { (p, q) -> p.offset > q.offset || p.offset + p.length > q.offset }) return malformed("subsets out of order")
         }
         val alg = a.alg ?: m.algorithm ?: "sha256"
-        val result = runCatching {
-            val ex = C2paBmff.excluded(asset, a.exclusions, version > 1)
+        fun evaluate(ex: C2paBmff.Excluded): List<C2paStatus> {
             val notes = ArrayList<C2paStatus>()
             if (a.hash != null && !C2paBmff.hash(asset, ex, alg).contentEquals(a.hash)) return mismatch("core_c2pa_bmff_mismatch")
             if (a.merkle.isNotEmpty()) {
@@ -162,9 +161,20 @@ object C2paBindings {
             val out = arrayListOf(C2paStatus("assertion.bmffHash.match", u, true, notes.firstOrNull { it.code == "assertion.bmffHash.match" }?.explanation))
             out += notes.filter { it.code != "assertion.bmffHash.match" }
             if (a.exclusions.any { !standard(it) }) out += C2paStatus("assertion.bmffHash.additionalExclusionsPresent", u, false, ct("core_c2pa_additional_exclusions"), informational = true)
-            out
+            return out
         }
-        return result.getOrElse { malformed(it.message ?: "BMFF") }
+        return runCatching {
+            // Flags of an exclusion that is not exact are matched as the specification reads first; only when that
+            // gives a mismatch is the c2pa-rs reading tried, and a match through it is reported as such.
+            val standardEx = C2paBmff.excluded(asset, a.exclusions, version > 1)
+            val first = evaluate(standardEx)
+            if (first.first().success || a.exclusions.none { it.exact == false && it.flags != null }) return@runCatching first
+            val fallbackEx = C2paBmff.excluded(asset, a.exclusions, version > 1, C2paBmff.FlagMatch.C2PA_RS)
+            if (fallbackEx.ranges == standardEx.ranges && fallbackEx.offsets == standardEx.offsets) return@runCatching first
+            val second = evaluate(fallbackEx)
+            if (!second.first().success) first
+            else second + C2paStatus("assertion.bmffHash.match", u, true, ct("core_c2pa_bmff_flags_fallback"), informational = true)
+        }.getOrElse { malformed(it.message ?: "BMFF") }
     }
 
     private fun standard(x: C2paBmff.Exclusion): Boolean = when (x.xpath) {

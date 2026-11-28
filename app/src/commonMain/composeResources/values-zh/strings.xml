@@ -834,6 +834,7 @@
     <string name="core_c2pa_bmff_malformed">無法讀取 BMFF 雜湊宣告：%1$s</string>
     <string name="core_c2pa_bmff_merkle_mismatch">有媒體區塊與 BMFF 雜湊的 Merkle 樹不符，影音內容在簽署後被修改</string>
     <string name="core_c2pa_bmff_mismatch">檔案內容與 BMFF 雜湊不符，簽署後被修改</string>
+    <string name="core_c2pa_bmff_flags_fallback">非完全匹配排除條件的 box 旗標只在 c2pa-rs 的解讀下相符（box 未設定排除條件以外的位元），依規格的解讀並不相符</string>
     <string name="core_c2pa_bmff_timed_merkle">錢包不檢查以媒體時間劃分的 Merkle 樹</string>
     <string name="core_c2pa_boxes_format">%1$s 沒有定義一般方塊雜湊</string>
     <string name="core_c2pa_boxes_malformed">無法讀取方塊雜湊宣告</string>

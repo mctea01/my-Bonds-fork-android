@@ -782,6 +782,22 @@ class C2paSigningTest {
     }
 
     @Test
+    fun bmffFlagsOfAnExclusionThatIsNotExactFollowTheSpecificationFirst() {
+        val ftyp = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0) + "isom".encodeToByteArray())
+        fun file(flags: Int) = ftyp + bmffBox("meta", be32(flags))
+        fun excluded(flags: Int, want: Int, mode: C2paBmff.FlagMatch): Boolean {
+            val x = C2paBmff.Exclusion("/meta", flags = byteArrayOf((want ushr 16).toByte(), (want ushr 8).toByte(), want.toByte()), exact = false)
+            return C2paBmff.excluded(file(flags), listOf(x), true, mode).ranges.isNotEmpty()
+        }
+        // The specification: the box has every bit the exclusion sets.
+        assertTrue(excluded(3, 1, C2paBmff.FlagMatch.STANDARD))
+        assertFalse(excluded(1, 3, C2paBmff.FlagMatch.STANDARD))
+        // c2pa-rs: the box sets no bit the exclusion leaves clear.
+        assertFalse(excluded(3, 1, C2paBmff.FlagMatch.C2PA_RS))
+        assertTrue(excluded(1, 3, C2paBmff.FlagMatch.C2PA_RS))
+    }
+
+    @Test
     fun tiffWithADirectoryChainPastTheLimitGetsASidecar() {
         // Empty IFDs chained one after another: a header, then for each a zero count and the next offset.
         fun chain(pages: Int, loop: Boolean = false): ByteArray {

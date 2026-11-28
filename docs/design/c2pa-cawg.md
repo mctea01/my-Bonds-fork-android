@@ -35,7 +35,7 @@
 
 - 作用中的 manifest 只能有一個硬綁定（`claim.hardBindings.multiple`），且必須在簽署的 claim 中（`claim.hardBindings.missing`）。
 - `c2pa.hash.boxes`（`C2paBoxHash`）：JPEG 標記區段、PNG 區塊、GIF 區塊、JPEG XL 盒依規格命名，store 為 `C2PA`，結尾多出的位元組為 `c2pa.after`；必須依序列出檔案的每個方塊。
-- `c2pa.hash.bmff`（`C2paBmff`）：v1、v2、v3 與排除條件（xpath、長度、版本、旗標、資料、子集）依 c2pa-rs 解讀；Merkle 樹檢查分段 MP4（`moof` 到下一個 `moof`）與 `mdat` 固定或可變區塊，初始化區段單獨驗證時另加說明；以媒體時間劃分的 Merkle 樹列為未檢查。
+- `c2pa.hash.bmff`（`C2paBmff`）：v1、v2、v3 與排除條件（xpath、長度、版本、旗標、資料、子集）依 c2pa-rs 解讀，但 `exact=false` 的旗標以規格為先（box 必須設定排除條件指定的每個位元），雜湊不符時才改用 c2pa-rs 的解讀（box 不得設定排除條件以外的位元）重算，靠回退相符時另加說明（2026-11-28 使用者決定：標準優先、支援非標準回退）；Merkle 樹檢查分段 MP4（`moof` 到下一個 `moof`）與 `mdat` 固定或可變區塊，初始化區段單獨驗證時另加說明；以媒體時間劃分的 Merkle 樹列為未檢查。
 - PDF：以空白密碼可開啟的加密 PDF 也讀取（與 c2pa-rs 相同），store 為解密後的串流，排除範圍是加密後的串流內容；簽署時加密 PDF 改用外部清單。JUMBF URI 寫成 `self#jumbf=c2pa/...`（沒有開頭斜線）時視為絕對路徑，與 c2pa-rs 相同。
 - `c2pa.hash.collection.data`：只檢查 ZIP 內的集合（中央目錄雜湊接受 c2pa-rs 的範圍、完整範圍與 CRC 歸零三種算法），其他檔案的集合列為未檢查。ZIP 內有兩個同名項目（或宣告列出重複的 URI）時判定為 `assertion.collectionHash.malformed`，簽署時改用外部清單。SVG 以每個位元組一個字元處理，不論宣告的編碼都逐位元組保留內容。
 

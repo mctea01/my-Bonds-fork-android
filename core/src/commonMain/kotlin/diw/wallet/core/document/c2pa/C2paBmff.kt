@@ -363,12 +363,18 @@ object C2paBmff {
     /** Excluded byte ranges and, for v2 and later, the offsets of the top-level boxes not excluded whole. */
     class Excluded(val ranges: List<C2paRange>, val offsets: List<Long>)
 
-    fun excluded(b: ByteArray, exclusions: List<Exclusion>, v2: Boolean): Excluded {
+    /**
+     * How the flags of an exclusion that is not exact are matched: [STANDARD], the box has every bit the exclusion
+     * sets; [C2PA_RS], the box sets no bit the exclusion leaves clear (the reading of c2pa-rs, kept as a fallback).
+     */
+    enum class FlagMatch { STANDARD, C2PA_RS }
+
+    fun excluded(b: ByteArray, exclusions: List<Exclusion>, v2: Boolean, flags: FlagMatch = FlagMatch.STANDARD): Excluded {
         val roots = tree(b)
         val offsets = roots.map { it.start }.sorted().toMutableList()
         val ranges = ArrayList<C2paRange>()
         for (x in exclusions) for (box in select(roots, x.xpath)) {
-            if (!matchesHeader(x, box) || !matchesData(b, x, box)) continue
+            if (!matchesHeader(x, box, flags) || !matchesData(b, x, box)) continue
             val subset = x.subset
             if (subset != null) {
                 for (s in subset) {
@@ -384,13 +390,17 @@ object C2paBmff {
         return Excluded(ranges, if (v2) offsets else emptyList())
     }
 
-    private fun matchesHeader(x: Exclusion, box: Box): Boolean {
+    private fun matchesHeader(x: Exclusion, box: Box, mode: FlagMatch): Boolean {
         if (x.length != null && x.length != box.size) return false
         if (x.version != null && box.version != null && x.version != box.version) return false
         val f = x.flags ?: return true
         val want = if (f.size >= 3) B.u24(f, 0) else 0
         val actual = box.flags ?: return true
-        return if (x.exact ?: true) actual == want else (want or actual) == want
+        return when {
+            x.exact ?: true -> actual == want
+            mode == FlagMatch.STANDARD -> (actual and want) == want
+            else -> (want or actual) == want
+        }
     }
 
     private fun matchesData(b: ByteArray, x: Exclusion, box: Box): Boolean = x.data.all { m ->

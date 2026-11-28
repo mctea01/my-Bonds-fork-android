@@ -834,6 +834,7 @@
     <string name="core_c2pa_bmff_malformed">The BMFF hash assertion cannot be read: %1$s</string>
     <string name="core_c2pa_bmff_merkle_mismatch">A media chunk does not match the Merkle tree of the BMFF hash; the video or audio was changed after signing</string>
     <string name="core_c2pa_bmff_mismatch">The file content does not match the BMFF hash; it was changed after signing</string>
+    <string name="core_c2pa_bmff_flags_fallback">The box flags matched only as c2pa-rs reads an exclusion that is not exact (the box sets no bit the exclusion leaves clear), not as the specification reads it</string>
     <string name="core_c2pa_bmff_timed_merkle">The wallet does not check Merkle trees by media time</string>
     <string name="core_c2pa_boxes_format">The general box hash is not defined for %1$s</string>
     <string name="core_c2pa_boxes_malformed">The box hash assertion cannot be read</string>

@@ -79,6 +79,7 @@ object CoreStrings {
         "core_c2pa_allowed" to "允許",
         "core_c2pa_assertion_hash" to "宣告 %1\$s 的雜湊與聲明不符",
         "core_c2pa_assertion_missing" to "找不到宣告 %1\$s",
+        "core_c2pa_bmff_flags_fallback" to "非完全匹配排除條件的 box 旗標只在 c2pa-rs 的解讀下相符（box 未設定排除條件以外的位元），依規格的解讀並不相符",
         "core_c2pa_bmff_init_only" to "只檢查了初始化區段，媒體區段是另外的檔案",
         "core_c2pa_bmff_malformed" to "無法讀取 BMFF 雜湊宣告：%1\$s",
         "core_c2pa_bmff_merkle_mismatch" to "有媒體區塊與 BMFF 雜湊的 Merkle 樹不符，影音內容在簽署後被修改",

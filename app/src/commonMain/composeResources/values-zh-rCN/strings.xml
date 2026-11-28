@@ -834,6 +834,7 @@
     <string name="core_c2pa_bmff_malformed">无法读取 BMFF 哈希声明：%1$s</string>
     <string name="core_c2pa_bmff_merkle_mismatch">有媒体区块与 BMFF 哈希的 Merkle 树不符，影音内容在签署后被修改</string>
     <string name="core_c2pa_bmff_mismatch">文件内容与 BMFF 哈希不符，签署后被修改</string>
+    <string name="core_c2pa_bmff_flags_fallback">非完全匹配排除条件的 box 标志只在 c2pa-rs 的解读下相符（box 未设置排除条件以外的位），依规范的解读并不相符</string>
     <string name="core_c2pa_bmff_timed_merkle">钱包不检查以媒体时间划分的 Merkle 树</string>
     <string name="core_c2pa_boxes_format">%1$s 没有定义一般方块哈希</string>
     <string name="core_c2pa_boxes_malformed">无法读取方块哈希声明</string>
