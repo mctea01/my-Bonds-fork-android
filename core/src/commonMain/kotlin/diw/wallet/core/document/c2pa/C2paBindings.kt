@@ -425,6 +425,10 @@ object C2paBindings {
     private fun timedMedia(asset: ByteArray, a: C2paBmff.Assertion, alg: String, aux: List<C2paBmff.AuxMerkle>): Boolean = runCatching {
         if (aux.isEmpty() || a.merkle.any { it.fixedBlockSize != null || it.variableBlockSizes != null }) return false
         if (C2paBmff.topLevel(asset).none { it.type == "moov" }) return false
+        // Every track needs its own tree, as c2pa-rs writes one per track: a track no map names would go unchecked.
+        val named = a.merkle.map { it.localId }
+        if (named.toSet().size != named.size) return false
+        if (C2paBmff.trackIds(asset).any { it == null || it !in named }) return false
         var rest = aux
         for (mm in a.merkle) {
             if (mm.count > rest.size) return false

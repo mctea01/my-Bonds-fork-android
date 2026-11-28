@@ -557,6 +557,15 @@ object C2paBmff {
             x.box.start)
     }
 
+    /** The track_ID of every trak in the moov, in file order; null for a trak without a readable tkhd. */
+    fun trackIds(b: ByteArray): List<Long?> = select(tree(b), "/moov/trak").map { trackId(b, it) }
+
+    private fun trackId(b: ByteArray, trak: Box): Long? {
+        val tkhd = trak.children.firstOrNull { it.type == "tkhd" } ?: return null
+        val at = (tkhd.start + tkhd.header + 4).toInt()
+        return if (tkhd.version == 1) B.u32(b, at + 16) else B.u32(b, at + 8)
+    }
+
     /** [size] sample sizes, each read by [at] from the sample size box. */
     private class Samples(val size: Int, val at: (Int) -> Long) {
         fun isEmpty() = size == 0
@@ -570,13 +579,7 @@ object C2paBmff {
      * other from its offset, so each chunk is one range.
      */
     fun trackChunks(b: ByteArray, trackId: Long): Map<Long, List<C2paRange>>? {
-        val roots = tree(b)
-        val trak = select(roots, "/moov/trak").firstOrNull { t ->
-            val tkhd = t.children.firstOrNull { it.type == "tkhd" } ?: return@firstOrNull false
-            val at = (tkhd.start + tkhd.header + 4).toInt()
-            val id = if (tkhd.version == 1) B.u32(b, at + 16) else B.u32(b, at + 8)
-            id == trackId
-        } ?: return null
+        val trak = select(tree(b), "/moov/trak").firstOrNull { trackId(b, it) == trackId } ?: return null
         val stbl = select(trak.children, "/mdia/minf/stbl").firstOrNull() ?: return null
         fun body(type: String) = stbl.children.firstOrNull { it.type == type }?.let { (it.start + it.header + 4).toInt() to it.end.toInt() }
         // The sample sizes are read from the box when needed: a count the file states is never expanded into an array,

@@ -1175,16 +1175,20 @@ class C2paSigningTest {
     private fun fullBox(type: String, body: ByteArray) = bmffBox(type, ByteArray(4) + body)
 
     /** A track (id 1) of four samples in two chunks inside mdat, with c2pa-rs style Merkle data over the chunks. */
-    private fun timedMp4(tamper: Boolean = false, aux: Boolean = true, extraChunk: Boolean = false): ByteArray {
+    private fun timedMp4(tamper: Boolean = false, aux: Boolean = true, extraChunk: Boolean = false, extraTrack: Boolean = false): ByteArray {
         val signed = listOf(payload(300), payload(500).reversedArray(), payload(200), payload(700).reversedArray())
         // A third chunk added to the sample tables after signing: the tree counts two.
         val samples = if (extraChunk) signed + payload(100) else signed
         val ftyp = bmffBox("ftyp", "isom".encodeToByteArray() + be32(0x200) + "isommp41".encodeToByteArray())
-        fun moov(chunks: List<Int>) = bmffBox("moov", bmffBox("trak",
-            fullBox("tkhd", ByteArray(8) + be32(1) + ByteArray(68)) + bmffBox("mdia", bmffBox("minf", bmffBox("stbl",
-                fullBox("stsz", be32(0) + be32(samples.size) + samples.fold(ByteArray(0)) { a, x -> a + be32(x.size) }) +
+        fun trak(id: Int, sizes: List<Int>, chunks: List<Int>) = bmffBox("trak",
+            fullBox("tkhd", ByteArray(8) + be32(id) + ByteArray(68)) + bmffBox("mdia", bmffBox("minf", bmffBox("stbl",
+                fullBox("stsz", be32(0) + be32(sizes.size) + sizes.fold(ByteArray(0)) { a, x -> a + be32(x) }) +
                 fullBox("stsc", be32(1) + be32(1) + be32(2) + be32(1)) +
-                fullBox("stco", be32(chunks.size) + chunks.fold(ByteArray(0)) { a, c -> a + be32(c) }))))))
+                fullBox("stco", be32(chunks.size) + chunks.fold(ByteArray(0)) { a, c -> a + be32(c) })))))
+        // A second track added after signing, whose data follows the signed samples: no tree names it.
+        val added = payload(400)
+        fun moov(chunks: List<Int>) = bmffBox("moov", trak(1, samples.map { it.size }, chunks) +
+            if (extraTrack) trak(2, listOf(added.size), listOf(chunks.first() + samples.sumOf { it.size })) else ByteArray(0))
         val leaf1 = sha(samples[0] + samples[1])
         val leaf2 = sha(samples[2] + samples[3])
         val root = sha(leaf1 + leaf2)
@@ -1197,7 +1201,7 @@ class C2paSigningTest {
         val store = c2paUuid("manifest", ByteArray(8) + bmffStore(C2paCbor.map(listOf("exclusions" to exclusions, "alg" to C2paCbor.tstr("sha256"), "merkle" to C2paCbor.array(listOf(mm))))))
         val starts = if (extraChunk) listOf(0, 800, 1700) else listOf(0, 800)
         val head = ftyp.size + store.size + moov(starts).size + 8
-        val data = samples.fold(ByteArray(0)) { a, x -> a + x }.also { if (tamper) it[350] = (it[350] + 1).toByte() }
+        val data = samples.fold(ByteArray(0)) { a, x -> a + x }.also { if (tamper) it[350] = (it[350] + 1).toByte() } + if (extraTrack) added else ByteArray(0)
         fun auxBox(loc: Int, peer: ByteArray) = c2paUuid("merkle", C2paCbor.map(listOf(
             "uniqueId" to C2paCbor.int(1), "localId" to C2paCbor.int(1), "location" to C2paCbor.int(loc), "hashes" to C2paCbor.array(listOf(C2paCbor.bstr(peer))),
         )) + ByteArray(6))
@@ -1217,6 +1221,8 @@ class C2paSigningTest {
         assertFalse(check(timedMp4(aux = false)).first().success)
         // A chunk the tree does not count is not left unchecked.
         assertFalse(check(timedMp4(extraChunk = true)).first().success)
+        // Nor is a track no tree names.
+        assertFalse(check(timedMp4(extraTrack = true)).first().success)
     }
 
     @Test
