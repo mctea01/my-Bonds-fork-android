@@ -1321,7 +1321,10 @@ private fun signDetails(form: SignForm, level: SignatureLevel, timestamp: Boolea
     SignForm.C2PA -> buildList {
         add(stringResource(Res.string.tech_c2pa_1))
         add(stringResource(Res.string.tech_c2pa_2))
-        if (c2pa.identity) add(stringResource(if (c2pa.c2paRsOrder) Res.string.tech_c2pa_identity_rs else Res.string.tech_c2pa_identity))
+        if (c2pa.update) add(stringResource(Res.string.tech_c2pa_update))
+        else if (c2pa.identity) add(stringResource(if (c2pa.c2paRsOrder) Res.string.tech_c2pa_identity_rs else Res.string.tech_c2pa_identity))
+        if (!c2pa.update) add(stringResource(Res.string.tech_c2pa_multi))
+        if (c2pa.compress) add(stringResource(Res.string.tech_c2pa_compress))
         if (timestamp) add(stringResource(Res.string.tech_c2pa_ts))
         add(stringResource(Res.string.tech_c2pa_rsa))
         add(stringResource(Res.string.tech_verify_after))
@@ -2001,16 +2004,69 @@ private const val SYNTHID_URL = "https://synthid.com/"
 /**
  * Options of a C2PA manifest: how the file was made (signed as it was, or created with an IPTC digital source type),
  * the CAWG identity assertion and roles, the AI training choice, which key signs the claim, the time stamp and the
- * non-standard c2pa-rs encoding; with a warning that validators expect C2PA and CAWG certificate profiles.
+ * non-standard c2pa-rs encoding; for a file with content credentials, an update manifest instead (no hard binding,
+ * how-made or identity); Brotli compression for a file that embeds the manifest; with a warning that validators
+ * expect C2PA and CAWG certificate profiles.
  */
 @Composable
 private fun C2paSignOptions(
     f: StoredFile, value: C2paChoice, choice: SignerChoice?, timestamp: Boolean, tsaName: String,
     onChange: (C2paChoice) -> Unit, onTimestamp: (Boolean) -> Unit,
 ) {
-    val sidecar = f.report?.format != DocumentFormat.IMAGE || f.name.substringAfterLast('.').lowercase() !in setOf("jpg", "jpeg", "png", "webp")
+    val sidecar = f.name.substringAfterLast('.', "").lowercase() !in C2PA_EMBEDDABLE
     Text(if (sidecar) stringResource(Res.string.c2pa_sign_sidecar, f.name.substringBeforeLast('.') + ".c2pa") else stringResource(Res.string.c2pa_sign_embedded), style = MaterialTheme.typography.bodySmall)
-    if (f.report?.c2pa != null) Text(stringResource(Res.string.c2pa_sign_keeps), style = MaterialTheme.typography.bodySmall)
+    val hasManifest = f.report?.c2pa != null
+    if (hasManifest) {
+        Text(stringResource(Res.string.c2pa_sign_keeps), style = MaterialTheme.typography.bodySmall)
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(checked = value.update, onCheckedChange = { onChange(value.copy(update = it)) })
+            Column {
+                Text(stringResource(Res.string.c2pa_sign_update))
+                Text(stringResource(Res.string.c2pa_sign_update_text), style = MaterialTheme.typography.bodySmall)
+            }
+        }
+    }
+    val update = value.update && hasManifest
+    if (!update) C2paMadeAndIdentity(value, onChange)
+    SectionTitle(stringResource(Res.string.c2pa_sign_training))
+    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
+        FilterChip(selected = value.allowTraining == null, onClick = { onChange(value.copy(allowTraining = null)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_none)) })
+        FilterChip(selected = value.allowTraining == false, onClick = { onChange(value.copy(allowTraining = false)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_no)) })
+        FilterChip(selected = value.allowTraining == true, onClick = { onChange(value.copy(allowTraining = true)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_yes)) })
+    }
+    Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = timestamp, onCheckedChange = onTimestamp)
+        Text(stringResource(Res.string.c2pa_sign_timestamp, tsaName))
+    }
+    if (!sidecar) Row(verticalAlignment = Alignment.CenterVertically) {
+        Checkbox(checked = value.compress, onCheckedChange = { onChange(value.copy(compress = it)) })
+        Column {
+            Text(stringResource(Res.string.c2pa_sign_compress))
+            Text(stringResource(Res.string.c2pa_sign_compress_text), style = MaterialTheme.typography.bodySmall)
+        }
+    }
+    if (value.identity && !update) {
+        CollapsibleSection(stringResource(Res.string.c2pa_sign_interop), key = "c2pa-interop-${f.id}") {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Checkbox(checked = value.c2paRsOrder, onCheckedChange = { onChange(value.copy(c2paRsOrder = it)) })
+                Column {
+                    Text(stringResource(Res.string.c2pa_sign_rs_order))
+                    Text(stringResource(Res.string.c2pa_sign_rs_order_text), style = MaterialTheme.typography.bodySmall)
+                }
+            }
+        }
+    }
+    VerdictCard(Verdict.CAUTION, stringResource(Res.string.c2pa_sign_profile_title), buildList {
+        add(stringResource(Res.string.c2pa_sign_profile_1))
+        if (!update) add(stringResource(Res.string.c2pa_sign_profile_2))
+        if (choice is SignerChoice.Wallet) add(stringResource(Res.string.c2pa_sign_profile_wallet))
+        if (choice is SignerChoice.Card) add(stringResource(Res.string.c2pa_sign_profile_card))
+    })
+}
+
+/** How the content was made and the CAWG identity assertion: what a standard manifest declares and an update manifest does not. */
+@Composable
+private fun C2paMadeAndIdentity(value: C2paChoice, onChange: (C2paChoice) -> Unit) {
     SectionTitle(stringResource(Res.string.c2pa_sign_how))
     Row(Modifier.fillMaxWidth().clickable { onChange(value.copy(sourceType = null)) }, verticalAlignment = Alignment.CenterVertically) {
         androidx.compose.material3.RadioButton(selected = value.sourceType == null, onClick = { onChange(value.copy(sourceType = null)) })
@@ -2055,34 +2111,14 @@ private fun C2paSignOptions(
             }
         }
     }
-    SectionTitle(stringResource(Res.string.c2pa_sign_training))
-    Row(Modifier.horizontalScroll(rememberScrollState()), horizontalArrangement = Arrangement.spacedBy(6.dp)) {
-        FilterChip(selected = value.allowTraining == null, onClick = { onChange(value.copy(allowTraining = null)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_none)) })
-        FilterChip(selected = value.allowTraining == false, onClick = { onChange(value.copy(allowTraining = false)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_no)) })
-        FilterChip(selected = value.allowTraining == true, onClick = { onChange(value.copy(allowTraining = true)) }, label = { Text(stringResource(Res.string.c2pa_sign_training_yes)) })
-    }
-    Row(verticalAlignment = Alignment.CenterVertically) {
-        Checkbox(checked = timestamp, onCheckedChange = onTimestamp)
-        Text(stringResource(Res.string.c2pa_sign_timestamp, tsaName))
-    }
-    if (value.identity) {
-        CollapsibleSection(stringResource(Res.string.c2pa_sign_interop), key = "c2pa-interop-${f.id}") {
-            Row(verticalAlignment = Alignment.CenterVertically) {
-                Checkbox(checked = value.c2paRsOrder, onCheckedChange = { onChange(value.copy(c2paRsOrder = it)) })
-                Column {
-                    Text(stringResource(Res.string.c2pa_sign_rs_order))
-                    Text(stringResource(Res.string.c2pa_sign_rs_order_text), style = MaterialTheme.typography.bodySmall)
-                }
-            }
-        }
-    }
-    VerdictCard(Verdict.CAUTION, stringResource(Res.string.c2pa_sign_profile_title), buildList {
-        add(stringResource(Res.string.c2pa_sign_profile_1))
-        add(stringResource(Res.string.c2pa_sign_profile_2))
-        if (choice is SignerChoice.Wallet) add(stringResource(Res.string.c2pa_sign_profile_wallet))
-        if (choice is SignerChoice.Card) add(stringResource(Res.string.c2pa_sign_profile_card))
-    })
 }
+
+/** File extensions of the containers a C2PA manifest is embedded in; other files get a sidecar (.c2pa). */
+private val C2PA_EMBEDDABLE = setOf(
+    "jpg", "jpeg", "png", "webp", "wav", "avi", "gif", "tif", "tiff", "dng", "svg", "mp3", "flac", "jxl",
+    "mp4", "m4v", "m4a", "mov", "3gp", "heic", "heif", "avif", "pdf", "zip", "docx", "xlsx", "pptx", "odt", "ods",
+    "odp", "epub",
+)
 
 /** CAWG named actor roles offered when signing. */
 private val CAWG_ROLES = listOf("cawg.creator", "cawg.contributor", "cawg.editor", "cawg.producer", "cawg.publisher", "cawg.sponsor", "cawg.translator")

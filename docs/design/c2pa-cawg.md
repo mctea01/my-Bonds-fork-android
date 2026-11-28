@@ -1,19 +1,50 @@
 # C2PA 簽署、CAWG 身分與 AI 來源宣告
 
-狀態：規格（2026-11-20）。目前完成度見 [STATUS.md](../STATUS.md) 第 3.3 節。
+狀態：規格（2026-11-28）。目前完成度見 [STATUS.md](../STATUS.md) 第 3.3 節。
 
 本文記錄錢包怎麼在使用者的檔案加上 C2PA 內容憑證與 CAWG 身分聲明、怎麼驗證 CAWG 身分，以及怎麼讀取檔案對 AI 生成與浮水印的宣告（含 Google SynthID）。讀取 C2PA manifest 與 claim 簽章的部分見 [AGENTS.md](../../AGENTS.md) 的 C2PA 段落。
 
-參考規格：C2PA 2.2（claim v2、`c2pa.hash.data`、`c2pa.actions.v2`、`c2pa.ingredient.v3`）、CAWG Identity Assertion 1.3（`cawg.identity`、`cawg.x509.cose`、`cawg.identity_claims_aggregation`）、CAWG Training and Data Mining 1.1（`cawg.training-mining`）、IPTC Digital Source Type 詞彙、C2PA 軟綁定演算法清單。
+參考規格：C2PA 2.2（claim v2、`c2pa.hash.data`、`c2pa.hash.boxes`、`c2pa.hash.bmff.v2`／`v3`、`c2pa.hash.collection.data`、附錄 A 的各容器、`c2pa.actions.v2`、`c2pa.ingredient.v3`）、CAWG Identity Assertion 1.3（`cawg.identity`、`cawg.x509.cose`、`cawg.identity_claims_aggregation`）、CAWG Training and Data Mining 1.1（`cawg.training-mining`）、IPTC Digital Source Type 詞彙、C2PA 軟綁定演算法清單。
 
 ## 1. 簽署（`C2paWriter`）
 
-- 容器：JPEG（APP11 JPEG XT 盒，超過 64 KB 自動分段）、PNG（`caBX`）、WebP（`C2PA` 區塊；簡易格式先補 `VP8X`），其他檔案產生外部清單（`檔名.c2pa`，C2PA sidecar），原檔不變。
+- 容器（`C2paContainers`，C2PA 2.2 附錄 A，存放位置與 c2pa-rs 相同）：
+
+  | 格式 | 存放位置 | 硬綁定 |
+  |---|---|---|
+  | JPEG | APP11 JPEG XT 盒，超過 64 KB 自動分段 | 資料雜湊（可選方塊雜湊） |
+  | PNG | `caBX` 區塊，放在 IHDR 之後 | 資料雜湊（可選方塊雜湊） |
+  | WebP、WAV、AVI | RIFF 的 `C2PA` 區塊（WebP 簡易格式先補 `VP8X`） | 資料雜湊 |
+  | GIF | 應用程式延伸區塊 `C2PA_GIF`，放在標頭與全域色盤之後，版本升為 89a | 資料雜湊（可選方塊雜湊） |
+  | TIFF、DNG | 標籤 0xCD41；單頁放在 IFD0，多頁另加只有這個標籤的最後一個 IFD | 資料雜湊 |
+  | SVG | 根元素後的 `<metadata><c2pa:manifest>`（Base64） | 資料雜湊 |
+  | MP3、FLAC | ID3v2 的 GEOB 框（`application/c2pa`），FLAC 放在 `fLaC` 前的 ID3 | 資料雜湊 |
+  | JPEG XL | 容器格式的 `jumb` 盒（裸碼流先包成容器） | 方塊雜湊（可選資料雜湊） |
+  | MP4、MOV、HEIF、HEIC、AVIF 等 BMFF | `ftyp` 之後的 C2PA `uuid` 盒；`stco`、`co64`、`iloc`、`tfhd`、`tfra`、`saio` 的位移一併調整 | `c2pa.hash.bmff.v3` |
+  | PDF | 增量更新：內嵌檔案串流，型錄 `/AF` 的檔案規格（`/AFRelationship /C2PA_Manifest`）與 EmbeddedFiles 名稱樹 | 資料雜湊，排除串流內容 |
+  | ZIP、OOXML、ODF、EPUB | `META-INF/content_credential.c2pa`，不壓縮，放在中央目錄之前 | `c2pa.hash.collection.data` |
+
+  其他檔案與無法嵌入的檔案（加密 PDF、交叉參照損壞的 PDF、DocMDP 認證 PDF、ZIP64、分卷或中央目錄後還有資料的 ZIP 等）產生外部清單（`檔名.c2pa`，C2PA sidecar），原檔不變，App 會說明原因。PDF 採增量更新，既有的核准簽章仍有效（檢查結果會顯示簽章後有增量更新）。
 - 已有 manifest 的檔案：舊 manifest 保留在同一個 store，新 manifest 以 `c2pa.opened` 加 `parentOf` 成分指向它，成分的 `validationResults` 記錄錢包對舊 manifest 的檢查結果。
-- 宣告：`c2pa.actions.v2`（`c2pa.created` 帶 IPTC 數位來源類型，或 `c2pa.opened`）、可選的 `cawg.training-mining`（允許或不允許 AI 訓練與資料探勘）、`c2pa.hash.data` 硬綁定。
+- 宣告：`c2pa.actions.v2`（`c2pa.created` 帶 IPTC 數位來源類型，或 `c2pa.opened`）、可選的 `cawg.training-mining`（允許或不允許 AI 訓練與資料探勘）、依上表的硬綁定。方塊雜湊寫最小形式（store 之前的方塊一組、`C2PA` 本身、之後的方塊一組）；BMFF 雜湊用標準排除（`/uuid` 的 C2PA 盒、`/ftyp`、`/mfra`），v3 在每個頂層盒前加入 8 位元組位移；集合雜湊列出每個項目的 URI、雜湊與大小，加上中央目錄雜湊。
 - claim 簽章：COSE_Sign1，EC P-256 用 ES256，RSA 一律用 PS256（C2PA 不接受 PKCS#1 v1.5）。可加 `sigTst2` 時戳，時戳涵蓋 `["CounterSignature", protected, h'', bstr(signature)]`（與 c2pa-rs 相同）。
-- 空間預留：先以佔位內容排版，算出資料雜湊的排除範圍，再把 CAWG 身分聲明與 claim 簽章填回同樣大小（CAWG 的 `pad1`／`pad2`、COSE 的 `pad` 標頭），所以最終檔案的資料雜湊不必重算。
-- WebP 的排除範圍是區塊標頭加內容、不含奇數長度的補齊位元組；c2pa-rs 要求排除範圍與 manifest 位置完全相同。
+- 空間預留：先以同樣大小的佔位硬綁定排版，算出排除範圍與各雜湊，再把 CAWG 身分聲明與 claim 簽章填回同樣大小（CAWG 的 `pad1`／`pad2`、COSE 的 `pad` 標頭），所以最終檔案的雜湊不必重算；完成後確認 manifest 以外的內容與排版時相同。
+- 資料雜湊的排除範圍必須與各容器的 manifest 位置完全相同（c2pa-rs 的要求）：RIFF 是區塊標頭加內容、不含奇數長度的補齊位元組；GIF 是整個延伸區塊；TIFF 是標籤指向的資料；SVG 是 Base64 文字；ID3 是 GEOB 的資料；PDF 是串流內容。排除範圍以外還有其他範圍時，驗證結果另列 `*.additionalExclusionsPresent`。
+
+### 驗證硬綁定（`C2paBindings`）
+
+- 作用中的 manifest 只能有一個硬綁定（`claim.hardBindings.multiple`），且必須在簽署的 claim 中（`claim.hardBindings.missing`）。
+- `c2pa.hash.boxes`（`C2paBoxHash`）：JPEG 標記區段、PNG 區塊、GIF 區塊、JPEG XL 盒依規格命名，store 為 `C2PA`，結尾多出的位元組為 `c2pa.after`；必須依序列出檔案的每個方塊。
+- `c2pa.hash.bmff`（`C2paBmff`）：v1、v2、v3 與排除條件（xpath、長度、版本、旗標、資料、子集）依 c2pa-rs 解讀，但 `exact=false` 的旗標以規格為先（box 必須設定排除條件指定的每個位元），雜湊不符時才改用 c2pa-rs 的解讀（box 不得設定排除條件以外的位元）重算，靠回退相符時另加說明（2026-11-28 使用者決定：標準優先、支援非標準回退）；Merkle 樹：分段 MP4（`moof` 到下一個 `moof`）必須有 `purpose` 為 `merkle` 的輔助 uuid 盒（CBOR `uniqueId`、`localId`、`location`、`hashes` 加零補齊），逐一以證明路徑驗證；初始化區段單獨驗證時另加說明，`initHash` 對只有初始化區段的檔案雜湊整個檔案。非分段檔案先依規格以 `mdat` 內容（略過 16 位元組標頭，整段或固定／可變區塊）為葉節點，`localId` 為 `mdat` 的序號；不符時再以 c2pa-rs 的解讀（`localId` 為 `track_ID`，葉節點為該軌每個 chunk 的樣本，依 `stsz`／`stz2`、`stsc`、`stco`／`co64` 取出，即以媒體時間劃分）重算，靠回退相符時另加說明；回退時 moov 的每條軌道都必須有自己的 Merkle 樹，且軌道的 chunk 數等於 `count`。`count` 大於 `hashes` 數量卻沒有輔助盒時為 `assertion.bmffHash.malformed`。
+- PDF：以空白密碼可開啟的加密 PDF 也讀取（與 c2pa-rs 相同），store 為解密後的串流，排除範圍是加密後的串流內容；簽署時加密 PDF 改用外部清單。JUMBF URI 寫成 `self#jumbf=c2pa/...`（沒有開頭斜線）時視為絕對路徑，與 c2pa-rs 相同。
+- `c2pa.hash.collection.data`：只檢查 ZIP 內的集合（中央目錄雜湊接受 c2pa-rs 的範圍、完整範圍與 CRC 歸零三種算法），其他檔案的集合列為未檢查。ZIP 內有兩個同名項目（或宣告列出重複的 URI）時判定為 `assertion.collectionHash.malformed`，簽署時改用外部清單。SVG 以每個位元組一個字元處理，不論宣告的編碼都逐位元組保留內容。
+
+### 更新 manifest、壓縮與多部分資產（C2PA 11.2.3、11.2.4、18.9）
+
+- 更新 manifest（`c2um`）：不得有硬綁定、多部分資產與縮圖宣告，動作只限 `c2pa.edited.metadata`、`c2pa.opened`、`c2pa.published`、`c2pa.redacted`，必須恰有一個 `parentOf` 成分（v3 用 `activeManifest` 加 `claimSignature`，v1／v2 用 `c2pa_manifest`），違反時為 `manifest.update.wrongParents`／`manifest.update.invalid`。綁定沿 `parentOf` 鏈找到第一個標準 manifest 驗證（每段都比對雜湊，迴圈或缺漏為 `claim.hardBindings.missing`）；資料雜湊依 15.12.1.1 調整：store 的排除範圍改用目前 store 的長度，之後的排除範圍平移長度差。
+- BMFF 的更新：原 store 盒的 `box_purpose` 由 `manifest` 改為 `original`（同長度），更新 manifest 放在檔尾 `purpose` 為 `update` 的 uuid 盒（只含更新 manifest，可接零補齊）；之後再簽標準 manifest 時兩者合回單一 `manifest` store；最後一個 box 的長度欄位為 0（延伸到檔尾）時無法附加，簽署時拒絕並請改簽標準 manifest。其他容器把更新 manifest 加進原 store，store 必須留在原位置。ZIP 集合雜湊與 TIFF／PDF 的資料雜湊無法沿用原綁定，簽署時拒絕並說明。更新 manifest 不帶 CAWG 身分聲明（身分聲明必須參照自己 manifest 的硬綁定）。
+- 壓縮 manifest（`c2cm`）：`brob` 內容為整個 manifest 超級盒的 Brotli 位元組，同一個 store 的解壓總量上限 64 MiB，解壓內容不再解壓（壓縮 manifest 內又是壓縮 manifest 時判定無效），內層標籤必須相同且為 `c2ma`／`c2um`，失敗為 `manifest.compressed.invalid`；hashed URI 以儲存的壓縮盒計算（11.1.3.2）。解碼用 `org.brotli:dec`（MIT），編碼用錢包自寫的 `BrotliEncoder`（LZ77 雜湊鏈、單一區塊型別）。資料雜湊不得搭配壓縮，所以只壓縮 box hash、BMFF hash 與更新 manifest；App 勾選壓縮時 JPEG、PNG、GIF 改用 box hash，無法壓縮時提示。整個 store 只有一個且壞掉的壓縮 manifest 時視為沒有 store。
+- 多部分資產雜湊（`c2pa.hash.multi-asset`，不是硬綁定）：只在標準綁定失敗時檢查，每部分以 `byteOffset`＋`length` 或 `bmffBox` 指定位置，以 hashed URI 指向 `<硬綁定標籤>.part[__N]`；部分必須連續、涵蓋整個檔案（`bmffBox` 部分以整個 box 計算涵蓋，雜湊只算 payload）、位移為相對位置，可選部分缺少時另列 `missingPart`。簽署時主影像後還有其他影像或影片的 JPEG（CIPA MPF 的 `MPEntry`、Ultra HDR 增益圖、Motion Photo）自動加上，第 0 部分用原硬綁定標籤加 `.part`，其餘為 `c2pa.hash.data.part__N`；XMP 有 `GCamera:MotionPhoto`、`GCamera:MicroVideo` 或 `Camera:MotionPhoto` 時最後一張 MPF 影像之後的影片為可選部分。APP11 插在 APP2 之前，MPF 位移不變。
 
 ### 簽署金鑰
 
@@ -55,8 +86,8 @@
 
 ## 4. 測試
 
-`test-servers` 的 `C2paSigningTest`：JPEG、PNG、WebP 與外部清單的簽驗往返、RSA 改用 PS256、c2pa-rs 順序與分開的身分金鑰、沒有 CAWG 用途的憑證、未知根憑證、再次簽署保留舊 manifest、改動像素、AI 宣告、XMP 的 Google AI 宣告、軟綁定清單，以及 c2pa-rs 與 Adobe 的身分彙整樣本。簽出的檔案以 c2pa-python 0.39（c2pa-rs 0.92）交叉檢查：claim 簽章、資料雜湊與 hashed URI 都通過，c2pa-rs 順序的身分聲明通過，決定性編碼的身分聲明如第 1 節所述不通過。
+`test-servers` 的 `C2paSigningTest`：JPEG、PNG、WebP 與外部清單的簽驗往返；GIF、單頁與多頁 TIFF、WAV、AVI、MP3、FLAC、SVG、JPEG XL（裸碼流、容器、方塊雜湊與資料雜湊）、MP4、AVIF、PDF、ZIP、DOCX、ODT 與 JPEG／PNG／GIF 方塊雜湊的簽驗往返、再次簽署、竄改內容與移除 store；BMFF 移動 `mdat` 後 `stco` 仍指向同一份樣本；無法嵌入的 PDF 改為外部清單；c2pa-rs 為 `boxhash.jpg` 算出的方塊雜湊（`boxhash.json`，方塊名稱與雜湊都相同）與分段 MP4 Merkle 樹樣本（`dashinit.mp4`）；設定 `DIW_C2PA_FIXTURES` 指向 c2pa-rs 的 `sdk/tests/fixtures` 時另驗較大的樣本（`video1.mp4`、`legacy.mp4` 的 BMFF v2 雜湊，Adobe Express 簽出的 `express-signed.pdf`、更新 manifest 的 `update_manifest.jpg`，均通過）；MPF 與 Motion Photo 的多部分資產雜湊（移除可選影片仍通過、改動部分失敗）、JPEG／PNG／MP4 的更新 manifest（BMFF 的 `original`／`update` 與合回）與更新後竄改內容、壓縮 manifest 往返與壞掉的 `brob`、Brotli 編碼往返、依規格的 `mdat` Merkle 樹與 c2pa-rs 媒體時間回退；RSA 改用 PS256、c2pa-rs 順序與分開的身分金鑰、沒有 CAWG 用途的憑證、未知根憑證、再次簽署保留舊 manifest、改動像素、AI 宣告、XMP 的 Google AI 宣告、軟綁定清單，以及 c2pa-rs 與 Adobe 的身分彙整樣本。簽出的檔案以 c2pa-python 0.39（c2pa-rs 0.92）交叉檢查：claim 簽章、資料雜湊與 hashed URI 都通過，c2pa-rs 順序的身分聲明通過，決定性編碼的身分聲明如第 1 節所述不通過。
 
 ## 5. 未做
 
-BMFF（影片、HEIC）、PDF 內嵌、`c2pa.hash.boxes`；錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation`；SynthID 的像素偵測。
+錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation`（另開 PR）；SynthID 的像素偵測；字型（C2PA 附錄 A 的 OpenType 方式尚無參考實作）；簽署 BMFF 的 Merkle 樹（只驗證）；更新 manifest 用於 ZIP 集合雜湊與 TIFF／PDF 資料雜湊。新容器、更新 manifest、壓縮 manifest 與多部分資產雜湊簽出的檔案除 c2pa-rs 樣本外尚未以 c2pa-rs 交叉檢查（本次環境無法安裝 c2pa-python），列為實機項目。

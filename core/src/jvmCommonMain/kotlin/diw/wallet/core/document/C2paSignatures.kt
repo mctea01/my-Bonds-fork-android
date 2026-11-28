@@ -1,6 +1,7 @@
 package diw.wallet.core.document
 
 import diw.wallet.core.i18n.ct
+import diw.wallet.core.document.c2pa.C2paBindings
 import diw.wallet.core.document.c2pa.C2paInfo
 import diw.wallet.core.document.c2pa.C2paManifest
 import diw.wallet.core.document.c2pa.C2paManifestInfo
@@ -14,7 +15,7 @@ import kotlinx.serialization.json.contentOrNull
 import kotlin.time.Instant
 
 /**
- * Verifies the content credentials of a picture: every manifest's COSE claim signature with its certificate chain
+ * Verifies the content credentials of a file (any container of C2paContainers, or a sidecar with its asset): every manifest's COSE claim signature with its certificate chain
  * (judged with [TrustRole.CONTENT], whose built-in anchors are the C2PA trust list) and time stamps, the hashed URIs
  * of the assertions, the active manifest's hard binding over the file, and CAWG identity assertions ([CawgIdentities]).
  * Results use the C2PA and CAWG specifications' status codes.
@@ -30,8 +31,11 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
             val statuses = ArrayList<C2paStatus>()
             val isActive = m === active
             statuses += C2paManifests.assertionStatuses(store, m)
-            val binding = if (isActive) C2paManifests.bindingStatus(store, m) else null
-            binding?.let { statuses += it }
+            statuses += C2paBindings.updateRules(m)
+            if (isActive) statuses += store.problems
+            val bindings = if (isActive) C2paManifests.bindingStatuses(store, m) else emptyList()
+            val binding = bindings.firstOrNull()
+            statuses += bindings
             val sig = claimSignature(m, statuses, binding, now)
             if (isActive) activeSignature = sig
             C2paManifestInfo(
@@ -91,7 +95,10 @@ internal class C2paSignatures(private val pki: PkiSupport, private val checks: C
             else C2paStatus("timeStamp.untrusted", url, false, timestamp.tsa)
         }
 
-        val failedHashes = statuses.filter { !it.success && (it.code.endsWith(".mismatch") || it.code == "assertion.missing") && !it.code.startsWith("claimSignature") && !it.code.startsWith("timeStamp") }
+        val failedHashes = statuses.filter {
+            !it.success && !it.informational && (it.code.endsWith(".mismatch") || it.code == "assertion.missing" || it.code.startsWith("manifest.")) &&
+                !it.code.startsWith("claimSignature") && !it.code.startsWith("timeStamp")
+        }
         failedHashes.forEach { problems.add(it.explanation ?: it.code) }
         val integrity = when {
             !valid || failedHashes.isNotEmpty() -> Check.FAIL

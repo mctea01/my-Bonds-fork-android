@@ -22,6 +22,9 @@ import diw.wallet.core.document.sign.CscService
 import androidx.compose.ui.graphics.ImageBitmap
 import diw.wallet.core.document.Check
 import diw.wallet.core.document.c2pa.C2paAuthoring
+import diw.wallet.core.document.c2pa.C2paBinding
+import diw.wallet.core.document.c2pa.C2paContainers
+import diw.wallet.core.document.c2pa.C2paFormat
 import diw.wallet.core.document.c2pa.C2paSignRequest
 import diw.wallet.core.document.c2pa.C2paWriter
 import diw.wallet.core.document.c2pa.SignerPayloadOrder
@@ -406,8 +409,9 @@ class VisibleSignature(val page: Int, val position: PdfSignatureAppearance.Posit
 /**
  * Content credentials (C2PA) for a file: how it was made ([sourceType], an IPTC digital source type when the signer
  * made the content; null signs the file as it was with c2pa.opened), a CAWG identity assertion by the chosen key,
- * the named actor's [roles], the AI training and data mining choice, which key signs the claim, and the optional
- * c2pa-rs field order of signer_payload (not the standard encoding).
+ * the named actor's [roles], the AI training and data mining choice, which key signs the claim, the optional
+ * c2pa-rs field order of signer_payload (not the standard encoding), an update manifest instead of a standard one
+ * for a file that already has content credentials, and Brotli compression of the manifest.
  */
 data class C2paChoice(
     val sourceType: String? = null,
@@ -417,6 +421,10 @@ data class C2paChoice(
     /** The wallet's own key signs the claim as the claim generator; the chosen key signs the identity assertion. */
     val walletClaim: Boolean = false,
     val c2paRsOrder: Boolean = false,
+    /** An update manifest (C2PA 11.2.3): c2pa.opened, no hard binding and no identity assertion. */
+    val update: Boolean = false,
+    /** The manifest is stored Brotli-compressed where the binding allows it (JPEG, PNG and GIF switch to a box hash). */
+    val compress: Boolean = false,
 )
 
 /**
@@ -1849,7 +1857,8 @@ class FilesModel(private val model: WalletModel) {
         add(SignForm.CADES_DETACHED)
         add(SignForm.CADES_ENVELOPING)
         add(SignForm.ASIC)
-        // Content credentials: embedded in JPEG, PNG and WebP, a sidecar manifest (.c2pa) for any other file.
+        // Content credentials: embedded in every container C2PA defines (pictures, audio, video, PDF, ZIP and Office
+        // files, SVG), a sidecar manifest (.c2pa) for any other file and for files that cannot take one.
         if (f.report?.encrypted != true) add(SignForm.C2PA)
         add(SignForm.OPENPGP_DETACHED)
     }
@@ -1951,24 +1960,34 @@ class FilesModel(private val model: WalletModel) {
                 else tr(Res.string.sep_comma) + (reached ?: level.short) + (certification?.let { tr(Res.string.msg_certify_level, it) } ?: "")
             model.record(HistoryKind.SIGNED, signerName ?: signer.source.title, null, listOf(f.name), note = tr(Res.string.history_signed_note, form.title, levelNote, signer.source.title))
             val lower = form != SignForm.OFD && form != SignForm.C2PA && SignatureLevel.entries.firstOrNull { it.short == reached?.substringAfterLast(' ') }?.let { it.ordinal < level.ordinal } == true
-            model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "")
+            model.message.value = tr(Res.string.msg_signed_saved, stored.name) + (reached?.takeIf { form != SignForm.OFD && form != SignForm.C2PA }?.let { tr(Res.string.msg_level_open, it) + if (lower) tr(Res.string.msg_level_lower, level.short) else tr(Res.string.paren_close) } ?: "") +
+                (c2paNote.takeIf { form == SignForm.C2PA } ?: "")
             show(Screen.FileDetail(stored.id))
         }
     }
 
     /**
-     * A C2PA manifest for [f]: embedded in a JPEG, PNG or WebP (named "-c2pa"), a sidecar store (.c2pa) for any other
-     * file. The chosen key signs the claim and, with [C2paChoice.identity], the CAWG identity assertion; with
+     * What the last C2PA signing did differently from what was asked, as message text: a sidecar for a file whose
+     * format can hold a manifest (an encrypted PDF...), or an uncompressed manifest where the binding allows none.
+     */
+    private var c2paNote: String? = null
+
+    /**
+     * A C2PA manifest for [f]: embedded in its container (named "-c2pa" with the same extension), a sidecar store
+     * (.c2pa) for any other file and for a file of a container that cannot take one ([c2paNote]). The chosen key signs the claim and, with [C2paChoice.identity], the CAWG identity assertion; with
      * [C2paChoice.walletClaim] the wallet's own key signs the claim as the claim generator instead. A file that
      * already carries content credentials keeps them, and its active manifest becomes the parent ingredient.
      */
     private suspend fun signC2pa(f: StoredFile, data: ByteArray, signer: DocumentSigner, c: C2paChoice, ts: Timestamper?): Pair<ByteArray, String> {
-        val claimSigner = if (c.walletClaim && c.identity) walletSigner(C2PA_GENERATOR) else signer
+        val update = c.update && f.report?.c2pa != null
+        val identity = c.identity && !update
+        val claimSigner = if (c.walletClaim && identity) walletSigner(C2PA_GENERATOR) else signer
         val previous = f.report?.c2pa?.manifests?.firstOrNull { it.active }?.statuses.orEmpty()
+        val format = C2paContainers.detect(data)
         val request = C2paSignRequest(
             title = f.name,
-            authoring = c.sourceType?.let { C2paAuthoring.Created(it) } ?: C2paAuthoring.Opened,
-            identity = c.identity,
+            authoring = c.sourceType?.takeUnless { update }?.let { C2paAuthoring.Created(it) } ?: C2paAuthoring.Opened,
+            identity = identity,
             roles = c.roles,
             allowTraining = c.allowTraining,
             payloadOrder = if (c.c2paRsOrder) SignerPayloadOrder.C2PA_RS else SignerPayloadOrder.DETERMINISTIC,
@@ -1976,10 +1995,21 @@ class FilesModel(private val model: WalletModel) {
             generatorVersion = AppBuild.version,
             time = Clock.System.now(),
             previousResults = previous,
+            // A data hash cannot take a compressed manifest: these containers switch to a box hash.
+            binding = if (c.compress && !update && format in BOX_HASH_FORMATS) C2paBinding.BOXES else null,
+            update = update,
+            compress = c.compress,
         )
-        val out = C2paWriter.sign(data, request, claimSigner, if (c.identity) signer else null, ts, f.report?.let { mediaTypeOf(it, f.name) })
+        // The container's own media type (SVG, audio and video are not told apart by the document format).
+        val type = format?.let { C2paContainers.mediaType(data, it) } ?: f.report?.let { mediaTypeOf(it, f.name) }
+        val out = C2paWriter.sign(data, request, claimSigner, if (identity) signer else null, ts, type)
+        c2paNote = listOfNotNull(
+            out.sidecarReason?.let { tr(Res.string.msg_c2pa_sidecar_reason, it) },
+            tr(Res.string.msg_c2pa_not_compressed).takeIf { c.compress && !out.compressed },
+        ).joinToString("").ifEmpty { null }
         val base = f.name.substringBeforeLast('.')
-        return out.bytes to if (out.sidecar) "$base.c2pa" else "$base-c2pa." + f.name.substringAfterLast('.', "jpg")
+        val ext = f.name.substringAfterLast('.', "")
+        return out.bytes to if (out.sidecar) "$base.c2pa" else if (ext.isEmpty()) "$base-c2pa" else "$base-c2pa.$ext"
     }
 
     /** What the core needs for [seal]: the issued seal file, or the picture of the seal to make (the chosen image or the drawn one). */
@@ -2968,6 +2998,9 @@ class FilesModel(private val model: WalletModel) {
 
         /** The claim generator named in C2PA manifests, and the subject of the wallet key's certificate that signs them. */
         const val C2PA_GENERATOR = "DIW MY WALLET"
+
+        /** Containers whose default data hash becomes a box hash when the manifest is to be compressed. */
+        private val BOX_HASH_FORMATS = setOf(C2paFormat.JPEG, C2paFormat.PNG, C2paFormat.GIF)
 
         fun mediaTypeOf(report: DocumentReport, name: String): String = when (report.format) {
             DocumentFormat.IMAGE -> ImageKind.ofExtension(name)?.mediaType ?: "image/*"

@@ -143,6 +143,7 @@ kotlin {
             implementation(libs.zxing.core)
             implementation(libs.titanium.jsonld.get().toString()) { exclude(group = "com.squareup.okhttp3") }
             implementation(libs.jakarta.json)
+            implementation(libs.brotli.dec)
         }
         androidMain.dependencies {
             api("${libs.jna.get()}@aar")

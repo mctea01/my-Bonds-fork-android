@@ -5,6 +5,7 @@ import diw.wallet.core.document.c2pa.C2paCbor
 import diw.wallet.core.document.c2pa.C2paCose
 import diw.wallet.core.document.c2pa.C2paIdentity
 import diw.wallet.core.document.c2pa.C2paManifest
+import diw.wallet.core.document.c2pa.C2paBindings
 import diw.wallet.core.document.c2pa.C2paManifests
 import diw.wallet.core.document.c2pa.C2paStatus
 import diw.wallet.core.document.c2pa.C2paStore
@@ -195,9 +196,10 @@ internal class CawgIdentities(private val pki: PkiSupport, private val checks: C
                 r.fail("cawg.identity.assertion.mismatch", ct("core_cawg_reference_mismatch", ref.url))
             }
         }
-        val hard = C2paManifests.signedAssertions(m).firstOrNull { b -> HARD_BINDINGS.any { b.label?.startsWith(it) == true } }
+        // A part's hash of a multi-asset hash (c2pa.hash.data.part...) is not a hard binding.
+        val hard = C2paManifests.signedAssertions(m).firstOrNull { b -> C2paBindings.hardLabel(b.label) != null }
         val hardUrl = hard?.let { C2paManifests.absolute(m, "self#jumbf=c2pa.assertions/${it.label}") }
-        val referencedBindings = absolute.filter { u -> HARD_BINDINGS.any { u.substringAfterLast('/').startsWith(it) } }
+        val referencedBindings = absolute.filter { u -> C2paBindings.hardLabel(u.substringAfterLast('/')) != null }
         when {
             referencedBindings.isEmpty() -> r.fail("cawg.identity.hard_binding_missing", ct("core_cawg_hard_binding_missing"))
             hardUrl == null || hardUrl !in referencedBindings -> r.fail("cawg.identity.hard_binding_incorrect", ct("core_cawg_hard_binding_incorrect"))
@@ -538,7 +540,6 @@ internal class CawgIdentities(private val pki: PkiSupport, private val checks: C
 
     companion object {
         const val ICA_SIG_TYPE = "cawg.identity_claims_aggregation"
-        private val HARD_BINDINGS = listOf("c2pa.hash.data", "c2pa.hash.boxes", "c2pa.hash.bmff", "c2pa.hash.collection")
         private const val DOCUMENT_SIGNING = "1.3.6.1.5.5.7.3.36"
         private const val EMAIL_PROTECTION = "1.3.6.1.5.5.7.3.4"
         private val SMIME_POLICIES = setOf("2.23.140.1.5.2.2", "2.23.140.1.5.2.3", "2.23.140.1.5.3.2", "2.23.140.1.5.3.3", "2.23.140.1.5.4.2", "2.23.140.1.5.4.3")
