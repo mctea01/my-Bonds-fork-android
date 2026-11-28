@@ -31,7 +31,6 @@ import kotlinx.serialization.json.putJsonArray
 import kotlinx.serialization.json.putJsonObject
 import org.multipaz.util.toBase64Url
 import org.multipaz.crypto.AsymmetricKey
-import org.multipaz.crypto.JsonWebEncryption
 
 /** Entry hint of Microsoft Verified ID requests (openid-vc), matching MsVerifiedIdPresentationDialect.ENTRY_HINT. */
 private const val MS_VERIFIED_ID_ENTRY = "msvid"
@@ -80,7 +79,7 @@ class RequestResolver(
                 }
                 val method = outer["request_uri_method"] ?: "get"
                 val lanHost = if (policy.allowLanEndpoints && !isAcceptableEndpoint(requestUri, allowInsecureLoopback)) LanEndpoints.host(requestUri) else null
-                val (jwt, walletNonce) = fetchRequestObject(requestUri, method, lanHost != null)
+                val (jwt, walletNonce, sessionKey) = fetchRequestObject(requestUri, method, lanHost != null)
                 if (clientId == null && jwt.startsWith("{")) {
                     throw RequestValidationException("invalid_request", "client_id is required with an unsigned request_uri object")
                 }
@@ -88,7 +87,7 @@ class RequestResolver(
                 if (jwt.startsWith("{")) {
                     RawAuthorizationRequest(RequestChannel.URI, outer, null, parseJsonObject(jwt, "invalid_request_uri"), null, walletNonce, entryHint = entryHint)
                 } else {
-                    val (jws, claims) = parseRequestObjectOrDecrypt(jwt)
+                    val (jws, claims) = parseRequestObjectOrDecrypt(jwt, sessionKey)
                     // Signed objects are compared by the validators (pre-1.0 objects may omit client_id).
                     if (jws == null && clientId != null && claims.str("client_id") != clientId) {
                         throw RequestValidationException("invalid_request_object", "Encrypted request client_id differs from invocation")
@@ -202,30 +201,44 @@ class RequestResolver(
     }
 
     /**
-     * ECDH-ES decryption proves confidentiality to this wallet key, not the Verifier's identity.
-     * Signed client prefixes must still authenticate with a JWS after request resolution.
+     * ECDH-ES decryption proves confidentiality to this wallet key, not the Verifier's identity. A signed request
+     * arrives as a Nested JWT (sign then encrypt, RFC 9101 section 4) and is then checked like any signed request;
+     * signed client prefixes must still authenticate with that JWS. [sessionKey] is the key this retrieval registered
+     * in wallet_metadata.jwks; the [decryptionKeys] hook adds other wallet-held keys.
      */
-    private suspend fun parseRequestObjectOrDecrypt(input: String): Pair<Jws?, JsonObject> {
-        if (input.count { it == '.' } != 4) {
+    private suspend fun parseRequestObjectOrDecrypt(input: String, sessionKey: RequestDecryptionKey? = null): Pair<Jws?, JsonObject> {
+        if (!RequestObjectEncryption.isCompactJwe(input)) {
             val jws = parseRequestObject(input)
             return jws to jws.payload
         }
         if (input.length > policy.maxRequestObjectBytes * 4) {
             throw RequestValidationException("invalid_request_object", "Encrypted request object is too large")
         }
-        val keys = decryptionKeys()
+        val keys = listOfNotNull(sessionKey) + decryptionKeys().take(4).map { RequestDecryptionKey(null, it) }
         if (keys.isEmpty()) throw RequestValidationException(
-            "invalid_request_object", "Encrypted Request Object requires a wallet-controlled registered decryption key"
+            "invalid_request_object",
+            "Encrypted Request Object without a wallet decryption key; it can only be encrypted to the key the wallet sends with request_uri_method=post"
         )
         var lastFailure: Exception? = null
-        for (key in keys.take(4)) {
-            try {
-                return null to JsonWebEncryption.decrypt(input, key)
+        for (key in keys) {
+            val decrypted = try {
+                RequestObjectEncryption.decrypt(input, key.key, key.kid)
             } catch (e: kotlinx.coroutines.CancellationException) {
                 throw e
             } catch (e: Exception) {
                 // Try another locally owned key. Never use a decryption key provided by the request.
                 lastFailure = e
+                continue
+            }
+            return when (decrypted) {
+                is DecryptedRequestObject.Claims -> null to decrypted.claims
+                is DecryptedRequestObject.Signed -> {
+                    if (decrypted.compactJws.length > policy.maxRequestObjectBytes) {
+                        throw RequestValidationException("invalid_request_object", "Decrypted request object is too large")
+                    }
+                    val jws = parseRequestObject(decrypted.compactJws)
+                    jws to jws.payload
+                }
             }
         }
         throw RequestValidationException(
@@ -236,7 +249,7 @@ class RequestResolver(
 
     private fun parseRequestObject(jwt: String): Jws {
         if (jwt.count { it == '.' } == 4) {
-            throw RequestValidationException("invalid_request_object", "Encrypted request objects are not supported")
+            throw RequestValidationException("invalid_request_object", "An encrypted request object is not accepted here")
         }
         val jws = try {
             Jws.parse(jwt)
@@ -246,7 +259,10 @@ class RequestResolver(
         return jws
     }
 
-    private suspend fun fetchRequestObject(requestUri: String, method: String, lan: Boolean = false): Pair<String, String?> {
+    /** The request object, the wallet_nonce sent with it, and the decryption key registered for it (POST only). */
+    private data class Fetched(val body: String, val walletNonce: String?, val sessionKey: RequestDecryptionKey?)
+
+    private suspend fun fetchRequestObject(requestUri: String, method: String, lan: Boolean = false): Fetched {
         if (!lan && !isAcceptableEndpoint(requestUri, allowInsecureLoopback)) {
             throw RequestValidationException("invalid_request_uri", "request_uri must use https")
         }
@@ -254,12 +270,16 @@ class RequestResolver(
         // redirect_uri prefix) answer 406 unless JSON is acceptable too.
         val accept = "application/oauth-authz-req+jwt, application/jwt;q=0.9, application/json;q=0.8, */*;q=0.1"
         var walletNonce: String? = null
+        // request_uri_method=post: a fresh key in wallet_metadata.jwks lets the Verifier encrypt the Request Object
+        // (OpenID4VP 1.0 section 5.10). It is used for this retrieval only, so it does not identify the wallet.
+        val sessionKey = if (method == "post") RequestDecryptionKey.ephemeral() else null
+        val metadata = sessionKey?.let { walletMetadataJson(listOf(it)) }
         if (lan && lanHttp != null) {
             val body = when (method) {
                 "get" -> null
                 "post" -> {
                     walletNonce = PlatformCrypto.randomBytes(16).toBase64Url()
-                    ("wallet_metadata=" + walletMetadataJson().toString().encodeURLParameter() + "&wallet_nonce=" + walletNonce).encodeToByteArray()
+                    ("wallet_metadata=" + metadata.toString().encodeURLParameter() + "&wallet_nonce=" + walletNonce).encodeToByteArray()
                 }
                 else -> throw RequestValidationException("invalid_request_uri_method", "Unsupported request_uri_method '$method'")
             }
@@ -268,7 +288,7 @@ class RequestResolver(
             if (reply.body.size > policy.maxRequestObjectBytes) {
                 throw RequestValidationException("invalid_request_uri", "Request object too large (${reply.body.size} bytes)")
             }
-            return reply.body.decodeToString().trim() to walletNonce
+            return Fetched(reply.body.decodeToString().trim(), walletNonce, sessionKey)
         }
         val resp: HttpResponse = when (method) {
             "get" -> httpClient.get(requestUri) { header(HttpHeaders.Accept, accept) }
@@ -278,7 +298,7 @@ class RequestResolver(
                 httpClient.submitForm(
                     url = requestUri,
                     formParameters = parameters {
-                        append("wallet_metadata", walletMetadataJson().toString())
+                        append("wallet_metadata", metadata.toString())
                         append("wallet_nonce", nonce)
                     }
                 ) { header(HttpHeaders.Accept, accept) }
@@ -297,10 +317,13 @@ class RequestResolver(
         if (ct != null && ct.match(ContentType.Text.Html)) {
             throw RequestValidationException("invalid_request_uri", "Unexpected request object content type $ct")
         }
-        return bytes.decodeToString().trim() to walletNonce
+        return Fetched(bytes.decodeToString().trim(), walletNonce, sessionKey)
     }
 
-    fun walletMetadataJson(): JsonObject = buildJsonObject {
+    /** wallet_metadata (OpenID4VP 1.0 section 10); [encryptionKeys] are the keys a Request Object may be encrypted to. */
+    suspend fun walletMetadataJson(encryptionKeys: List<RequestDecryptionKey> = emptyList()): JsonObject {
+        val encryption = if (encryptionKeys.isEmpty()) null else RequestObjectEncryption.metadata(encryptionKeys)
+        return buildJsonObject {
         putJsonObject("vp_formats_supported") {
             for ((fmt, params) in WalletMetadata.vpFormatsSupported) {
                 putJsonObject(fmt) {
@@ -318,6 +341,8 @@ class RequestResolver(
         putJsonArray("request_object_signing_alg_values_supported") { WalletMetadata.requestObjectSigningAlgs.forEach { add(it) } }
         putJsonArray("authorization_encryption_alg_values_supported") { add("ECDH-ES") }
         putJsonArray("authorization_encryption_enc_values_supported") { add("A128GCM"); add("A256GCM") }
+        encryption?.forEach { (k, v) -> put(k, v) }
+        }
     }
 }
 

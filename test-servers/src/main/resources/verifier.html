@@ -46,7 +46,9 @@
   <option value="bad_signature">請求簽章錯誤</option>
   <option value="foreign_response_uri">回應位址指向他處</option>
   <option value="outer_client_id_mismatch">外層 client_id 不一致</option>
+  <option value="encrypt_to_other_key">請求加密給錯的金鑰（需勾選加密請求）</option>
 </select>
+<label><input type="checkbox" id="encryptRequest" style="width:auto"> 加密請求物件（需 request_uri_method=post，加密給錢包在 wallet_metadata.jwks 登錄的金鑰）</label>
 <label><input type="checkbox" id="encrypted" checked style="width:auto"> DC API 回應加密（dc_api.jwt）</label>
 
 <button id="create">建立請求</button>
@@ -99,6 +101,7 @@ $("create").onclick = async () => {
     const s = await post("/verifier/sessions", {
       client_id_prefix: $("prefix").value, response_mode: $("mode").value,
       request_uri_method: $("method").value, dcql_query: dcql(), tamper: $("tamper").value || undefined,
+      request_object_encryption: $("encryptRequest").checked,
     });
     $("out").hidden = false;
     $("link").href = s.uri;
