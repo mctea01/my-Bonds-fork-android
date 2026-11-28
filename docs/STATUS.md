@@ -1,6 +1,6 @@
 # 專案現況
 
-最後更新：2026-11-27（C2PA 其他容器：GIF、TIFF／DNG、SVG、WAV、AVI、MP3、FLAC、JPEG XL、BMFF（MP4、MOV、HEIF、HEIC、AVIF）、PDF 與 ZIP／Office 的讀取與簽署，`c2pa.hash.boxes`、`c2pa.hash.bmff` 與 `c2pa.hash.collection.data` 的驗證與寫入；zkPDF 支援多頁文件：欄位可在任一頁、未證明的頁整頁不公開，證據與遠端請求版本 2，新增移民管理局出入境記錄版型；Google Play 商店資訊納入翻譯管理：各語言的標題、說明、版本資訊範本與截圖在 `distribution/play/listing`（zh-TW、en-US、zh-CN），Play 版本資訊由 `tools/release-notes.py --play-out` 產生、與 GitHub Release 的變更清單相同；上傳改用 `tools/play-store.py`，同一版本重跑只更新版本資訊，可選擇一併寫入商店資訊；README 加入 Google Play 測試資訊；main 到 PR #185）。
+最後更新：2026-11-28（C2PA 其他容器：GIF、TIFF／DNG、SVG、WAV、AVI、MP3、FLAC、JPEG XL、BMFF（MP4、MOV、HEIF、HEIC、AVIF）、PDF 與 ZIP／Office 的讀取與簽署，`c2pa.hash.boxes`、`c2pa.hash.bmff` 與 `c2pa.hash.collection.data` 的驗證與寫入；加密的 request object：`request_uri_method=post` 時錢包以 `wallet_metadata.jwks` 登錄每次新產生的解密金鑰，並解開先簽後加密的 Nested JWT；關於頁第三方元件清單由建置產生；zkPDF 支援多頁文件；Google Play 商店資訊納入翻譯管理；main 到 PR #188）。
 
 這一頁是專案狀態的唯一來源：各階段、各功能目前做到哪裡、還缺什麼、哪些等實機驗證。其他文件不再各自寫「目前狀態」，需要時連到這裡。
 
@@ -49,6 +49,7 @@ P4 之後合併的工作：
 | Linux 原生程式庫相容版與載入順序 | 完成：`linux-*-compat`（不含 Barretenberg，以 Zig 對 glibc 2.28 連結，基準指令集，不需 C++ 執行環境）；`ZkNative` 依 CPU 旗標與能否開啟選擇。完整版改用 Zig 與靜態 libc++（`DIW_ZK_LINUX_LIBCXX=1`）為選用，預設未開；該建置的 zkPDF 與 FaceMatch P-256 驗證金鑰已比對一致，Debian 10 可開啟；aarch64 相容版以 Zig 連結時去掉 rustc 的 `--fix-cortex-a53-843419`（Zig 不接受，cargo-zigbuild 0.20.1 沒濾掉） | [native/README.md](../native/README.md) |
 | 版本與發佈（版本線 0.5、穩定版發佈、Release 頁下載指引） | 腳本與文件在 main：`tools/stable-release.sh` 決定版本並推標籤，`tools/release-notes.py` 產生 Release 內文（下載指引放最上方一次，下面是上一個穩定版以來的變更）；`stable-release.yml` 與改過的 CI workflow 已由使用者貼上；`minor`、`major` 需要 secret `RELEASE_TOKEN` | [release.md](release.md) |
 | 桌面版 GraalVM 原生執行檔（PR #125） | 實驗：Linux、Windows 由 CI 建置並通過自我檢查，附在 nightly 與穩定版的「實驗版」；macOS 不支援。JVM 版仍是正式發行。2026-11-27 Windows 執行檔加入版本資源（檔案描述、產品名稱、版本、著作權與 Apache License 2.0）與 App 圖示，CI 以 Windows 讀回檢查；發佈資料夾附 `LICENSE`、`NOTICE`，`self-check.txt`、`smoke-stderr.txt` 改放 `native-check-<os>` Artifact | [release.md](release.md)、[AGENTS.md](../AGENTS.md) 的零知識證明要點 |
+| 關於頁的第三方元件清單 | 完成：「設定 > 關於 > 第三方元件與授權」依平台列出這個版本實際包含的元件（Android 與桌面版各自的 Maven 相依、每個打包的原生程式庫所連結的 Rust crate、C/C++ 程式庫、執行階段、模型、電路、內建資料、使用時下載的資產、安裝檔附帶的執行環境），可搜尋與分組，每項附授權全文與元件自帶的授權或聲明檔；清單由建置產生（`app/third-party.gradle.kts`、`native/third_party.py`），授權不在 `third-party/components.json` 的相依會讓建置失敗；`NOTICE` 與 `LICENSE` 改在 App 內顯示建置當下的版本。桌面版以測試與截圖確認，Android 版只經 CI 建置，未在實機檢視 | [third-party/README.md](../third-party/README.md) |
 | 一般使用者的使用教程 | 完成：[user-guide.md](guides/user-guide.md) 涵蓋安裝、首次啟動、收卡、出示、文件、簽署、衍生憑證、查驗、電子護照與 zkPassport、設定、電腦版與常見問題，附測試資料繪製的畫面；App 在設定清單第一列、關於頁與首次啟動完成頁以瀏覽器開啟它。教程只有繁體中文 | [user-guide.md](guides/user-guide.md) |
 
 ## 3. 功能狀態
@@ -61,7 +62,7 @@ P4 之後合併的工作：
 |---|---|---|
 | OpenID4VCI 1.0 與草案 11 至 13 領卡 | 可用 | 用戶端驗證依授權伺服器選擇（錢包證明、private_key_jwt、公開用戶端） |
 | 格式：mdoc、SD-JWT VC、W3C VC（JWT、JSON-LD、Data Integrity、bbs-2023） | 可用 | bbs-2023 可選功能的發證是 DIW 擴充 |
-| OpenID4VP 1.0（DCQL、transaction data）與舊版草案 | 可用 | 加密的 request object 會被拒絕（App 沒有登錄解密金鑰） |
+| OpenID4VP 1.0（DCQL、transaction data）與舊版草案 | 可用 | 加密的 request object：`request_uri_method=post` 時以 `wallet_metadata.jwks` 登錄每次新產生的金鑰（不重用、不能追蹤），支援未簽章與先簽後加密（Nested JWT）；GET、以值傳遞與 DC API 沒有登錄金鑰的管道，加密的請求會被拒絕；只有測試驗證端的自動測試，未與外部查驗方互通 |
 | Digital Credentials API 出示與收卡 | 可用 | 只有 W3C 格式的卡片（如 TWDIW）不會出現在系統選擇器 |
 | ISO 18013-5 近距離出示與查驗（NFC、QR、BLE；PC/SC 只讀） | 可用 | 兩機 NFC 互通待實機驗證 |
 | OpenID Federation 1.0（查驗方與發證端） | 可用 | |
@@ -128,12 +129,10 @@ P4 之後合併的工作：
 | P4 驗收文件 | P4 沒有寫獨立的驗收文件，結果記在 [p4-work-packages.md](design/p4-work-packages.md) 第 2.1 節與 [p4-benchmarks.md](research/p4-benchmarks.md) | 視需要補 |
 | zkPDF 手機效能 | 一次實測在 611 秒逾時、峰值約 2.5 GB；完整時間未量到 | 實機量測（可選） |
 | zkPassport 官方人臉比對電路與加鹽唯一識別碼 | 產生官方 Android FaceMatch 證明需要 Play Integrity 與 zkPassport 的 App 身分，不做；本專案電路已接進錢包。本專案 OPRF 的服務端已實作 | Play Integrity 金鑰、排程 |
-| 加密 request object 的解密金鑰登錄 | 程式路徑已有，App 沒有登錄金鑰 | 排程 |
 | CSC `authorization_details` | RFC 9396 | 可測的服務 |
 | C2PA 身分彙整發行 | 錢包自己當身分彙整服務發 `cawg.identity_claims_aggregation`（各容器已完成，這項另開 PR） | 排程 |
 | CAWG 身分聲明的預設編碼 | 規格要求決定性編碼，c2pa-rs 0.92 以自己的欄位順序驗證；預設照規格，互通選項可改 | c2pa-rs 修正或使用者決定 |
 | France Identité 互通 | 協定已具備，缺合作夥伴登錄 | 使用者決定是否申請 |
-| 關於頁的第三方元件清單 | 只列主要元件，完整清單在 [NOTICE](../NOTICE) | 視需要補 |
 | 台灣 G2C | 尚無公開標準，只留接口 | 外部 |
 | AGP 10 前的模組調整 | AGP 9 以 `android.builtInKotlin=false`、`android.newDsl=false` 保留 KMP 模組直接套用 Android 外掛的結構；AGP 10 移除這兩個選項，屆時 `core` 改用 `com.android.kotlin.multiplatform.library`，`app` 的 Android 進入點拆成獨立模組 | AGP 10 發佈前排程 |
 | Code scanning 剩餘告警 | 依規格必須使用的演算法（電子護照 BAC 的 3DES、安全通訊的 AES-ECB、RFC 3394 金鑰包裝、OpenPGP v4 指紋的 SHA-1；CodeQL 不認得的 RSASSA-PSS、SM3withSM2）、取件入口網頁必須的 JavaScript 與下載介面、zkPassport 證明器的憑證釘選，屬設計需要或誤報 | 使用者在 Code scanning 以 won't fix／false positive 關閉 |
@@ -148,7 +147,7 @@ P4 之後合併的工作：
 |---|---|
 | 近距離 | 兩支手機的 NFC 交握（協商式、靜態）、NFC 資料傳輸、HCE 與多錢包並存、感應查驗（N1 至 N7） |
 | DC API | 多重簽章請求、系統選擇器多張證件、收卡 |
-| 發證與出示 | 公開發證端（EUDI）以錢包證明或公開用戶端領卡、mdoc transaction_data、付款交易、VICAL 與 RICAL |
+| 發證與出示 | 公開發證端（EUDI）以錢包證明或公開用戶端領卡、mdoc transaction_data、付款交易、VICAL 與 RICAL、外部查驗方加密的 request object（`request_uri_method=post`） |
 | TWDIW | 新版夥伴卡領卡、平台改版後的出示重測 |
 | 簽章 | 自然人憑證卡與 CSC 的 B-LTA、延長保存、PDF 可見簽章（以 Acrobat 檢查）、PIV、OpenPGP 卡（YubiKey NFC 與 USB） |
 | 文件 | 交換檔真實樣本、C2PA 相機與編修軟體樣本、錢包簽出的 C2PA 檔（含 GIF、TIFF、SVG、音訊、JPEG XL、BMFF、PDF、ZIP 等新容器）在 c2pa-rs、contentcredentials.org 與 Adobe Content Authenticity 的檢查結果、自然人憑證卡與 PIV 的 RSA-PSS 簽章（卡片原始 RSA）、分享到常用 App 的檔名 |

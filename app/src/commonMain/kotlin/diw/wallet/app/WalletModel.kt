@@ -361,6 +361,14 @@ sealed class Screen {
      * once the holder agrees.
      */
     data class IntegrationStatement(val integration: Integration, val pendingUri: String? = null) : Screen()
+    /** The third-party components and licenses of this build (ThirdParty), opened from the About page. */
+    data object ThirdPartyList : Screen()
+    /** One third-party component (ThirdPartyComponent.id); Back returns to [from]. */
+    data class ThirdPartyEntry(val id: String, val from: Screen = ThirdPartyList) : Screen()
+    /** One license with its full text and the components under it; Back returns to [from]. */
+    data class ThirdPartyLicenseText(val id: String, val from: Screen = ThirdPartyList) : Screen()
+    /** NOTICE or LICENSE of this build ([name]), opened from the About page. */
+    data class ThirdPartyDocument(val name: String) : Screen()
 }
 
 sealed class IssuanceUi {
@@ -907,6 +915,8 @@ class WalletModel(val platform: PlatformServices) {
             is Screen.LegalText -> screen.value = Screen.SettingsPage(SettingsSection.LEGAL)
             is Screen.IntegrationStatement ->
                 screen.value = if (s.pendingUri != null) Screen.Home else Screen.SettingsPage(SettingsSection.LEGAL)
+            Screen.ThirdPartyList, is Screen.ThirdPartyEntry, is Screen.ThirdPartyLicenseText, is Screen.ThirdPartyDocument ->
+                screen.value = diw.wallet.app.ui.thirdPartyBack(s)
         }
         return true
     }

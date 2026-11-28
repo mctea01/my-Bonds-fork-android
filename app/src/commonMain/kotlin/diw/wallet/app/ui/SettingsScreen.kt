@@ -526,21 +526,6 @@ internal const val USER_GUIDE_URL = "$SOURCE_URL/blob/main/docs/guides/user-guid
 @Composable
 private fun appVersion(): String = AppBuild.version ?: stringResource(Res.string.settings_dev_build)
 
-/** Third-party software shipped in the app, as NOTICE lists it. */
-@Composable
-private fun thirdParty() = listOf(
-    "Multipaz" to "Apache License 2.0",
-    "Kotlin, kotlinx.coroutines, kotlinx.serialization, kotlinx-io, kotlinx-datetime" to "Apache License 2.0",
-    "Ktor" to "Apache License 2.0",
-    "Compose Multiplatform, AndroidX" to "Apache License 2.0",
-    "Google Play services identity credentials" to "Android Software Development Kit License",
-    "Bouncy Castle" to stringResource(Res.string.settings_license_bc),
-    "Apache Xerces2, xml-apis" to "Apache License 2.0",
-    stringResource(Res.string.settings_component_pdfbox) to "Apache License 2.0",
-    stringResource(Res.string.settings_component_sqlite) to stringResource(Res.string.settings_license_sqlite),
-    stringResource(Res.string.settings_component_cmwallet) to "Apache License 2.0",
-)
-
 @Composable
 private fun AboutPage(model: WalletModel) {
     val s by model.settingsFlow.collectAsState()
@@ -563,13 +548,11 @@ private fun AboutPage(model: WalletModel) {
         stringResource(Res.string.settings_bonds_note),
         style = MaterialTheme.typography.bodySmall)
     SectionTitle(stringResource(Res.string.settings_third_party))
-    thirdParty().forEach { (name, license) -> LabelValue(name, license, small = true) }
+    ThirdPartySummary(model)
     HorizontalDivider()
     SectionTitle(stringResource(Res.string.settings_source))
     LabelValue("GitHub", SOURCE_URL, small = true) { model.platform.openBrowser(SOURCE_URL) }
     OutlinedButton(onClick = { model.platform.openBrowser(USER_GUIDE_URL) }) { Text(stringResource(Res.string.settings_user_guide)) }
-    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/LICENSE") }) { Text(stringResource(Res.string.settings_license_full)) }
-    OutlinedButton(onClick = { model.platform.openBrowser("$SOURCE_URL/blob/main/NOTICE") }) { Text(stringResource(Res.string.settings_notice)) }
 }
 
 /** Registration with the system credential picker (Android Digital Credentials API); hidden where there is none. */
